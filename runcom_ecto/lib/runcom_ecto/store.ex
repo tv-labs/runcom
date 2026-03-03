@@ -1,0 +1,752 @@
+defmodule RuncomEcto.Store do
+  @moduledoc """
+  Ecto-backed implementation of `Runcom.Store`.
+
+  Provides persistence for operational data: execution results, nodes,
+  dispatches, and metrics. Runbook discovery is handled by
+  `Runcom.Runbook` via the `Runcom.Runbook.Compiled` protocol.
+
+  ## Configuration
+
+      config :runcom, store: {RuncomEcto.Store, repo: MyApp.Repo}
+
+  Every public function accepts an `opts` keyword list as its last argument.
+  The `:repo` key is required and specifies the Ecto repo to use for queries.
+  """
+
+  @behaviour Runcom.Store
+
+  import Ecto.Query
+
+  alias RuncomEcto.Schema.Dispatch
+  alias RuncomEcto.Schema.DispatchNode
+  alias RuncomEcto.Schema.Result
+  alias RuncomEcto.Schema.Secret
+  alias RuncomEcto.Schema.StepResult
+
+  @failure_statuses ["failed", "error"]
+
+  @doc """
+  Inserts an execution result record.
+  """
+  @impl true
+  @spec save_result(map(), keyword()) :: {:ok, Result.t()} | {:error, term()}
+  def save_result(attrs, opts \\ []) do
+    repo = repo!(opts)
+    {step_results_attrs, result_attrs} = Map.pop(attrs, :step_results, [])
+
+    multi =
+      Ecto.Multi.new()
+      |> Ecto.Multi.insert(:result, Result.changeset(%Result{}, result_attrs))
+      |> Ecto.Multi.run(:step_results, fn repo, %{result: result} ->
+        insert_step_results(repo, result.id, step_results_attrs)
+      end)
+
+    case repo.transaction(multi) do
+      {:ok, %{result: result}} -> {:ok, result}
+      {:error, _step, changeset, _changes} -> {:error, changeset}
+    end
+  end
+
+  @doc """
+  Lists execution results with optional filters and keyset pagination.
+
+  Results are ordered deterministically by `COALESCE(completed_at, started_at) DESC, id DESC`.
+
+  ## Filter Options
+
+    * `:runbook_id` - Filter by runbook ID
+    * `:node_id` - Filter by node ID
+    * `:status` - Filter by status string
+    * `:search` - Case-insensitive substring match on runbook_id, node_id, or error_message
+
+  ## Pagination Options
+
+    * `:limit` - Maximum number of results to return
+    * `:cursor` - `{DateTime.t(), integer()}` tuple for keyset pagination
+  """
+  @impl true
+  @spec list_results(keyword()) :: {:ok, [Result.t()]}
+  def list_results(opts \\ []) do
+    repo = repo!(opts)
+
+    query =
+      from(r in Result,
+        order_by: [desc: fragment("COALESCE(?, ?)", r.completed_at, r.started_at), desc: r.id]
+      )
+      |> maybe_filter(:runbook_id, opts[:runbook_id])
+      |> maybe_filter(:node_id, opts[:node_id])
+      |> maybe_filter(:status, opts[:status])
+      |> maybe_filter(:dispatch_id, opts[:dispatch_id])
+      |> maybe_search(opts[:search])
+      |> maybe_cursor_results(opts[:cursor])
+      |> maybe_limit(opts[:limit])
+
+    {:ok, repo.all(query)}
+  end
+
+  @doc """
+  Returns aggregate counts for results matching the given filters.
+
+  Accepts the same filter and search options as `list_results/1`.
+  Returns `%{total: integer(), failures: integer()}`.
+  """
+  @impl true
+  @spec count_results(keyword()) :: {:ok, %{total: integer(), failures: integer()}}
+  def count_results(opts \\ []) do
+    repo = repo!(opts)
+
+    query =
+      from(r in Result,
+        select: %{
+          total: count(r.id),
+          failures: fragment("COUNT(*) FILTER (WHERE ? = ANY(?))", r.status, ^@failure_statuses)
+        }
+      )
+      |> maybe_filter(:runbook_id, opts[:runbook_id])
+      |> maybe_filter(:node_id, opts[:node_id])
+      |> maybe_filter(:status, opts[:status])
+      |> maybe_search(opts[:search])
+
+    {:ok, repo.one(query)}
+  end
+
+  @doc """
+  Retrieves an execution result by its primary key.
+  """
+  @impl true
+  @spec get_result(term(), keyword()) :: {:ok, Result.t()} | {:error, :not_found}
+  def get_result(id, opts \\ []) do
+    repo = repo!(opts)
+
+    case repo.get(Result, id) do
+      nil -> {:error, :not_found}
+      result -> {:ok, result}
+    end
+  end
+
+  @doc """
+  Creates a new dispatch record.
+  """
+  @impl true
+  @spec create_dispatch(map(), keyword()) :: {:ok, Dispatch.t()} | {:error, term()}
+  def create_dispatch(attrs, opts \\ []) do
+    repo = repo!(opts)
+
+    %Dispatch{}
+    |> Dispatch.changeset(attrs)
+    |> repo.insert()
+  end
+
+  @doc """
+  Retrieves a dispatch by its ID, preloading dispatch_nodes.
+  """
+  @impl true
+  @spec get_dispatch(String.t(), keyword()) :: {:ok, Dispatch.t()} | {:error, :not_found}
+  def get_dispatch(id, opts \\ []) do
+    repo = repo!(opts)
+
+    case repo.get(Dispatch, id) |> repo.preload(:dispatch_nodes) do
+      nil -> {:error, :not_found}
+      dispatch -> {:ok, dispatch}
+    end
+  end
+
+  @doc """
+  Lists dispatches with optional filters and keyset pagination.
+
+  Dispatches are ordered deterministically by `COALESCE(completed_at, started_at) DESC, id DESC`.
+  Each dispatch includes a computed `total_nodes` virtual field.
+
+  ## Filter Options
+
+    * `:status` - Filter by dispatch status
+    * `:search` - Case-insensitive substring match on runbook_id
+
+  ## Pagination Options
+
+    * `:limit` - Maximum number of dispatches to return
+    * `:cursor` - `{DateTime.t(), binary()}` tuple for keyset pagination
+  """
+  @impl true
+  @spec list_dispatches(keyword()) :: {:ok, [Dispatch.t()]}
+  def list_dispatches(opts \\ []) do
+    repo = repo!(opts)
+
+    node_counts =
+      from(dn in DispatchNode,
+        group_by: dn.dispatch_id,
+        select: %{dispatch_id: dn.dispatch_id, total: count(dn.id)}
+      )
+
+    query =
+      from(d in Dispatch,
+        left_join: nc in subquery(node_counts),
+        on: nc.dispatch_id == d.id,
+        order_by: [desc: fragment("COALESCE(?, ?)", d.completed_at, d.started_at), desc: d.id],
+        select_merge: %{total_nodes: coalesce(nc.total, 0)}
+      )
+      |> maybe_filter_dispatch(:status, opts[:status])
+      |> maybe_search_dispatch(opts[:search])
+      |> maybe_cursor_dispatches(opts[:cursor])
+      |> maybe_limit(opts[:limit])
+
+    {:ok, repo.all(query)}
+  end
+
+  @doc """
+  Returns aggregate counts for dispatches matching the given filters.
+
+  Accepts the same filter options as `list_dispatches/1`.
+  Returns `%{total: integer(), failures: integer()}`.
+  """
+  @impl true
+  @spec count_dispatches(keyword()) :: {:ok, %{total: integer(), failures: integer()}}
+  def count_dispatches(opts \\ []) do
+    repo = repo!(opts)
+
+    query =
+      from(d in Dispatch,
+        select: %{
+          total: count(d.id),
+          failures: fragment("COUNT(*) FILTER (WHERE ? = 'failed')", d.status)
+        }
+      )
+      |> maybe_filter_dispatch(:status, opts[:status])
+      |> maybe_search_dispatch(opts[:search])
+
+    {:ok, repo.one(query)}
+  end
+
+  @doc """
+  Updates a dispatch record.
+  """
+  @impl true
+  @spec update_dispatch(Dispatch.t(), map(), keyword()) :: {:ok, Dispatch.t()} | {:error, term()}
+  def update_dispatch(dispatch, attrs, opts \\ []) do
+    repo = repo!(opts)
+
+    dispatch
+    |> Dispatch.changeset(attrs)
+    |> repo.update()
+  end
+
+  @doc """
+  Creates a dispatch node record.
+  """
+  @impl true
+  @spec create_dispatch_node(map(), keyword()) :: {:ok, DispatchNode.t()} | {:error, term()}
+  def create_dispatch_node(attrs, opts \\ []) do
+    repo = repo!(opts)
+
+    %DispatchNode{}
+    |> DispatchNode.changeset(attrs)
+    |> repo.insert()
+  end
+
+  @doc """
+  Updates a dispatch node record.
+  """
+  @impl true
+  @spec update_dispatch_node(DispatchNode.t(), map(), keyword()) :: {:ok, DispatchNode.t()} | {:error, term()}
+  def update_dispatch_node(dispatch_node, attrs, opts \\ []) do
+    repo = repo!(opts)
+
+    dispatch_node
+    |> DispatchNode.changeset(attrs)
+    |> repo.update()
+  end
+
+  @doc """
+  Retrieves a dispatch node by dispatch_id and node_id.
+  """
+  @impl true
+  @spec get_dispatch_node(String.t(), String.t(), keyword()) :: {:ok, DispatchNode.t()} | {:error, :not_found}
+  def get_dispatch_node(dispatch_id, node_id, opts \\ []) do
+    repo = repo!(opts)
+
+    case repo.get_by(DispatchNode, dispatch_id: dispatch_id, node_id: node_id) do
+      nil -> {:error, :not_found}
+      dn -> {:ok, dn}
+    end
+  end
+
+  @doc """
+  Lists dispatch nodes for a given dispatch_id.
+  """
+  @impl true
+  @spec list_dispatch_nodes(String.t(), keyword()) :: {:ok, [DispatchNode.t()]}
+  def list_dispatch_nodes(dispatch_id, opts \\ []) do
+    repo = repo!(opts)
+
+    nodes =
+      from(dn in DispatchNode,
+        where: dn.dispatch_id == ^dispatch_id,
+        order_by: [asc: dn.inserted_at]
+      )
+      |> repo.all()
+
+    {:ok, nodes}
+  end
+
+  @doc """
+  Finds the most recent active dispatch_node matching a runbook_id and node_id.
+
+  Looks for dispatch_nodes where the parent dispatch has status "dispatching"
+  and the node status is "pending" or "running". Returns the most recently
+  created match.
+  """
+  @impl true
+  @spec find_active_dispatch_node(String.t(), String.t(), keyword()) ::
+          {:ok, DispatchNode.t()} | {:error, :not_found}
+  def find_active_dispatch_node(runbook_id, node_id, opts \\ []) do
+    repo = repo!(opts)
+
+    query =
+      from(dn in DispatchNode,
+        join: d in Dispatch,
+        on: d.id == dn.dispatch_id,
+        where:
+          d.runbook_id == ^runbook_id and
+            dn.node_id == ^node_id and
+            d.status == "dispatching" and
+            dn.status in ["pending", "running"],
+        order_by: [desc: d.started_at],
+        limit: 1
+      )
+
+    case repo.one(query) do
+      nil -> {:error, :not_found}
+      dn -> {:ok, dn}
+    end
+  end
+
+  @doc """
+  Recomputes and updates the aggregate counts on a dispatch record.
+  """
+  @impl true
+  @spec refresh_dispatch_counts(String.t(), keyword()) :: {:ok, Dispatch.t()} | {:error, term()}
+  def refresh_dispatch_counts(dispatch_id, opts \\ []) do
+    repo = repo!(opts)
+
+    case repo.get(Dispatch, dispatch_id) do
+      nil ->
+        {:error, :not_found}
+
+      dispatch ->
+        counts =
+          from(dn in DispatchNode,
+            where: dn.dispatch_id == ^dispatch_id,
+            select: %{
+              total: count(dn.id),
+              completed: fragment("COUNT(*) FILTER (WHERE ? = 'completed')", dn.status),
+              failed: fragment("COUNT(*) FILTER (WHERE ? = ANY(?))", dn.status, ^@failure_statuses),
+              acked: fragment("COUNT(*) FILTER (WHERE ? = 'acked')", dn.status)
+            }
+          )
+          |> repo.one()
+
+        %{total: total, completed: completed, failed: failed, acked: acked} = counts
+
+        all_done = completed + failed == total and total > 0
+
+        attrs = %{
+          nodes_completed: completed,
+          nodes_failed: failed,
+          nodes_acked: acked
+        }
+
+        attrs =
+          if all_done do
+            status = if failed > 0, do: "failed", else: "completed"
+            now = DateTime.utc_now()
+
+            duration =
+              if dispatch.started_at,
+                do: DateTime.diff(now, dispatch.started_at, :millisecond),
+                else: nil
+
+            Map.merge(attrs, %{status: status, completed_at: now, duration_ms: duration})
+          else
+            attrs
+          end
+
+        dispatch
+        |> Dispatch.changeset(attrs)
+        |> repo.update()
+    end
+  end
+
+  @doc """
+  Full-text search across execution results using Postgres tsvector.
+
+  Searches the generated `searchable` column which indexes `runbook_id`,
+  `node_id`, and `error_message`.
+  """
+  @impl true
+  @spec search_results(String.t(), keyword()) :: {:ok, [Result.t()]}
+  def search_results(query, opts \\ []) do
+    repo = repo!(opts)
+
+    results =
+      from(r in Result,
+        where: fragment("searchable @@ plainto_tsquery('english', ?)", ^query),
+        order_by: [desc: r.started_at]
+      )
+      |> repo.all()
+
+    {:ok, results}
+  end
+
+  @doc """
+  Returns run counts per time bucket grouped by runbook_id.
+
+  ## Options
+
+    * `:since` - DateTime filter (required)
+    * `:node_id` - filter by node
+    * `:runbook_id` - filter by runbook
+    * `:bucket` - time bucket interval, e.g. "1 hour" (default "1 hour")
+  """
+  @impl true
+  @spec run_rate(keyword()) :: {:ok, [map()]}
+  def run_rate(opts \\ []) do
+    repo = repo!(opts)
+    since = Keyword.fetch!(opts, :since)
+    bucket = Keyword.get(opts, :bucket, "hour")
+
+    # Use a raw SQL query to avoid Ecto's parameter splitting
+    # between SELECT and GROUP BY fragments
+    {filter_sql, filter_params, _next_idx} = build_run_rate_filters(opts, since, 3)
+
+    sql = """
+    SELECT date_trunc($1, started_at) AS bucket, runbook_id, COUNT(id) AS count
+    FROM runcom_results
+    WHERE started_at >= $2 #{filter_sql}
+    GROUP BY 1, 2
+    ORDER BY 1
+    """
+
+    params = [bucket, since] ++ filter_params
+    result = Ecto.Adapters.SQL.query!(repo, sql, params)
+
+    rows =
+      Enum.map(result.rows, fn [bucket_dt, runbook_id, count] ->
+        %{bucket: bucket_dt, runbook_id: runbook_id, count: count}
+      end)
+
+    {:ok, rows}
+  end
+
+  defp build_run_rate_filters(opts, _since, start_idx) do
+    {sql, params, idx} = {"", [], start_idx}
+
+    {sql, params, idx} =
+      case opts[:runbook_id] do
+        nil -> {sql, params, idx}
+        val -> {sql <> " AND runbook_id = $#{idx}", params ++ [val], idx + 1}
+      end
+
+    {sql, params, _idx} =
+      case opts[:node_id] do
+        nil -> {sql, params, idx}
+        val -> {sql <> " AND node_id = $#{idx}", params ++ [val], idx + 1}
+      end
+
+    {sql, params, idx}
+  end
+
+  @doc """
+  Returns timing statistics per runbook.
+
+  Returns avg, p50, p95, and max of duration_ms.
+
+  ## Options
+
+    * `:since` - DateTime filter (required)
+    * `:node_id` - filter by node
+    * `:runbook_id` - filter by runbook
+  """
+  @impl true
+  @spec timing_stats(keyword()) :: {:ok, [map()]}
+  def timing_stats(opts \\ []) do
+    repo = repo!(opts)
+    since = Keyword.fetch!(opts, :since)
+
+    query =
+      from(r in Result,
+        where: r.started_at >= ^since and not is_nil(r.duration_ms),
+        group_by: r.runbook_id,
+        select: %{
+          runbook_id: r.runbook_id,
+          avg_ms: fragment("ROUND(AVG(?))", r.duration_ms),
+          p50_ms:
+            fragment("ROUND(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY ?))", r.duration_ms),
+          p95_ms:
+            fragment("ROUND(PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY ?))", r.duration_ms),
+          max_ms: max(r.duration_ms),
+          count: count(r.id)
+        },
+        order_by: [desc: count(r.id)]
+      )
+      |> maybe_filter(:runbook_id, opts[:runbook_id])
+      |> maybe_filter(:node_id, opts[:node_id])
+
+    {:ok, repo.all(query)}
+  end
+
+  @doc """
+  Returns success/failure counts per runbook.
+
+  ## Options
+
+    * `:since` - DateTime filter (required)
+    * `:node_id` - filter by node
+    * `:runbook_id` - filter by runbook
+  """
+  @impl true
+  @spec status_rates(keyword()) :: {:ok, [map()]}
+  def status_rates(opts \\ []) do
+    repo = repo!(opts)
+    since = Keyword.fetch!(opts, :since)
+
+    query =
+      from(r in Result,
+        where: r.started_at >= ^since,
+        group_by: r.runbook_id,
+        select: %{
+          runbook_id: r.runbook_id,
+          total: count(r.id),
+          completed:
+            fragment("COUNT(*) FILTER (WHERE ? = 'completed')", r.status),
+          failed:
+            fragment("COUNT(*) FILTER (WHERE ? = ANY(?))", r.status, ^@failure_statuses),
+          running:
+            fragment("COUNT(*) FILTER (WHERE ? = 'running')", r.status)
+        },
+        order_by: [desc: count(r.id)]
+      )
+      |> maybe_filter(:runbook_id, opts[:runbook_id])
+      |> maybe_filter(:node_id, opts[:node_id])
+
+    {:ok, repo.all(query)}
+  end
+
+  @doc """
+  Returns per-step timing stats from the step_results table.
+
+  ## Options
+
+    * `:since` - DateTime filter (required)
+    * `:runbook_id` - filter by runbook (required)
+    * `:node_id` - filter by node
+  """
+  @impl true
+  @spec step_timing_stats(keyword()) :: {:ok, [map()]}
+  def step_timing_stats(opts \\ []) do
+    repo = repo!(opts)
+    since = Keyword.fetch!(opts, :since)
+    runbook_id = Keyword.fetch!(opts, :runbook_id)
+
+    query =
+      from(sr in StepResult,
+        join: r in Result,
+        on: sr.result_id == r.id,
+        where:
+          r.runbook_id == ^runbook_id and
+            r.started_at >= ^since and
+            sr.status == "ok" and
+            not is_nil(sr.duration_ms),
+        group_by: sr.name,
+        select: %{
+          name: sr.name,
+          avg_ms: fragment("ROUND(AVG(?))", sr.duration_ms),
+          p50_ms:
+            fragment("ROUND(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY ?))", sr.duration_ms),
+          p95_ms:
+            fragment("ROUND(PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY ?))", sr.duration_ms),
+          max_ms: max(sr.duration_ms),
+          count: count(sr.id)
+        },
+        order_by: [asc: sr.name]
+      )
+
+    query =
+      case opts[:node_id] do
+        nil -> query
+        node_id -> where(query, [_sr, r], r.node_id == ^node_id)
+      end
+
+    {:ok, repo.all(query)}
+  end
+
+  @impl true
+  def list_secrets(opts \\ []) do
+    repo = repo!(opts)
+
+    secrets =
+      from(s in Secret,
+        select: %{name: s.name, inserted_at: s.inserted_at},
+        order_by: [asc: s.name]
+      )
+      |> repo.all()
+
+    {:ok, secrets}
+  end
+
+  @impl true
+  def fetch_secret(name, opts \\ []) do
+    repo = repo!(opts)
+
+    case repo.get_by(Secret, name: name) do
+      nil -> {:error, :not_found}
+      secret -> {:ok, decrypt(secret.encrypted_value)}
+    end
+  end
+
+  @impl true
+  def put_secret(name, value, opts \\ []) do
+    repo = repo!(opts)
+    encrypted = encrypt(value)
+    attrs = %{name: name, encrypted_value: encrypted}
+
+    case repo.get_by(Secret, name: name) do
+      nil ->
+        %Secret{}
+        |> Secret.changeset(attrs)
+        |> repo.insert()
+        |> case do
+          {:ok, _} -> :ok
+          {:error, changeset} -> {:error, changeset}
+        end
+
+      existing ->
+        existing
+        |> Secret.changeset(attrs)
+        |> repo.update()
+        |> case do
+          {:ok, _} -> :ok
+          {:error, changeset} -> {:error, changeset}
+        end
+    end
+  end
+
+  @impl true
+  def delete_secret(name, opts \\ []) do
+    repo = repo!(opts)
+    from(s in Secret, where: s.name == ^name) |> repo.delete_all()
+    :ok
+  end
+
+  defp insert_step_results(_repo, _result_id, []), do: {:ok, []}
+
+  defp insert_step_results(repo, result_id, step_results_attrs) do
+    now = DateTime.utc_now() |> DateTime.truncate(:microsecond)
+
+    rows =
+      Enum.map(step_results_attrs, fn attrs ->
+        Map.put(attrs, :result_id, result_id)
+      end)
+
+    case Enum.find(rows, fn attrs -> not StepResult.changeset(attrs).valid? end) do
+      nil ->
+        rows = Enum.map(rows, &Map.put_new(&1, :inserted_at, now))
+        {_count, inserted} = repo.insert_all(StepResult, rows, returning: true)
+        {:ok, inserted}
+
+      invalid ->
+        {:error, StepResult.changeset(invalid)}
+    end
+  end
+
+  defp repo!(opts), do: RuncomEcto.repo!(opts, Runcom.Store)
+
+  defp maybe_filter(query, _field, nil), do: query
+  defp maybe_filter(query, :runbook_id, value), do: where(query, [r], r.runbook_id == ^value)
+  defp maybe_filter(query, :node_id, value) when is_binary(value), do: where(query, [r], r.node_id == ^value)
+  defp maybe_filter(query, :node_id, values) when is_list(values), do: where(query, [r], r.node_id in ^values)
+  defp maybe_filter(query, :status, value), do: where(query, [r], r.status == ^value)
+  defp maybe_filter(query, :dispatch_id, value), do: where(query, [r], r.dispatch_id == ^value)
+
+  defp maybe_search(query, nil), do: query
+  defp maybe_search(query, ""), do: query
+
+  defp maybe_search(query, term) do
+    pattern = "%" <> escape_like(term) <> "%"
+
+    where(
+      query,
+      [r],
+      ilike(r.runbook_id, ^pattern) or
+        ilike(r.node_id, ^pattern) or
+        ilike(r.error_message, ^pattern)
+    )
+  end
+
+  defp escape_like(term) do
+    term
+    |> String.replace("\\", "\\\\")
+    |> String.replace("%", "\\%")
+    |> String.replace("_", "\\_")
+  end
+
+  defp maybe_limit(query, nil), do: query
+  defp maybe_limit(query, limit), do: limit(query, ^limit)
+
+  defp maybe_cursor_results(query, nil), do: query
+
+  defp maybe_cursor_results(query, {ts, id}) do
+    where(
+      query,
+      [r],
+      fragment("(COALESCE(?, ?), ?) < (?, ?)", r.completed_at, r.started_at, r.id, ^ts, ^id)
+    )
+  end
+
+  defp maybe_cursor_dispatches(query, nil), do: query
+
+  defp maybe_cursor_dispatches(query, {ts, id}) do
+    where(
+      query,
+      [d],
+      fragment("(COALESCE(?, ?), ?) < (?, ?)", d.completed_at, d.started_at, d.id, ^ts, ^id)
+    )
+  end
+
+  defp maybe_filter_dispatch(query, _field, nil), do: query
+  defp maybe_filter_dispatch(query, :status, value), do: where(query, [d], d.status == ^value)
+
+  defp maybe_search_dispatch(query, nil), do: query
+  defp maybe_search_dispatch(query, ""), do: query
+
+  defp maybe_search_dispatch(query, term) do
+    pattern = "%" <> escape_like(term) <> "%"
+    where(query, [d], ilike(d.runbook_id, ^pattern))
+  end
+
+  defp derive_keys do
+    raw =
+      case Application.get_env(:runcom, :vault_key) do
+        nil -> raise "No :vault_key configured. Set config :runcom, vault_key: \"some-secret\""
+        key when is_binary(key) -> key
+      end
+
+    secret = :crypto.hash(:sha256, raw)
+    sign_secret = :crypto.hash(:sha256, raw <> "sign")
+    {secret, sign_secret}
+  end
+
+  defp encrypt(plaintext) do
+    {secret, sign_secret} = derive_keys()
+    Plug.Crypto.MessageEncryptor.encrypt(plaintext, secret, sign_secret)
+  end
+
+  defp decrypt(ciphertext) do
+    {secret, sign_secret} = derive_keys()
+
+    case Plug.Crypto.MessageEncryptor.decrypt(ciphertext, secret, sign_secret) do
+      {:ok, plaintext} -> plaintext
+      :error -> raise "Failed to decrypt secret — vault key may have changed"
+    end
+  end
+end

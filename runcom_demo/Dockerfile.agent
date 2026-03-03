@@ -1,0 +1,40 @@
+FROM elixir:1.18-slim AS build
+
+RUN apt-get update -qq && \
+    apt-get install -y --no-install-recommends git build-essential ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy dependency source trees
+COPY core /deps/runcom
+COPY runcom_rmq /deps/runcom_rmq
+COPY runcom_demo/agent /app
+
+# Rewrite path deps to match container layout
+RUN sed -i 's|../../runcom_rmq|/deps/runcom_rmq|' mix.exs && \
+    sed -i 's|../../runcom|/deps/runcom|' mix.exs && \
+    sed -i 's|\.\./core|/deps/runcom|' /deps/runcom_rmq/mix.exs
+
+RUN mix local.hex --force && mix local.rebar --force
+RUN mix deps.get
+RUN MIX_ENV=prod mix compile
+
+FROM elixir:1.18-slim
+
+RUN apt-get update -qq && \
+    apt-get install -y --no-install-recommends git curl ca-certificates bash && \
+    rm -rf /var/lib/apt/lists/*
+
+# Shutdown shim: the Reboot step runs "shutdown -r now" which doesn't exist
+# in containers without systemd. This shim kills PID 1 (the BEAM process)
+# causing the container to exit. Docker's restart policy brings it back.
+RUN printf '#!/bin/sh\nkill 1\n' > /usr/local/bin/shutdown && chmod +x /usr/local/bin/shutdown
+
+COPY --from=build /app /app
+COPY --from=build /deps /deps
+COPY --from=build /root/.mix /root/.mix
+
+WORKDIR /app
+
+CMD ["mix", "run", "--no-halt"]

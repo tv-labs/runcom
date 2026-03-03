@@ -1,14 +1,33 @@
 # The directory Mix will write compiled artifacts to.
-/_build/
+/runcom/_build/
+/runcom_web/_build/
+/runcom_demo/_build/
+/runcom_ecto/_build/
+/runcom_rmq/_build/
 
 # If you run "mix test --cover", coverage assets end up here.
-/cover/
+/runcom/cover/
+/runcom_web/cover/
+/runcom_demo/cover/
+/runcom_ecto/cover/
+/runcom_rmq/cover/
 
 # The directory Mix downloads your dependencies sources to.
-/deps/
+/runcom/deps/
+/runcom_web/deps/
+/runcom_demo/deps/
+/runcom_ecto/deps/
+/runcom_rmq/deps/
 
-# Where third-party dependencies like ExDoc output generated docs.
-/doc/
+# Where 3rd-party dependencies like ExDoc output generated docs.
+/runcom/doc/
+/runcom_web/doc/
+/runcom_demo/doc/
+/runcom_ecto/doc/
+/runcom_rmq/doc/
+
+# Ignore .fetch files in case you like to edit your project deps locally.
+.fetch
 
 # If the VM crashes, it generates a dump, let's ignore it too.
 erl_crash.dump
@@ -16,8 +35,26 @@ erl_crash.dump
 # Also ignore archive artifacts (built via "mix archive.build").
 *.ez
 
-# Ignore package tarball (built via "mix hex.build").
-runcom-*.tar
-
 # Temporary files, for example, from tests.
-/tmp/
+/runcom/tmp/
+/runcom_web/tmp/
+/runcom_demo/tmp/
+/runcom_ecto/tmp/
+/runcom_rmq/tmp/
+
+# Ignore package tarball (built via "mix hex.build").
+runcom*.tar
+
+# Ignore assets that are produced by build tools.
+/runcom_web/priv/static/assets/
+/runcom_demo/priv/static/assets/
+
+# Ignore digested assets cache.
+/runcom_web/priv/static/cache_manifest.json
+/runcom_demo/priv/static/cache_manifest.json
+
+# In case you use Node.js/npm, you want to ignore these.
+npm-debug.log
+/runcom_web/assets/node_modules/
+/runcom_demo/assets/node_modules/
+
