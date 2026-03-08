@@ -126,7 +126,9 @@ defmodule RuncomRmq.Client.RunbookCacheTest do
       :ok = RunbookCache.put(cache, "deploy-v2", hash2, Mod2, rb2)
 
       entries = RunbookCache.list(cache) |> Enum.sort_by(&elem(&1, 0))
-      assert [{"deploy-v1", ^hash1, Mod1, ^rb1, []}, {"deploy-v2", ^hash2, Mod2, ^rb2, []}] = entries
+
+      assert [{"deploy-v1", ^hash1, Mod1, ^rb1, []}, {"deploy-v2", ^hash2, Mod2, ^rb2, []}] =
+               entries
     end
   end
 end

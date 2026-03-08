@@ -7,14 +7,14 @@ RUN apt-get update -qq && \
 WORKDIR /app
 
 # Copy dependency source trees
-COPY core /deps/runcom
+COPY runcom /deps/runcom
 COPY runcom_rmq /deps/runcom_rmq
 COPY runcom_demo/agent /app
 
 # Rewrite path deps to match container layout
 RUN sed -i 's|../../runcom_rmq|/deps/runcom_rmq|' mix.exs && \
     sed -i 's|../../runcom|/deps/runcom|' mix.exs && \
-    sed -i 's|\.\./core|/deps/runcom|' /deps/runcom_rmq/mix.exs
+    sed -i 's|\.\./runcom|/deps/runcom|' /deps/runcom_rmq/mix.exs
 
 RUN mix local.hex --force && mix local.rebar --force
 RUN mix deps.get

@@ -12,20 +12,14 @@ defmodule Runcom.Steps.BashTest do
   end
 
   describe "validate/1" do
-    test "requires script, file, or definition" do
+    test "requires script or file" do
       assert Bash.validate(%{script: "echo hello"}) == :ok
       assert Bash.validate(%{file: "/tmp/script.sh"}) == :ok
-      assert Bash.validate(%{definition: "myapp.setup"}) == :ok
       assert {:error, _} = Bash.validate(%{})
     end
 
-    test "script, file, definition are mutually exclusive" do
+    test "script and file are mutually exclusive" do
       assert {:error, _} = Bash.validate(%{script: "echo", file: "/tmp/s.sh"})
-      assert {:error, _} = Bash.validate(%{script: "echo", definition: "ns.fn"})
-      assert {:error, _} = Bash.validate(%{file: "/tmp/s.sh", definition: "ns.fn"})
-
-      assert {:error, _} =
-               Bash.validate(%{script: "echo", file: "/tmp/s.sh", definition: "ns.fn"})
     end
   end
 
@@ -74,11 +68,8 @@ defmodule Runcom.Steps.BashTest do
       assert result.exit_code == 1
     end
 
-    test "supports deferred file path" do
-      rc = %{assigns: %{script_path: "/tmp/my_script.sh"}}
-
-      {:ok, result} =
-        Bash.dryrun(rc, %{file: fn rc -> rc.assigns.script_path end})
+    test "shows file path in dryrun" do
+      {:ok, result} = Bash.dryrun(nil, %{file: "/tmp/my_script.sh"})
 
       assert result.output =~ "/tmp/my_script.sh"
     end
@@ -107,21 +98,11 @@ defmodule Runcom.Steps.BashTest do
       assert result.exit_code == 1
     end
 
-    test "resolves deferred script values" do
-      rc = %{assigns: %{name: "world"}}
-      {:ok, result} = Bash.run(rc, %{script: &"echo hello #{&1.assigns.name}"})
+    test "runs with interpolated script values" do
+      {:ok, result} = Bash.run(nil, %{script: "echo hello world"})
 
       assert result.status == :ok
       assert result.output == "hello world"
-    end
-  end
-
-  describe "run/2 with definition mode" do
-    test "returns stub error for now (remote client not integrated)" do
-      {:ok, result} = Bash.run(nil, %{definition: "myapp.provision"})
-
-      assert result.status == :error
-      assert result.error =~ "remote"
     end
   end
 
@@ -140,11 +121,5 @@ defmodule Runcom.Steps.BashTest do
       assert result.output =~ "inline script"
     end
 
-    test "returns what would be executed for definition mode" do
-      {:ok, result} = Bash.dryrun(nil, %{definition: "myapp.provision"})
-
-      assert result.status == :ok
-      assert result.output =~ "myapp.provision"
-    end
   end
 end

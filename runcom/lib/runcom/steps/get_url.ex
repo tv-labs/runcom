@@ -50,9 +50,9 @@ defmodule Runcom.Steps.GetUrl do
   def name, do: "GetUrl"
 
   @impl true
-  def run(rc, opts) do
-    url = resolve_value(rc, opts.url)
-    dest = resolve_value(rc, opts.dest)
+  def run(_rc, opts) do
+    url = opts.url
+    dest = opts.dest
     headers = Map.get(opts, :headers, [])
     started_at = DateTime.utc_now()
 
@@ -81,10 +81,8 @@ defmodule Runcom.Steps.GetUrl do
   end
 
   @impl true
-  def dryrun(rc, opts) do
-    url = resolve_value(rc, opts.url)
-    dest = resolve_value(rc, opts.dest)
-    {:ok, Result.ok(output: "Would download #{url} to #{dest}")}
+  def dryrun(_rc, opts) do
+    {:ok, Result.ok(output: "Would download #{opts.url} to #{opts.dest}")}
   end
 
   defp maybe_verify_checksum(result, _dest, nil), do: {:ok, result}
@@ -109,6 +107,4 @@ defmodule Runcom.Steps.GetUrl do
     end
   end
 
-  defp resolve_value(rc, value) when is_function(value, 1), do: value.(rc)
-  defp resolve_value(_rc, value), do: value
 end

@@ -47,9 +47,9 @@ defmodule Runcom.Steps.Unarchive do
   def name, do: "Unarchive"
 
   @impl true
-  def run(rc, opts) do
-    src = resolve_value(rc, opts.src)
-    dest = resolve_value(rc, opts.dest)
+  def run(_rc, opts) do
+    src = opts.src
+    dest = opts.dest
 
     with :ok <- ensure_dest_directory(dest),
          :ok <- extract(src, dest) do
@@ -61,10 +61,8 @@ defmodule Runcom.Steps.Unarchive do
   end
 
   @impl true
-  def dryrun(rc, opts) do
-    src = resolve_value(rc, opts.src)
-    dest = resolve_value(rc, opts.dest)
-    {:ok, Result.ok(output: "Would extract #{src} to #{dest}")}
+  def dryrun(_rc, opts) do
+    {:ok, Result.ok(output: "Would extract #{opts.src} to #{opts.dest}")}
   end
 
   defp ensure_dest_directory(dest) do
@@ -111,6 +109,4 @@ defmodule Runcom.Steps.Unarchive do
 
   defp format_error(reason), do: inspect(reason)
 
-  defp resolve_value(rc, value) when is_function(value, 1), do: value.(rc)
-  defp resolve_value(_rc, value), do: value
 end

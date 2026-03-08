@@ -30,8 +30,10 @@ config :runcom_demo, RuncomDemoWeb.Endpoint,
     node: ["build.js", "--watch", cd: Path.expand("../../runcom_web/assets", __DIR__)],
     npx: [
       "@tailwindcss/cli",
-      "--input", "css/runcom_web.css",
-      "--output", "../priv/static/runcom_web.css",
+      "--input",
+      "css/runcom_web.css",
+      "--output",
+      "../priv/static/runcom_web.css",
       "--watch",
       cd: Path.expand("../../runcom_web/assets", __DIR__)
     ]

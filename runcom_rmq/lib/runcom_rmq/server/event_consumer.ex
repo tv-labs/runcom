@@ -119,7 +119,7 @@ defmodule RuncomRmq.Server.EventConsumer do
     broadcast_payload =
       case store_mod.save_result(result_attrs, store_opts) do
         {:ok, saved} ->
-          update_dispatch_tracking(saved, store_mod, store_opts)
+          update_dispatch_tracking(saved, result_attrs, store_mod, store_opts)
           saved
 
         {:error, reason} ->
@@ -127,6 +127,7 @@ defmodule RuncomRmq.Server.EventConsumer do
           result_attrs
       end
 
+    maybe_upsert_node(result_attrs, store_mod, store_opts)
     Phoenix.PubSub.broadcast(pubsub, "runcom:results", {:result, broadcast_payload})
   end
 
@@ -138,6 +139,15 @@ defmodule RuncomRmq.Server.EventConsumer do
   defp handle_event(event, _store_mod, _store_opts, _pubsub) do
     Logger.warning("EventConsumer received unknown event type: #{inspect(event)}")
   end
+
+  defp maybe_upsert_node(%{node_id: node_id}, store_mod, store_opts)
+       when is_binary(node_id) and node_id != "" do
+    if function_exported?(store_mod, :upsert_node, 3) do
+      store_mod.upsert_node(node_id, %{last_seen_at: DateTime.utc_now()}, store_opts)
+    end
+  end
+
+  defp maybe_upsert_node(_attrs, _store_mod, _store_opts), do: :ok
 
   defp maybe_correlate_dispatch(%{dispatch_id: id} = attrs, _store_mod, _store_opts)
        when is_binary(id) and id != "",
@@ -157,7 +167,7 @@ defmodule RuncomRmq.Server.EventConsumer do
     end
   end
 
-  defp update_dispatch_tracking(result, store_mod, store_opts) do
+  defp update_dispatch_tracking(result, event_attrs, store_mod, store_opts) do
     dispatch_id = result_field(result, :dispatch_id)
 
     if dispatch_id && function_exported?(store_mod, :get_dispatch_node, 3) do
@@ -172,10 +182,10 @@ defmodule RuncomRmq.Server.EventConsumer do
             result_id: result_field(result, :id),
             completed_at: result_field(result, :completed_at) || DateTime.utc_now(),
             duration_ms: result_field(result, :duration_ms),
-            steps_completed: count_steps(result, "ok"),
-            steps_failed: count_steps(result, "error"),
-            steps_skipped: count_steps(result, "skipped"),
-            steps_total: count_steps_total(result),
+            steps_completed: count_steps(event_attrs, "ok"),
+            steps_failed: count_steps(event_attrs, "error"),
+            steps_skipped: count_steps(event_attrs, "skipped"),
+            steps_total: count_steps_total(event_attrs),
             error_message: result_field(result, :error_message)
           }
 
@@ -203,11 +213,10 @@ defmodule RuncomRmq.Server.EventConsumer do
   defp count_steps(result, target_status) do
     case result_field(result, :step_results) do
       steps when is_list(steps) ->
-        Enum.count(steps, fn
-          %{"status" => s} -> s == target_status
-          %{status: s} -> to_string(s) == target_status
-          _ -> false
-        end)
+        Enum.count(steps, &step_status_matches?(&1, target_status))
+
+      steps when is_map(steps) ->
+        Enum.count(steps, fn {_name, step} -> step_status_matches?(step, target_status) end)
 
       _ ->
         0
@@ -217,7 +226,12 @@ defmodule RuncomRmq.Server.EventConsumer do
   defp count_steps_total(result) do
     case result_field(result, :step_results) do
       steps when is_list(steps) -> length(steps)
+      steps when is_map(steps) -> map_size(steps)
       _ -> 0
     end
   end
+
+  defp step_status_matches?(%{"status" => s}, target), do: s == target
+  defp step_status_matches?(%{status: s}, target), do: to_string(s) == target
+  defp step_status_matches?(_, _), do: false
 end

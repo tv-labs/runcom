@@ -84,7 +84,8 @@ defmodule RuncomDemo.Steps.CustomStep do
         {:ok, Result.ok(output: evaluation, lines: evaluation.lines)}
 
       :critical ->
-        {:ok, Result.error(output: evaluation, error: "health check critical", lines: evaluation.lines)}
+        {:ok,
+         Result.error(output: evaluation, error: "health check critical", lines: evaluation.lines)}
     end
   end
 
@@ -118,6 +119,7 @@ defmodule RuncomDemo.Steps.CustomStep do
   end
 
   defp maybe_override(overrides, _check, nil, nil), do: overrides
+
   defp maybe_override(overrides, check, warn, crit) do
     defaults = Thresholds.default()
     {default_warn, default_crit} = Map.fetch!(defaults, check)
@@ -172,7 +174,10 @@ defmodule RuncomDemo.Steps.CustomStep do
           end)
 
         free = Map.get(pages, "Pages free", 0) + Map.get(pages, "Pages speculative", 0)
-        total = free + Map.get(pages, "Pages active", 0) + Map.get(pages, "Pages inactive", 0) + Map.get(pages, "Pages wired down", 0)
+
+        total =
+          free + Map.get(pages, "Pages active", 0) + Map.get(pages, "Pages inactive", 0) +
+            Map.get(pages, "Pages wired down", 0)
 
         if total > 0, do: round((1 - free / total) * 100), else: 0
 
@@ -183,7 +188,9 @@ defmodule RuncomDemo.Steps.CustomStep do
         |> String.split("\n", trim: true)
         |> Enum.find(&String.starts_with?(&1, "Mem:"))
         |> case do
-          nil -> 0
+          nil ->
+            0
+
           line ->
             [_label, total, used | _] = String.split(line)
             round(String.to_integer(used) / String.to_integer(total) * 100)

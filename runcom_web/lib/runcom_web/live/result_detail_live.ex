@@ -39,8 +39,21 @@ defmodule RuncomWeb.Live.ResultDetailLive do
 
   # Fields to preload from step_results (excludes :output to avoid fetching large compressed data)
   @step_result_fields [
-    :id, :name, :order, :status, :module, :exit_code, :duration_ms,
-    :attempts, :started_at, :completed_at, :error, :bytes, :changed, :opts, :meta
+    :id,
+    :name,
+    :order,
+    :status,
+    :module,
+    :exit_code,
+    :duration_ms,
+    :attempts,
+    :started_at,
+    :completed_at,
+    :error,
+    :bytes,
+    :changed,
+    :opts,
+    :meta
   ]
 
   @impl true
@@ -473,7 +486,8 @@ defmodule RuncomWeb.Live.ResultDetailLive do
       is_nil(current) ->
         false
 
-      result_field(event, :dispatch_id) && result_field(event, :dispatch_id) == socket.assigns[:dispatch_id] ->
+      result_field(event, :dispatch_id) &&
+          result_field(event, :dispatch_id) == socket.assigns[:dispatch_id] ->
         node_id = result_field(event, :node_id)
         node_id == nil or node_id == result_field(current, :node_id)
 
@@ -508,7 +522,9 @@ defmodule RuncomWeb.Live.ResultDetailLive do
 
         result_struct = build_step_result_from_sr(sr)
         step_data = step_result_to_map(sr)
-        {details_html, _framework_opts} = render_step_details(module, opts, step_data, result_struct)
+
+        {details_html, _framework_opts} =
+          render_step_details(module, opts, step_data, result_struct)
 
         data =
           %{"label" => step_name, "status" => status, "details_html" => details_html}
@@ -681,12 +697,12 @@ defmodule RuncomWeb.Live.ResultDetailLive do
   defp format_output(output) when is_binary(output), do: output
   defp format_output(output), do: inspect(output)
 
-  defp step_row_bg(status) when status in ~w(ok completed), do: "bg-success/10 hover:bg-success/20"
+  defp step_row_bg(status) when status in ~w(ok completed),
+    do: "bg-success/10 hover:bg-success/20"
+
   defp step_row_bg(status) when status in ~w(error failed), do: "bg-error/10 hover:bg-error/20"
   defp step_row_bg("halted"), do: "bg-warning/10 hover:bg-warning/20"
   defp step_row_bg(_), do: "hover:bg-base-200"
-
-
 
   @doc false
   def step_status_color("ok"), do: "#22c55e"
@@ -783,8 +799,7 @@ defmodule RuncomWeb.Live.ResultDetailLive do
       syntax_highlight: [
         formatter:
           {:html_multi_themes,
-           themes: [light: "github_light", dark: "github_dark"],
-           default_theme: "light-dark()"}
+           themes: [light: "github_light", dark: "github_dark"], default_theme: "light-dark()"}
       ]
     )
   rescue
@@ -796,5 +811,4 @@ defmodule RuncomWeb.Live.ResultDetailLive do
   rescue
     _ -> nil
   end
-
 end

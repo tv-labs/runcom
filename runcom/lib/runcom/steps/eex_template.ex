@@ -12,9 +12,13 @@ defmodule Runcom.Steps.EExTemplate do
 
     * `:dest` - Destination path (required). Can be a string or a function
       that receives the runbook context and returns a string.
-    * `:template` - Inline EEx template string (mutually exclusive with `:src`)
-    * `:src` - Source template file path (mutually exclusive with `:template`).
+    * `:template` - Inline EEx template string (mutually exclusive with `:file` and `:fun`)
+    * `:file` - Source template file path (mutually exclusive with `:template` and `:fun`).
       Can be a string or a function that receives the runbook context.
+    * `:fun` - A 1-arity function that receives assigns and returns a rendered string
+      (mutually exclusive with `:template` and `:file`). Works with `~E` sigils,
+      `EEx.function_from_file/5`, `EEx.function_from_string/5`, or any function.
+      The template is already compiled to BEAM bytecode — no runtime evaluation.
     * `:vars` - Additional variables to merge with runbook assigns. These take
       precedence over assigns when there are key conflicts.
 
@@ -45,8 +49,25 @@ defmodule Runcom.Steps.EExTemplate do
       Runcom.new("example")
       |> Runcom.assign(:app_name, "myapp")
       |> EExTemplate.add("nginx_config",
-           src: "/templates/nginx.conf.eex",
+           file: "/templates/nginx.conf.eex",
            dest: "/etc/nginx/sites-available/myapp.conf"
+         )
+
+      # Using a compiled template function (~E sigil, function_from_file, etc.)
+      import Runcom.Steps.EExTemplate
+      Runcom.new("example")
+      |> Runcom.assign(:app_name, "myapp")
+      |> EExTemplate.add("config",
+           dest: "/etc/app/config.yml",
+           fun: ~E"app: <%= @app_name %>"
+         )
+
+      # Using a module with EEx.function_from_file
+      Runcom.new("example")
+      |> Runcom.assign(:app_name, "myapp")
+      |> EExTemplate.add("nginx_config",
+           dest: "/etc/nginx/sites-available/myapp.conf",
+           fun: &MyApp.Templates.nginx_conf/1
          )
 
   ## Dynamic Paths
@@ -62,10 +83,13 @@ defmodule Runcom.Steps.EExTemplate do
   use Runcom.Step, category: "Files"
 
   schema do
+    field :file, :any, group: :source
+    field :template, :string, group: :source, ui_type: {:code, :eex}
+    field :fun, :any, group: :source
     field :dest, :any, required: true
-    field :src, :any
-    field :template, :string, ui_type: {:code, :eex}
     field :vars, :map
+
+    group :source, required: true, exclusive: true
   end
 
   @doc """
@@ -95,26 +119,11 @@ defmodule Runcom.Steps.EExTemplate do
   def name, do: "EExTemplate"
 
   @impl true
-  def validate(opts) do
-    cond do
-      not Map.has_key?(opts, :dest) ->
-        {:error, "dest is required"}
-
-      not Map.has_key?(opts, :template) and not Map.has_key?(opts, :src) ->
-        {:error, "either template or src is required"}
-
-      true ->
-        :ok
-    end
-  end
-
-  @impl true
   def run(rc, opts) do
-    dest = resolve_value(rc, opts.dest)
+    dest = opts.dest
     assigns = build_assigns(rc, opts)
 
-    with {:ok, template} <- get_template(rc, opts),
-         {:ok, content} <- render_template(template, assigns),
+    with {:ok, content} <- render(opts, assigns),
          :ok <- File.mkdir_p(Path.dirname(dest)),
          :ok <- File.write(dest, content) do
       {:ok, Result.ok(output: dest, changed: true)}
@@ -131,26 +140,37 @@ defmodule Runcom.Steps.EExTemplate do
   end
 
   @impl true
-  def dryrun(rc, opts) do
-    dest = resolve_value(rc, opts.dest)
-    {:ok, Result.ok(output: "Would render template to #{dest}")}
+  def dryrun(_rc, opts) do
+    {:ok, Result.ok(output: "Would render template to #{opts.dest}")}
   end
 
-  defp get_template(_rc, %{template: template}), do: {:ok, template}
+  defp render(%{fun: fun}, assigns) do
+    try do
+      {:ok, fun.(assigns)}
+    rescue
+      e in KeyError ->
+        {:error, "assign @#{e.key} not available in template assigns"}
 
-  defp get_template(rc, %{src: src}) do
-    path = resolve_value(rc, src)
-
-    case File.read(path) do
-      {:ok, content} -> {:ok, content}
-      {:error, reason} -> {:error, "#{reason} - no such file or directory: #{path}"}
+      e ->
+        {:error, Exception.message(e)}
     end
   end
 
-  defp render_template(template, assigns) do
+  defp render(%{template: template}, assigns) do
+    eval_string(template, assigns)
+  end
+
+  defp render(%{file: file}, assigns) do
+    with {:ok, content} <- File.read(file) do
+      eval_string(content, assigns)
+    else
+      {:error, reason} -> {:error, "#{reason} - no such file or directory: #{file}"}
+    end
+  end
+
+  defp eval_string(template, assigns) do
     try do
-      content = EEx.eval_string(template, assigns: assigns)
-      {:ok, content}
+      {:ok, EEx.eval_string(template, assigns: assigns)}
     rescue
       e in KeyError ->
         {:error, "assign @#{e.key} not available in template assigns"}
@@ -171,6 +191,4 @@ defmodule Runcom.Steps.EExTemplate do
     Map.merge(base, extra)
   end
 
-  defp resolve_value(rc, value) when is_function(value, 1), do: value.(rc)
-  defp resolve_value(_rc, value), do: value
 end

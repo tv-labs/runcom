@@ -17,7 +17,7 @@ defmodule Runcom.Steps.EExTemplateTest do
 
     test "requires either template or src" do
       assert EExTemplate.validate(%{dest: "/tmp/out", template: "<%= @var %>"}) == :ok
-      assert EExTemplate.validate(%{dest: "/tmp/out", src: "/templates/config.eex"}) == :ok
+      assert EExTemplate.validate(%{dest: "/tmp/out", file: "/templates/config.eex"}) == :ok
       assert {:error, _} = EExTemplate.validate(%{dest: "/tmp/out"})
     end
   end
@@ -94,7 +94,7 @@ defmodule Runcom.Steps.EExTemplateTest do
       {:ok, result} =
         EExTemplate.run(
           %{assigns: %{version: "1.0.0"}},
-          %{src: src, dest: dest}
+          %{file: src, dest: dest}
         )
 
       assert result.status == :ok
@@ -108,7 +108,7 @@ defmodule Runcom.Steps.EExTemplateTest do
       {:ok, result} =
         EExTemplate.run(
           %{assigns: %{}},
-          %{src: "/nonexistent/template.eex", dest: dest}
+          %{file: "/nonexistent/template.eex", dest: dest}
         )
 
       assert result.status == :error
@@ -116,34 +116,32 @@ defmodule Runcom.Steps.EExTemplateTest do
     end
   end
 
-  describe "run/2 with deferred values" do
+  describe "run/2 with dynamic values" do
     @tag :tmp_dir
-    test "resolves deferred dest path", %{tmp_dir: tmp_dir} do
-      dest_fn = fn rc -> Path.join(tmp_dir, "#{rc.assigns.name}.txt") end
+    test "renders to dynamic dest path", %{tmp_dir: tmp_dir} do
+      dest = Path.join(tmp_dir, "config.txt")
 
       {:ok, result} =
         EExTemplate.run(
           %{assigns: %{name: "config"}},
-          %{dest: dest_fn, template: "Content"}
+          %{dest: dest, template: "Content"}
         )
 
       assert result.status == :ok
-      assert result.output == Path.join(tmp_dir, "config.txt")
-      assert File.read!(Path.join(tmp_dir, "config.txt")) == "Content"
+      assert result.output == dest
+      assert File.read!(dest) == "Content"
     end
 
     @tag :tmp_dir
-    test "resolves deferred src path", %{tmp_dir: tmp_dir} do
+    test "renders from file path", %{tmp_dir: tmp_dir} do
       src = Path.join(tmp_dir, "app.eex")
       dest = Path.join(tmp_dir, "output.txt")
       File.write!(src, "App: <%= @name %>")
 
-      src_fn = fn rc -> Path.join(tmp_dir, "#{rc.assigns.template_name}.eex") end
-
       {:ok, result} =
         EExTemplate.run(
-          %{assigns: %{template_name: "app", name: "MyApp"}},
-          %{src: src_fn, dest: dest}
+          %{assigns: %{name: "MyApp"}},
+          %{file: src, dest: dest}
         )
 
       assert result.status == :ok
@@ -179,15 +177,12 @@ defmodule Runcom.Steps.EExTemplateTest do
       assert result.output =~ "/etc/app/config.yml"
     end
 
-    test "resolves deferred dest in dryrun" do
+    test "shows dest path in dryrun output" do
       {:ok, result} =
-        EExTemplate.dryrun(
-          %{assigns: %{env: "prod"}},
-          %{
-            dest: fn rc -> "/etc/#{rc.assigns.env}/config.yml" end,
-            template: "content"
-          }
-        )
+        EExTemplate.dryrun(nil, %{
+          dest: "/etc/prod/config.yml",
+          template: "content"
+        })
 
       assert result.status == :ok
       assert result.output =~ "/etc/prod/config.yml"

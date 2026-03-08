@@ -3,11 +3,79 @@
 Ecto-backed persistence for Runcom. Implements `Runcom.Store`
 behaviour using Postgres with versioned migrations.
 
+## Schema
+
+```mermaid
+erDiagram
+    runcom_results ||--o{ runcom_step_results : "has many"
+    runcom_dispatches ||--o{ runcom_dispatch_nodes : "has many"
+    runcom_dispatch_nodes }o--|| runcom_results : "links to"
+
+    runcom_results {
+        bigint id PK
+        string runbook_id
+        uuid dispatch_id FK
+        string node_id
+        string status
+        string mode
+        datetime started_at
+        datetime completed_at
+        integer duration_ms
+        text error_message
+        jsonb edges
+        tsvector searchable
+    }
+
+    runcom_step_results {
+        bigint id PK
+        bigint result_id FK
+        string name
+        integer order
+        string status
+        string module
+        integer exit_code
+        integer duration_ms
+        bytea output "zstd compressed"
+        text error
+        jsonb opts
+        jsonb meta
+    }
+
+    runcom_dispatches {
+        uuid id PK
+        string runbook_id
+        string status
+        integer nodes_completed
+        integer nodes_failed
+        integer nodes_acked
+        datetime started_at
+        datetime completed_at
+    }
+
+    runcom_dispatch_nodes {
+        bigint id PK
+        uuid dispatch_id FK
+        string node_id
+        string status
+        bigint result_id FK
+        integer steps_completed
+        integer steps_failed
+        integer steps_skipped
+        integer steps_total
+    }
+
+    runcom_secrets {
+        bigint id PK
+        string name UK
+        binary encrypted_value
+    }
+```
+
 ## Installation
 
 ```elixir
 def deps do
-  [{:runcom_ecto, path: "../runcom_ecto"}]
+  [{:runcom_ecto, "~> 0.1.0"}]
 end
 ```
 
@@ -27,8 +95,8 @@ config :runcom,
 defmodule MyApp.Repo.Migrations.AddRuncom do
   use Ecto.Migration
 
-  def up, do: RuncomEcto.Migrations.up(version: 1)
-  def down, do: RuncomEcto.Migrations.down(version: 1)
+  def up, do: RuncomEcto.Migrations.up()
+  def down, do: RuncomEcto.Migrations.down()
 end
 ```
 
@@ -36,11 +104,10 @@ end
 
 ## Tables
 
-Migration V1 creates:
-
 | Table | Purpose |
 |-------|---------|
 | `runcom_results` | Execution results with tsvector search |
+| `runcom_step_results` | Per-step results with compressed output |
 | `runcom_dispatches` | Dispatch batch records |
 | `runcom_dispatch_nodes` | Per-node dispatch tracking |
 | `runcom_secrets` | AES-256 encrypted secrets |
@@ -79,9 +146,8 @@ All functions accept an optional `repo: MyApp.Repo` keyword argument.
 
 ## Features
 
-- Runbook results stored with full step-level detail
-- SHA-256 content hashing for sync change detection
+- Runbook results stored with normalized per-step detail
+- Application-level zstd compression for step output (OTP 28+)
 - Full-text search via Postgres tsvector
-- Node tracking with upsert semantics
 - Versioned migrations for safe upgrades
 - Encrypted secret storage at rest via `Plug.Crypto.MessageEncryptor`

@@ -28,7 +28,7 @@ defmodule Runcom.Steps.Systemd do
 
   schema do
     field :name, :string, required: true, label: "Service Name"
-    field :state, :enum, required: true, values: [:started, :stopped, :restarted, :reloaded]
+    field :state, :enum, values: [:started, :stopped, :restarted, :reloaded], required: true
     field :enabled, :boolean, label: "Enabled on Boot"
     field :daemon_reload, :boolean, label: "Daemon Reload"
   end

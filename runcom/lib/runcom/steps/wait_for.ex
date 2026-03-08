@@ -33,11 +33,13 @@ defmodule Runcom.Steps.WaitFor do
   use Runcom.Step, category: "Network"
 
   schema do
-    field :tcp_port, :integer, label: "TCP Port"
-    field :path, :string
-    field :host, :string, placeholder: "localhost"
+    field :tcp_port, :integer, group: :condition, label: "TCP Port"
+    field :host, :string, depends_on: :tcp_port, default: "localhost"
+    field :path, :string, group: :condition
     field :timeout, :integer, label: "Timeout (ms)"
     field :interval, :integer, label: "Interval (ms)"
+
+    group :condition, required: true, exclusive: true
   end
 
   @default_timeout 30_000
@@ -45,15 +47,6 @@ defmodule Runcom.Steps.WaitFor do
 
   @impl true
   def name, do: "WaitFor"
-
-  @impl true
-  def validate(opts) do
-    if Map.has_key?(opts, :tcp_port) or Map.has_key?(opts, :path) do
-      :ok
-    else
-      {:error, "at least one condition (tcp_port, path) is required"}
-    end
-  end
 
   @impl true
   def run(_rc, opts) do

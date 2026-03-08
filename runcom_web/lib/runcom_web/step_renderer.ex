@@ -62,7 +62,7 @@ defimpl RuncomWeb.StepRenderer, for: Any do
   end
 
   defp render_node(assigns) do
-    fields = ui_fields(assigns.step)
+    fields = field_infos(assigns.step)
     first_value = first_field_value(assigns.step, fields)
     assigns = Map.put(assigns, :first_value, first_value)
 
@@ -72,7 +72,7 @@ defimpl RuncomWeb.StepRenderer, for: Any do
   end
 
   defp render_details(assigns) do
-    fields = ui_fields(assigns.step)
+    fields = field_infos(assigns.step)
     props = field_props(assigns.step, fields)
     assigns = Map.put(assigns, :props, props)
 
@@ -83,61 +83,51 @@ defimpl RuncomWeb.StepRenderer, for: Any do
   end
 
   defp render_builder(assigns) do
-    fields = ui_fields(assigns.step)
-    assigns = Map.put(assigns, :fields, fields)
+    fields = field_infos(assigns.step)
+    active = Map.get(assigns, :active_group_fields, %{})
+
+    assigns =
+      assigns
+      |> Map.put(:fields, fields)
+      |> Map.put(:active_group_fields, active)
 
     ~H"""
-    <.builder_fields fields={@fields} step={@step} />
+    <.builder_fields fields={@fields} step={@step} active_group_fields={@active_group_fields} />
     <.framework_details framework_opts={@framework_opts} />
     """
   end
 
-  defp ui_fields(step) do
-    mod = step.__struct__
-
-    if function_exported?(mod, :__schema__, 1) do
-      mod.__schema__(:ui_fields)
-    else
-      []
-    end
-  end
-
   defp first_field_value(step, fields) do
     case fields do
-      [%{key: key} | _] ->
+      [%{name: name} | _] ->
         step
-        |> Map.get(String.to_existing_atom(key))
+        |> Map.get(name)
         |> format_value()
 
       _ ->
         nil
     end
-  rescue
-    _ -> nil
   end
 
   defp field_props(step, fields) do
     Enum.flat_map(fields, fn field ->
       value =
         step
-        |> Map.get(String.to_existing_atom(field.key))
+        |> Map.get(field.name)
         |> format_value()
 
       if value do
-        [%{label: field.label, value: value, type: field.type, language: field[:language]}]
+        [%{label: field.label, value: value, type: field.ui_type, language: field[:language]}]
       else
         []
       end
     end)
-  rescue
-    _ -> []
   end
 
   defp format_value(nil), do: nil
   defp format_value(val) when is_binary(val), do: val
   defp format_value(val) when is_atom(val), do: to_string(val)
-  defp format_value(val) when is_integer(val), do: to_string(val)
-  defp format_value(val) when is_float(val), do: to_string(val)
-  defp format_value(val) when is_list(val), do: Enum.join(val, ", ")
+  defp format_value(val) when is_number(val), do: to_string(val)
+  defp format_value(val) when is_list(val), do: Enum.map_join(val, ", ", &format_value/1)
   defp format_value(val), do: inspect(val)
 end

@@ -2,8 +2,8 @@ defmodule Runcom.Schema do
   @moduledoc """
   Declarative field definitions with casting and validation for Steps and Runbooks.
 
-  Provides `schema/1` and `field/1,2,3` macros that generate typed field
-  declarations, casting, and validation functions.
+  Provides `schema/1`, `field/1,2,3`, and `group/2,3` macros that generate typed
+  field declarations, casting, and validation functions.
 
   ## Usage
 
@@ -13,11 +13,43 @@ defmodule Runcom.Schema do
         field :timeout, :integer
       end
 
+  ## Field Groups
+
+  Fields can be assigned to a named group via the `group:` option. Groups
+  express that a set of fields are semantically related and can have rules
+  applied to them as a unit via the `group/2,3` macro.
+
+      schema do
+        field :script, :string, group: :content
+        field :file, :string, group: :content
+
+        group :content, required: true, exclusive: true
+      end
+
+  Group options:
+
+    * `:required` - at least one field in the group must be present
+    * `:exclusive` - at most one field in the group may be present
+
+  ## Field Dependencies
+
+  A field can declare a dependency on another field via `depends_on:`. The
+  dependent field is only valid when its dependency is present, and will be
+  rejected otherwise. This also informs the UI to show/hide the field.
+
+      schema do
+        field :tcp_port, :integer, group: :condition
+        field :host, :string, depends_on: :tcp_port, default: "localhost"
+        field :path, :string, group: :condition
+
+        group :condition, required: true, exclusive: true
+      end
+
   ## Generated Functions
 
     * `__schema__(:fields)` — list of `{name, type, opts}` tuples
-    * `__schema__(:required)` — list of required field names
     * `__schema__(:defaults)` — map of field names to default values
+    * `__schema__(:field, name)` — full field info map including group and dependency info
     * `cast/1` — casts a map or keyword list, returns `{:ok, map}` or `{:error, [{field, message}]}`
     * `cast!/1` — like `cast/1` but raises `ArgumentError` on failure
 
@@ -25,6 +57,7 @@ defmodule Runcom.Schema do
 
     * `:string`, `:integer`, `:float`, `:boolean`, `:enum`, `:map`, `:any`
     * `{:array, inner_type}` — list of inner type
+    * `[type1, type2, ...]` — union of types (value must match at least one)
 
   ## Casting Rules
 
@@ -38,11 +71,29 @@ defmodule Runcom.Schema do
   defmacro schema(do: block) do
     quote do
       Module.register_attribute(__MODULE__, :schema_fields, accumulate: true)
+      Module.register_attribute(__MODULE__, :schema_groups, accumulate: true)
 
       unquote(block)
 
       @__schema_fields Enum.reverse(@schema_fields)
+      @__schema_groups Enum.reverse(@schema_groups)
       @__has_schema__ true
+
+      @__field_infos Map.new(@__schema_fields, fn {name, _type, opts} = field ->
+        group_info =
+          case opts[:group] do
+            nil ->
+              nil
+
+            group_name ->
+              case Enum.find(@__schema_groups, fn {n, _} -> n == group_name end) do
+                {^group_name, group_opts} -> %{name: group_name, opts: group_opts}
+                nil -> %{name: group_name, opts: []}
+              end
+          end
+
+        {name, Runcom.Schema.to_field_info(field, group_info)}
+      end)
 
       defstruct Enum.map(@__schema_fields, fn {name, _type, opts} ->
         {name, Keyword.get(opts, :default)}
@@ -50,35 +101,91 @@ defmodule Runcom.Schema do
 
       def __schema__(:fields), do: @__schema_fields
 
-      def __schema__(:required) do
-        for {name, _type, opts} <- @__schema_fields,
-            opts[:required],
-            do: name
-      end
-
       def __schema__(:defaults) do
         for {name, _type, opts} <- @__schema_fields,
             into: %{},
             do: {name, Keyword.get(opts, :default)}
       end
 
-      def __schema__(:ui_fields) do
-        Enum.map(@__schema_fields, &Runcom.Schema.to_ui_field/1)
-      end
+      def __schema__(:field, name), do: Map.get(@__field_infos, name)
 
       def cast(input) do
-        Runcom.Schema.do_cast(__schema__(:fields), input)
+        with {:ok, result} <- Runcom.Schema.do_cast(__schema__(:fields), input) do
+          field_infos = Map.values(@__field_infos)
+
+          normalized_input = if is_list(input), do: Map.new(input), else: input
+
+          errors =
+            Runcom.Schema.validate_groups(field_infos, result) ++
+              Runcom.Schema.validate_dependencies(field_infos, normalized_input)
+
+          case errors do
+            [] -> {:ok, result}
+            errs -> {:error, errs}
+          end
+        end
       end
 
       def cast!(input) do
-        Runcom.Schema.do_cast!(__schema__(:fields), input)
+        case cast(input) do
+          {:ok, result} ->
+            result
+
+          {:error, errors} ->
+            message =
+              errors
+              |> Enum.map(fn {field, msg} -> "#{field} #{msg}" end)
+              |> Enum.join(", ")
+
+            raise ArgumentError, message
+        end
       end
     end
   end
 
+  @doc """
+  Declares a field in the schema.
+
+  ## Options
+
+    * `:required` - field must be present
+    * `:default` - default value when missing
+    * `:values` - allowed values (for enums)
+    * `:group` - assigns this field to a named group
+    * `:depends_on` - this field is only valid when the named field is present
+    * `:label` - human-readable label for UI
+    * `:placeholder` - placeholder text for UI
+    * `:ui_type` - override UI input type (e.g., `:textarea`, `{:code, :bash}`)
+  """
   defmacro field(name, type \\ :any, opts \\ []) do
     quote do
       @schema_fields {unquote(name), unquote(type), unquote(opts)}
+    end
+  end
+
+  @doc """
+  Declares rules for a named field group.
+
+  Fields are assigned to groups via `field :name, :type, group: :group_name`.
+  The `group` macro then declares constraints on that group.
+
+  ## Options
+
+    * `:required` - at least one field in the group must be present (default: `false`)
+    * `:exclusive` - at most one field in the group may be present (default: `false`)
+
+  ## Examples
+
+      schema do
+        field :script, :string, group: :content
+        field :file, :string, group: :content
+
+        group :content, required: true, exclusive: true
+      end
+  """
+  defmacro group(name, opts \\ []) do
+    quote do
+      @schema_groups {unquote(name), unquote(opts)}
     end
   end
 
@@ -142,6 +249,66 @@ defmodule Runcom.Schema do
     end
   end
 
+  @doc """
+  Validates group constraints against input. Returns a list of `{field, message}` errors.
+
+  Accepts a list of field info maps (from `__schema__(:field, name)`) and groups
+  them by their `:group` to apply the group's rules.
+  """
+  def validate_groups(field_infos, input) do
+    field_infos
+    |> Enum.filter(& &1.group)
+    |> Enum.group_by(& &1.group.name)
+    |> Enum.flat_map(fn {_group_name, members} ->
+      group_opts = hd(members).group.opts
+      member_names = Enum.map(members, & &1.name)
+      present = Enum.filter(member_names, &field_present?(input, &1))
+      required? = Keyword.get(group_opts, :required, false)
+      exclusive? = Keyword.get(group_opts, :exclusive, false)
+
+      required_errors =
+        if required? and present == [] do
+          label = Enum.map_join(member_names, ", ", &inspect/1)
+          [{hd(member_names), "one of #{label} is required"}]
+        else
+          []
+        end
+
+      exclusive_errors =
+        if exclusive? and length(present) > 1 do
+          label = Enum.map_join(present, ", ", &inspect/1)
+          [{hd(present), "#{label} are mutually exclusive"}]
+        else
+          []
+        end
+
+      required_errors ++ exclusive_errors
+    end)
+  end
+
+  @doc """
+  Validates `depends_on` constraints against input. Returns a list of `{field, message}` errors.
+  """
+  def validate_dependencies(field_infos, input) do
+    Enum.flat_map(field_infos, fn field_info ->
+      case field_info.depends_on do
+        nil ->
+          []
+
+        dep ->
+          if field_present?(input, field_info.name) and not field_present?(input, dep) do
+            [{field_info.name, "requires #{inspect(dep)} to be present"}]
+          else
+            []
+          end
+      end
+    end)
+  end
+
+  defp field_present?(data, name) do
+    match?({:ok, val} when not is_nil(val), Map.fetch(data, name))
+  end
+
   @doc false
   def check_type(_value, :any), do: :ok
   def check_type(value, :string) when is_binary(value), do: :ok
@@ -159,29 +326,39 @@ defmodule Runcom.Schema do
     end
   end
 
+  def check_type(value, types) when is_list(types) do
+    if Enum.any?(types, &(check_type(value, &1) == :ok)) do
+      :ok
+    else
+      {:error, "has invalid type, expected one of #{inspect(types)}"}
+    end
+  end
+
   def check_type(_value, type) do
     {:error, "has invalid type, expected #{inspect(type)}"}
   end
 
   @doc """
-  Converts a `{name, type, opts}` field tuple into a UI field map.
+  Builds a complete field info map from a `{name, type, opts}` tuple and
+  optional group info.
   """
-  @spec to_ui_field({atom(), atom() | tuple(), keyword()}) :: map()
-  def to_ui_field({name, type, opts}) do
+  def to_field_info({name, type, opts}, group_info \\ nil) do
     {ui_type, language} = resolve_ui_type(opts[:ui_type], type, opts)
 
-    base = %{
+    %{
+      name: name,
       key: to_string(name),
+      type: type,
       label: opts[:label] || humanize(name),
-      type: ui_type,
+      ui_type: ui_type,
       language: language,
       required: opts[:required] || false,
       default: Keyword.get(opts, :default),
       placeholder: opts[:placeholder],
-      options: opts[:values] && Enum.map(opts[:values], &to_string/1)
+      options: opts[:values] && Enum.map(opts[:values], &to_string/1),
+      group: group_info,
+      depends_on: opts[:depends_on]
     }
-
-    base
     |> maybe_put_item_type(type)
   end
 

@@ -25,9 +25,11 @@ defmodule RuncomDemoWeb.Router do
   scope "/" do
     pipe_through :browser
 
-    runcom_builder "/builder"
-    runcom_dashboard "/dashboard",
+    runcom_builder("/builder")
+
+    runcom_dashboard("/dashboard",
       dispatcher: RuncomRmq.Server.Dispatcher,
       pubsub: RuncomDemo.PubSub
+    )
   end
 end

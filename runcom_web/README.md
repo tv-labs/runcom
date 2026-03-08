@@ -4,6 +4,47 @@ Phoenix LiveView UI for the Runcom ecosystem. Provides a visual runbook builder,
 execution dashboard, dispatch interface, and metrics views -- all mountable into
 an existing Phoenix application.
 
+## Architecture
+
+```mermaid
+graph TB
+    subgraph Host App
+        Router[Phoenix Router]
+        PubSub[Phoenix.PubSub]
+    end
+
+    subgraph RuncomWeb
+        Router -->|runcom_dashboard| Dashboard
+        Router -->|runcom_builder| Builder
+
+        Dashboard[DashboardLive<br/>Results & Dispatches]
+        Builder[BuilderLive<br/>Visual Editor]
+        Detail[ResultDetailLive<br/>Step Output]
+        Dispatch[DispatchLive<br/>Node Targeting]
+        Metrics[MetricsLive<br/>Charts]
+
+        Dashboard --> Detail
+        Dashboard --> Dispatch
+        Dashboard --> Metrics
+
+        DAG[DAG Viewer<br/>SvelteFlow Component]
+        Builder --> DAG
+        Detail --> DAG
+    end
+
+    subgraph Data
+        Store[Runcom.Store<br/>RuncomEcto]
+        Core[Runcom<br/>Runbooks & Steps]
+    end
+
+    Dashboard -->|query| Store
+    Dispatch -->|create_dispatch| Store
+    Detail -->|get_result| Store
+    Metrics -->|analytics| Store
+    Builder -->|runbook summaries| Core
+    PubSub -->|real-time updates| Dashboard
+```
+
 ## Installation
 
 ```elixir

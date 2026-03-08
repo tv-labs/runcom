@@ -6,12 +6,9 @@ defmodule Runcom.RunbookIntegrationTest do
   - Steps execute in correct order based on DAG
   - Output is captured correctly in sinks
   - Results are accessible via accessors
-  - Defbash definitions integrate with runbook execution via generated shims
   """
   use Runcom.TestCase, async: false
 
-  alias Runcom.Remote.Server
-  alias Runcom.Remote.ShimGenerator
   alias Runcom.Steps, as: RC
 
   require RC.Command
@@ -26,143 +23,6 @@ defmodule Runcom.RunbookIntegrationTest do
   require RC.Reboot
 
   @moduletag :tmp_dir
-
-  defmodule TestBashAPI do
-    @moduledoc false
-    use Bash.Interop, namespace: "runbook_test"
-
-    defbash greet(args, _state) do
-      name = List.first(args) || "World"
-      Bash.puts("Hello, #{name}!\n")
-      :ok
-    end
-
-    defbash compute(args, _state) do
-      case args do
-        [a, b] ->
-          case {Integer.parse(a), Integer.parse(b)} do
-            {{num_a, ""}, {num_b, ""}} ->
-              Bash.puts("#{num_a + num_b}\n")
-              :ok
-
-            _ ->
-              {:error, "invalid numbers\n"}
-          end
-
-        _ ->
-          {:error, "usage: compute <a> <b>\n"}
-      end
-    end
-
-    defbash write_file(args, _state) do
-      case args do
-        [path, content] ->
-          case Elixir.File.write(path, content) do
-            :ok ->
-              Bash.puts("wrote #{byte_size(content)} bytes to #{path}\n")
-              :ok
-
-            {:error, reason} ->
-              {:error, "failed to write: #{reason}\n"}
-          end
-
-        _ ->
-          {:error, "usage: write_file <path> <content>\n"}
-      end
-    end
-  end
-
-  setup_all do
-    Server.register_api(TestBashAPI)
-    :ok
-  end
-
-  describe "E2E bash shim integration" do
-    # These tests require the `runcom` CLI to be available in PATH.
-    # Skip until CLI is built and installed.
-    @tag :skip
-    test "generated shim can be sourced and executed via runbook", %{
-      tmp_dir: tmp_dir,
-      test: test_name
-    } do
-      # Step 1: Generate the shim script
-      functions = %{"runbook_test" => Server.list_functions("runbook_test")}
-      shim_script = ShimGenerator.generate("runcom", functions)
-      shim_path = Path.join(tmp_dir, "shim.bash")
-      File.write!(shim_path, shim_script)
-
-      # Step 2: Create a test script that sources the shim and calls functions
-      test_script = Path.join(tmp_dir, "test_shim.sh")
-
-      File.write!(test_script, """
-      #!/bin/bash
-      set -e
-
-      # Source the generated shim
-      source "#{shim_path}"
-
-      # Call the greet function via the shim
-      echo "Testing greet function:"
-      runbook_test.greet "ShimTest"
-
-      # Call the compute function via the shim
-      echo "Testing compute function:"
-      runbook_test.compute 15 27
-      """)
-
-      File.chmod!(test_script, 0o755)
-
-      # Step 3: Execute via runbook
-      rc =
-        Runcom.new(to_string(test_name))
-        |> RC.Bash.add("run_shim_test", file: test_script)
-
-      {:ok, completed} = Runcom.run_sync(rc)
-
-      assert completed.status == :completed
-      assert Runcom.ok?(completed, "run_shim_test")
-
-      {:ok, stdout} = Runcom.read_stdout(completed, "run_shim_test")
-
-      assert stdout =~ "Testing greet function:"
-      assert stdout =~ "Hello, ShimTest!"
-      assert stdout =~ "Testing compute function:"
-      assert stdout =~ "42"
-    end
-
-    @tag :skip
-    test "shim handles errors correctly", %{tmp_dir: tmp_dir, test: test_name} do
-      functions = %{"runbook_test" => Server.list_functions("runbook_test")}
-      shim_script = ShimGenerator.generate("runcom", functions)
-      shim_path = Path.join(tmp_dir, "shim.bash")
-      File.write!(shim_path, shim_script)
-
-      test_script = Path.join(tmp_dir, "test_error.sh")
-
-      File.write!(test_script, """
-      #!/bin/bash
-
-      source "#{shim_path}"
-
-      # Call compute with invalid args (should fail)
-      runbook_test.compute abc def
-      """)
-
-      File.chmod!(test_script, 0o755)
-
-      rc =
-        Runcom.new(to_string(test_name))
-        |> RC.Bash.add("run_error_test", file: test_script)
-
-      {:error, completed} = Runcom.run_sync(rc)
-
-      assert completed.status == :failed
-      assert Runcom.error?(completed, "run_error_test")
-
-      {:ok, stderr} = Runcom.read_stderr(completed, "run_error_test")
-      assert stderr =~ "invalid numbers"
-    end
-  end
 
   describe "sequential runbook execution" do
     test "executes Command steps in order", %{tmp_dir: tmp_dir, test: test_name} do
@@ -264,7 +124,7 @@ defmodule Runcom.RunbookIntegrationTest do
         Runcom.new(to_string(test_name))
         |> Runcom.assign(:name, "Alice")
         |> Runcom.assign(:count, 5)
-        |> RC.EExTemplate.add("render", src: template, dest: output)
+        |> RC.EExTemplate.add("render", file: template, dest: output)
         |> RC.Command.add("verify", cmd: "cat", args: [output])
 
       {:ok, completed} = Runcom.run_sync(rc)
@@ -405,7 +265,7 @@ defmodule Runcom.RunbookIntegrationTest do
         |> Runcom.assign(:app_name, "test_app")
         |> Runcom.assign(:version, "1.0.0")
         |> RC.File.add("create_config_dir", path: tmp_dir, state: :directory)
-        |> RC.EExTemplate.add("render_config", src: config_template, dest: config_output)
+        |> RC.EExTemplate.add("render_config", file: config_template, dest: config_output)
         |> RC.Command.add("verify_config", cmd: "cat", args: [config_output])
         |> RC.Bash.add("process", file: script, args: [config_output, results_file])
         |> RC.Command.add("check_results", cmd: "cat", args: [results_file])
@@ -577,50 +437,4 @@ defmodule Runcom.RunbookIntegrationTest do
     end
   end
 
-  describe "remote bash definition integration" do
-    defp state_with_collector do
-      {:ok, collector} = Bash.OutputCollector.start_link()
-      sink = Bash.Sink.collector(collector)
-      state = %{stdout_sink: sink, stderr_sink: sink}
-      {state, collector}
-    end
-
-    test "defbash function can be executed directly" do
-      {:ok, definition} = Server.get_definition("runbook_test", "greet")
-      module = definition.module
-      {state, collector} = state_with_collector()
-
-      result = module.__bash_call__("greet", ["Integration"], nil, state)
-
-      assert {:ok, 0} = result
-      stdout = IO.iodata_to_binary(Bash.OutputCollector.stdout(collector))
-      assert stdout == "Hello, Integration!\n"
-    end
-
-    test "defbash compute function works with args" do
-      {:ok, definition} = Server.get_definition("runbook_test", "compute")
-      module = definition.module
-      {state, collector} = state_with_collector()
-
-      result = module.__bash_call__("compute", ["10", "20"], nil, state)
-
-      assert {:ok, 0} = result
-      stdout = IO.iodata_to_binary(Bash.OutputCollector.stdout(collector))
-      assert stdout == "30\n"
-    end
-
-    test "defbash write_file creates files", %{tmp_dir: tmp_dir} do
-      {:ok, definition} = Server.get_definition("runbook_test", "write_file")
-      module = definition.module
-      {state, collector} = state_with_collector()
-
-      test_file = Path.join(tmp_dir, "defbash_output.txt")
-      result = module.__bash_call__("write_file", [test_file, "test content"], nil, state)
-
-      assert {:ok, 0} = result
-      stdout = IO.iodata_to_binary(Bash.OutputCollector.stdout(collector))
-      assert stdout =~ "wrote"
-      assert File.read!(test_file) == "test content"
-    end
-  end
 end

@@ -17,10 +17,10 @@ defmodule RuncomRmq.Server.SyncConsumer do
   sequenceDiagram
       participant Agent
       participant SyncConsumer
-      participant Store
+      participant Runbook as Runcom.Runbook
       Agent->>SyncConsumer: sync_request (reply_to, correlation_id)
-      SyncConsumer->>Store: get_manifest()
-      SyncConsumer->>Store: get_runbook(id) (for stale/missing)
+      SyncConsumer->>Runbook: list() / get(id)
+      SyncConsumer->>Runbook: build(mod) + Bytecode.bundle()
       SyncConsumer->>Agent: sync_response (via reply_to)
   ```
 
@@ -76,11 +76,12 @@ defmodule RuncomRmq.Server.SyncConsumer do
   end
 
   @impl Broadway
-  def handle_message(_processor, %Message{} = message, _context) do
+  def handle_message(_processor, %Message{} = message, context) do
     %{metadata: metadata} = message
+    %{store: {store_mod, store_opts}} = context
 
     with {:ok, request} <- Codec.decode(message.data),
-         {:ok, response} <- build_sync_response(request) do
+         {:ok, response} <- build_sync_response(request, store_mod, store_opts) do
       publish_reply(metadata, Codec.encode(response))
       message
     else
@@ -90,16 +91,26 @@ defmodule RuncomRmq.Server.SyncConsumer do
     end
   end
 
-  defp build_sync_response(%{fetch: runbook_id}) do
-    case build_updates([runbook_id]) do
-      {:ok, []} -> {:ok, %{status: :not_found}}
-      {:ok, updates} -> {:ok, %{status: :update, updates: updates, deletes: []}}
-      {:error, _} = error -> error
+  defp build_sync_response(%{fetch: runbook_id}, _store_mod, _store_opts) do
+    case Runcom.Runbook.get(runbook_id) do
+      {:error, :not_found} ->
+        {:ok, %{status: :not_found}}
+
+      {:ok, mod} ->
+        runbook = Runcom.Runbook.build(mod)
+
+        case Runcom.Bytecode.bundle(runbook) do
+          {:ok, bundle} ->
+            {:ok, %{status: :update, updates: [{runbook_id, bundle}], deletes: []}}
+
+          {:error, reason} ->
+            {:error, {:bundle_failed, runbook_id, reason}}
+        end
     end
   end
 
-  defp build_sync_response(%{manifest: client_manifest}) do
-    server_manifest = build_manifest()
+  defp build_sync_response(%{manifest: client_manifest}, _store_mod, _store_opts) do
+    server_manifest = Map.new(Runcom.Runbook.list(), fn mod -> {mod.name(), mod.__runbook_hash__()} end)
     server_ids = Map.keys(server_manifest)
     client_ids = Map.keys(client_manifest)
 
@@ -123,20 +134,12 @@ defmodule RuncomRmq.Server.SyncConsumer do
     end
   end
 
-  defp build_manifest do
-    Runcom.Runbook.list()
-    |> Map.new(fn mod -> {mod.name(), mod.__runbook_hash__()} end)
-  end
-
   defp build_updates(ids) do
     Enum.reduce_while(ids, {:ok, []}, fn id, {:ok, acc} ->
       with {:ok, mod} <- Runcom.Runbook.get(id),
-           hash = mod.__runbook_hash__(),
            runbook = Runcom.Runbook.build(mod),
-           {:ok, {struct_binary, step_bytecodes}} <- Runcom.Bytecode.bundle(runbook),
-           {:ok, mod_bytecode} <- fetch_module_bytecode(mod) do
-        bundle = {struct_binary, [{mod, mod_bytecode} | step_bytecodes]}
-        {:cont, {:ok, [{id, hash, mod, bundle} | acc]}}
+           {:ok, bundle} <- Runcom.Bytecode.bundle(runbook) do
+        {:cont, {:ok, [{id, bundle} | acc]}}
       else
         {:error, reason} ->
           Logger.error("SyncConsumer failed to bundle runbook #{id}: #{inspect(reason)}")
@@ -145,18 +148,9 @@ defmodule RuncomRmq.Server.SyncConsumer do
     end)
   end
 
-  defp fetch_module_bytecode(mod) do
-    case :code.get_object_code(mod) do
-      {^mod, binary, _filename} -> {:ok, binary}
-      :error -> {:error, {:bytecode_not_found, mod}}
-    end
-  end
-
   defp publish_reply(metadata, payload) do
     %{amqp_channel: channel, reply_to: reply_to, correlation_id: correlation_id} = metadata
 
-    AMQP.Basic.publish(channel, "", reply_to, payload,
-      correlation_id: correlation_id
-    )
+    AMQP.Basic.publish(channel, "", reply_to, payload, correlation_id: correlation_id)
   end
 end

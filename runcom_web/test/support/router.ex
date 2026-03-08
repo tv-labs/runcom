@@ -12,7 +12,8 @@ defmodule RuncomWeb.TestRouter do
   scope "/" do
     pipe_through :browser
 
-    runcom_dashboard "/dashboard",
+    runcom_dashboard("/dashboard",
       pubsub: RuncomWeb.TestPubSub
+    )
   end
 end

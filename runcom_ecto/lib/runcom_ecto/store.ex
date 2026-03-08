@@ -248,7 +248,8 @@ defmodule RuncomEcto.Store do
   Updates a dispatch node record.
   """
   @impl true
-  @spec update_dispatch_node(DispatchNode.t(), map(), keyword()) :: {:ok, DispatchNode.t()} | {:error, term()}
+  @spec update_dispatch_node(DispatchNode.t(), map(), keyword()) ::
+          {:ok, DispatchNode.t()} | {:error, term()}
   def update_dispatch_node(dispatch_node, attrs, opts \\ []) do
     repo = repo!(opts)
 
@@ -261,7 +262,8 @@ defmodule RuncomEcto.Store do
   Retrieves a dispatch node by dispatch_id and node_id.
   """
   @impl true
-  @spec get_dispatch_node(String.t(), String.t(), keyword()) :: {:ok, DispatchNode.t()} | {:error, :not_found}
+  @spec get_dispatch_node(String.t(), String.t(), keyword()) ::
+          {:ok, DispatchNode.t()} | {:error, :not_found}
   def get_dispatch_node(dispatch_id, node_id, opts \\ []) do
     repo = repo!(opts)
 
@@ -340,7 +342,8 @@ defmodule RuncomEcto.Store do
             select: %{
               total: count(dn.id),
               completed: fragment("COUNT(*) FILTER (WHERE ? = 'completed')", dn.status),
-              failed: fragment("COUNT(*) FILTER (WHERE ? = ANY(?))", dn.status, ^@failure_statuses),
+              failed:
+                fragment("COUNT(*) FILTER (WHERE ? = ANY(?))", dn.status, ^@failure_statuses),
               acked: fragment("COUNT(*) FILTER (WHERE ? = 'acked')", dn.status)
             }
           )
@@ -517,12 +520,9 @@ defmodule RuncomEcto.Store do
         select: %{
           runbook_id: r.runbook_id,
           total: count(r.id),
-          completed:
-            fragment("COUNT(*) FILTER (WHERE ? = 'completed')", r.status),
-          failed:
-            fragment("COUNT(*) FILTER (WHERE ? = ANY(?))", r.status, ^@failure_statuses),
-          running:
-            fragment("COUNT(*) FILTER (WHERE ? = 'running')", r.status)
+          completed: fragment("COUNT(*) FILTER (WHERE ? = 'completed')", r.status),
+          failed: fragment("COUNT(*) FILTER (WHERE ? = ANY(?))", r.status, ^@failure_statuses),
+          running: fragment("COUNT(*) FILTER (WHERE ? = 'running')", r.status)
         },
         order_by: [desc: count(r.id)]
       )
@@ -638,13 +638,15 @@ defmodule RuncomEcto.Store do
     :ok
   end
 
-  defp insert_step_results(_repo, _result_id, []), do: {:ok, []}
+  defp insert_step_results(_repo, _result_id, empty) when empty in [[], %{}], do: {:ok, []}
 
   defp insert_step_results(repo, result_id, step_results_attrs) do
     now = DateTime.utc_now() |> DateTime.truncate(:microsecond)
 
     rows =
-      Enum.map(step_results_attrs, fn attrs ->
+      step_results_attrs
+      |> normalize_step_results()
+      |> Enum.map(fn attrs ->
         Map.put(attrs, :result_id, result_id)
       end)
 
@@ -659,12 +661,34 @@ defmodule RuncomEcto.Store do
     end
   end
 
+  @step_result_fields ~w(name order status module exit_code duration_ms attempts
+    started_at completed_at output error bytes changed opts meta)a
+
+  # Normalize step_results from map format %{name => result} to list of maps with :name key
+  defp normalize_step_results(attrs) when is_map(attrs) do
+    attrs
+    |> Enum.with_index(1)
+    |> Enum.map(fn {{name, result}, index} ->
+      result
+      |> Map.put(:name, to_string(name))
+      |> Map.put_new(:order, index)
+      |> Map.take([:result_id, :inserted_at | @step_result_fields])
+    end)
+  end
+
+  defp normalize_step_results(attrs) when is_list(attrs), do: attrs
+
   defp repo!(opts), do: RuncomEcto.repo!(opts, Runcom.Store)
 
   defp maybe_filter(query, _field, nil), do: query
   defp maybe_filter(query, :runbook_id, value), do: where(query, [r], r.runbook_id == ^value)
-  defp maybe_filter(query, :node_id, value) when is_binary(value), do: where(query, [r], r.node_id == ^value)
-  defp maybe_filter(query, :node_id, values) when is_list(values), do: where(query, [r], r.node_id in ^values)
+
+  defp maybe_filter(query, :node_id, value) when is_binary(value),
+    do: where(query, [r], r.node_id == ^value)
+
+  defp maybe_filter(query, :node_id, values) when is_list(values),
+    do: where(query, [r], r.node_id in ^values)
+
   defp maybe_filter(query, :status, value), do: where(query, [r], r.status == ^value)
   defp maybe_filter(query, :dispatch_id, value), do: where(query, [r], r.dispatch_id == ^value)
 

@@ -11,14 +11,20 @@ defmodule RuncomWeb.Live.DispatchLive do
   import RuncomWeb.ViewTransitions
   import RuncomWeb.Components.Autocomplete
   import RuncomWeb.Components.Sidebar
+  import RuncomWeb.StepRendererComponents, only: [builder_field: 1]
 
   require Logger
 
   @impl true
   def mount(_params, session, socket) do
     config = session["runcom_config"] || []
-    node_search_component = config[:node_search_component] || RuncomWeb.Components.DefaultNodeSearch
-    render_node_component = config[:render_node_component] || RuncomWeb.Components.DefaultNodeRender
+
+    node_search_component =
+      config[:node_search_component] || RuncomWeb.Components.DefaultNodeSearch
+
+    render_node_component =
+      config[:render_node_component] || RuncomWeb.Components.DefaultNodeRender
+
     dispatcher = config[:dispatcher]
     {store_mod, store_opts} = Runcom.Store.impl()
 
@@ -49,10 +55,11 @@ defmodule RuncomWeb.Live.DispatchLive do
   def handle_params(params, uri, socket) do
     path = URI.parse(uri).path
     base = path |> String.trim_trailing("/dispatch")
+
     {:noreply,
-      socket
-      |> assign(:active_tab, params["tab"] || "nodes")
-      |> assign(:base_path, base)}
+     socket
+     |> assign(:active_tab, params["tab"] || "nodes")
+     |> assign(:base_path, base)}
   end
 
   @impl true
@@ -155,64 +162,12 @@ defmodule RuncomWeb.Live.DispatchLive do
               <div :if={@selected_runbook && @runbook_assign_refs != []}>
                 <h3 class="text-xs font-semibold uppercase text-base-content/60 mb-2">Variables</h3>
                 <div class="space-y-2">
-                  <div :for={field <- @runbook_assign_refs}>
-                    <label class="text-xs font-semibold text-base-content/70 block mb-0.5">
-                      {field.label}
-                      <span :if={field.required} class="text-error">*</span>
-                    </label>
-
-                    <input
-                      :if={field.type == :text}
-                      type="text"
-                      name={"assigns[#{field.key}]"}
-                      value={Map.get(@assign_values, field.key, "")}
-                      placeholder={field.placeholder || ""}
-                      class="input input-bordered input-sm w-full"
-                    />
-
-                    <input
-                      :if={field.type == :number}
-                      type="number"
-                      name={"assigns[#{field.key}]"}
-                      value={Map.get(@assign_values, field.key, "")}
-                      placeholder={field.placeholder || ""}
-                      class="input input-bordered input-sm w-full"
-                    />
-
-                    <textarea
-                      :if={field.type == :textarea}
-                      name={"assigns[#{field.key}]"}
-                      placeholder={field.placeholder || ""}
-                      rows="3"
-                      class="textarea textarea-bordered textarea-sm w-full font-mono text-xs"
-                    >{Map.get(@assign_values, field.key, "")}</textarea>
-
-                    <select
-                      :if={field.type == :select}
-                      name={"assigns[#{field.key}]"}
-                      class="select select-bordered select-sm w-full"
-                    >
-                      <option value="">-- select --</option>
-                      <option
-                        :for={opt <- field.options || []}
-                        value={opt}
-                        selected={Map.get(@assign_values, field.key) == opt}
-                      >
-                        {opt}
-                      </option>
-                    </select>
-
-                    <label :if={field.type == :checkbox} class="flex items-center gap-2 cursor-pointer">
-                      <input type="hidden" name={"assigns[#{field.key}]"} value="false" />
-                      <input
-                        type="checkbox"
-                        name={"assigns[#{field.key}]"}
-                        value="true"
-                        checked={Map.get(@assign_values, field.key) == "true"}
-                        class="checkbox checkbox-sm"
-                      />
-                    </label>
-                  </div>
+                  <.builder_field
+                    :for={field <- @runbook_assign_refs}
+                    field={field}
+                    step={@assign_values}
+                    name_prefix="assigns"
+                  />
                 </div>
               </div>
 
@@ -313,7 +268,11 @@ defmodule RuncomWeb.Live.DispatchLive do
     } =
       socket.assigns
 
-    runbook_assigns = Map.reject(runbook_assigns, fn {k, v} -> String.starts_with?(k, "_unused_") or v in ["", nil] end)
+    runbook_assigns =
+      Map.reject(runbook_assigns, fn {k, v} ->
+        String.starts_with?(k, "_unused_") or v in ["", nil]
+      end)
+
     runbook_secrets = resolve_vault_secrets(runbook_secrets)
     now = DateTime.utc_now()
 
@@ -341,9 +300,9 @@ defmodule RuncomWeb.Live.DispatchLive do
     dispatch_async(dispatcher, runbook_id, selected_nodes, dispatch_opts, store_mod, store_opts)
 
     {:noreply,
-      socket
-      |> put_flash(:info, "Dispatched \"#{runbook_id}\" to #{length(selected_nodes)} node(s)")
-      |> push_navigate(to: "#{socket.assigns.base_path}/dispatch/#{dispatch.id}")}
+     socket
+     |> put_flash(:info, "Dispatched \"#{runbook_id}\" to #{length(selected_nodes)} node(s)")
+     |> push_navigate(to: "#{socket.assigns.base_path}/dispatch/#{dispatch.id}")}
   end
 
   @impl true
@@ -386,7 +345,10 @@ defmodule RuncomWeb.Live.DispatchLive do
   end
 
   defp load_runbook_fields(mod) do
-    fields = mod.__schema__(:ui_fields)
+    fields =
+      Enum.map(mod.__schema__(:fields), fn {name, _type, _opts} ->
+        mod.__schema__(:field, name)
+      end)
 
     defaults =
       for field <- fields, field.default != nil, into: %{} do

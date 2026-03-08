@@ -26,7 +26,7 @@ defmodule Runcom.Steps.Apt do
   use Runcom.Step, category: "Packages"
 
   schema do
-    field :name, :string, required: true, label: "Package Name(s)"
+    field :name, [:string, {:array, :string}], required: true, label: "Package Name(s)"
     field :state, :enum, required: true, values: [:present, :absent, :latest]
     field :update_cache, :boolean, label: "Update Cache"
   end

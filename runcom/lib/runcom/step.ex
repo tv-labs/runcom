@@ -254,7 +254,7 @@ defmodule Runcom.Step do
       @behaviour Runcom.Step
       @before_compile Runcom.Step
 
-      import Runcom.Schema, only: [schema: 1, field: 1, field: 2, field: 3]
+      import Runcom.Schema, only: [schema: 1, field: 1, field: 2, field: 3, group: 1, group: 2]
       alias Runcom.Step.Result
 
       @__step_category__ unquote(category)
@@ -293,9 +293,8 @@ defmodule Runcom.Step do
           defstruct []
 
           def __schema__(:fields), do: []
-          def __schema__(:required), do: []
           def __schema__(:defaults), do: %{}
-          def __schema__(:ui_fields), do: []
+          def __schema__(:field, _name), do: nil
 
           def cast(_input), do: {:ok, %{}}
           def cast!(_input), do: %{}
@@ -308,7 +307,7 @@ defmodule Runcom.Step do
           quote do
             @impl Runcom.Step
             def validate(opts) do
-              case Runcom.Schema.do_cast(__MODULE__.__schema__(:fields), opts) do
+              case cast(opts) do
                 {:ok, _} -> :ok
                 {:error, [{field, message} | _]} -> {:error, "#{field} #{message}"}
               end

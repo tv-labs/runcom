@@ -88,13 +88,13 @@ defmodule RuncomDemo.Runbooks.DeployApp do
 
     # ── Fan-in: download waits for both checks ──
     |> GetUrl.add("download",
-      url: &("#{&1.assigns.artifact_url}/#{&1.assigns.version}.tar.gz"),
+      url: &"#{&1.assigns.artifact_url}/#{&1.assigns.version}.tar.gz",
       dest: "/tmp/app.tar.gz",
       await: ["check_disk", "check_memory"]
     )
     |> Unarchive.add("extract",
       src: "/tmp/app.tar.gz",
-      dest: &("/opt/app/releases/#{&1.assigns.version}")
+      dest: &"/opt/app/releases/#{&1.assigns.version}"
     )
 
     # ── Fan-out: parallel prep ──
@@ -109,7 +109,7 @@ defmodule RuncomDemo.Runbooks.DeployApp do
 
     # ── Fan-in: switch needs stop + backup ──
     |> Command.add("switch_release",
-      cmd: &("ln -sfn /opt/app/releases/#{&1.assigns.version} /opt/app/current"),
+      cmd: &"ln -sfn /opt/app/releases/#{&1.assigns.version} /opt/app/current",
       await: ["stop_app", "backup_config"]
     )
     |> Command.add("start_app",

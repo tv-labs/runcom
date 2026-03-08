@@ -61,11 +61,11 @@ defmodule RuncomDemo.Runbooks.SysMaintenance do
 
     # ── Fan-out: 3 parallel cleanup tasks ──
     |> Command.add("clean_journal",
-      cmd: &("journalctl --vacuum-time=#{&1.assigns.vacuum_days}d"),
+      cmd: &"journalctl --vacuum-time=#{&1.assigns.vacuum_days}d",
       await: ["start"]
     )
     |> Command.add("clean_tmp",
-      cmd: &("find /tmp -mtime +#{&1.assigns.tmp_max_age} -delete"),
+      cmd: &"find /tmp -mtime +#{&1.assigns.tmp_max_age} -delete",
       await: ["start"]
     )
     |> Command.add("rotate_logs",

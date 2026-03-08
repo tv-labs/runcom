@@ -80,7 +80,6 @@ defmodule RuncomWeb.Router do
             Keyword.merge([as: :runcom_dashboard], route_opts)
           )
 
-
           live(
             "/result/:id",
             RuncomWeb.Live.ResultDetailLive,

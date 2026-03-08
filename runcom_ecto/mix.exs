@@ -1,15 +1,56 @@
 defmodule RuncomEcto.MixProject do
   use Mix.Project
 
+  @version "0.1.0"
+  @source_url "https://github.com/tv-labs/runcom"
+
+  @mermaid_js """
+  <script defer src="https://cdn.jsdelivr.net/npm/mermaid@11.12.2/dist/mermaid.min.js"></script>
+  <script>
+    let initialized = false;
+
+    window.addEventListener("exdoc:loaded", () => {
+      if (!initialized) {
+        mermaid.initialize({
+          startOnLoad: false,
+          theme: document.body.className.includes("dark") ? "dark" : "default"
+        });
+        initialized = true;
+      }
+
+      let id = 0;
+      for (const codeEl of document.querySelectorAll("pre code.mermaid")) {
+        const preEl = codeEl.parentElement;
+        const graphDefinition = codeEl.textContent;
+        const graphEl = document.createElement("div");
+        const graphId = "mermaid-graph-" + id++;
+        mermaid.render(graphId, graphDefinition).then(({svg, bindFunctions}) => {
+          graphEl.innerHTML = svg;
+          bindFunctions?.(graphEl);
+          preEl.insertAdjacentElement("afterend", graphEl);
+          preEl.remove();
+        });
+      }
+    });
+  </script>
+  """
+
   def project do
     [
       app: :runcom_ecto,
-      version: "0.1.0",
+      version: @version,
       elixir: "~> 1.18",
       start_permanent: Mix.env() == :prod,
       elixirc_paths: elixirc_paths(Mix.env()),
       aliases: aliases(),
-      deps: deps()
+      deps: deps(),
+      package: package(),
+      name: "RuncomEcto",
+      description:
+        "Ecto/Postgres persistence for Runcom — results, dispatches, secrets, and analytics",
+      source_url: @source_url,
+      homepage_url: @source_url,
+      docs: docs()
     ]
   end
 
@@ -28,7 +69,32 @@ defmodule RuncomEcto.MixProject do
       {:ecto_sql, "~> 3.12"},
       {:postgrex, "~> 0.19"},
       {:jason, "~> 1.4"},
-      {:plug_crypto, "~> 2.0"}
+      {:plug_crypto, "~> 2.0"},
+      {:ex_doc, "~> 0.35", only: :dev, runtime: false}
+    ]
+  end
+
+  defp package do
+    [
+      maintainers: ["David Bernheisel"],
+      licenses: ["Apache-2.0"],
+      links: %{"GitHub" => @source_url}
+    ]
+  end
+
+  defp docs do
+    [
+      main: "readme",
+      extras: ["README.md"],
+      source_ref: "v#{@version}",
+      source_url: @source_url,
+      source_url_pattern: "#{@source_url}/blob/v#{@version}/runcom_ecto/%{path}#L%{line}",
+      groups_for_modules: [
+        Schemas: ~r/^RuncomEcto\.Schema\.?/,
+        Types: ~r/^RuncomEcto\.Type\.?/,
+        Migrations: ~r/^RuncomEcto\.Migrations?\.?/
+      ],
+      before_closing_body_tag: %{html: @mermaid_js}
     ]
   end
 

@@ -3,8 +3,11 @@ defmodule RuncomRmq.Server.SyncConsumerTest do
   Tests for `RuncomRmq.Server.SyncConsumer.handle_message/3`.
 
   Constructs Broadway messages manually and invokes the callback directly,
-  using `RuncomRmq.Test.FakeStore` for the store backend and
-  `RuncomRmq.Test.FakeAmqpChannel` to intercept AMQP replies.
+  using `RuncomRmq.Test.FakeAmqpChannel` to intercept AMQP replies.
+
+  The SyncConsumer resolves runbooks via `Runcom.Runbook.list/0` and
+  `Runcom.Runbook.get/1`, so tests use the compiled test fixture
+  `RuncomRmq.Test.SyncRunbook` (name: "rmq_sync_test").
   """
 
   use ExUnit.Case, async: true
@@ -13,40 +16,21 @@ defmodule RuncomRmq.Server.SyncConsumerTest do
   alias RuncomRmq.Codec
   alias RuncomRmq.Server.SyncConsumer
   alias RuncomRmq.Test.FakeAmqpChannel
-  alias RuncomRmq.Test.FakeStore
 
-  defmodule FailingStore do
-    @moduledoc false
-    def get_manifest(_opts), do: {:error, :database_unavailable}
-  end
+  @test_runbook_name "rmq_sync_test"
 
-  setup context do
-    store_name = Module.concat(__MODULE__, :"store_#{context.test}")
-    %{store_name: store_name}
+  setup do
+    {:ok, chan_pid} = start_supervised({FakeAmqpChannel, test_pid: self()})
+    channel = FakeAmqpChannel.channel(chan_pid)
+    context = %{store: {RuncomRmq.Test.SyncRunbook, []}}
+    %{channel: channel, context: context}
   end
 
   describe "handle_message/3 when client is up to date" do
-    test "replies with :up_to_date when manifests match", %{store_name: store_name} do
-      hash = :crypto.hash(:sha256, "deploy-v1")
-      manifest = %{"deploy-v1" => hash}
+    test "replies with :up_to_date when manifests match", %{channel: channel, context: context} do
+      server_manifest = build_server_manifest()
 
-      start_supervised!({FakeStore, name: store_name, manifest: manifest})
-      {channel, context} = build_context(store_name)
-
-      message = build_message(%{manifest: manifest}, channel)
-      result = SyncConsumer.handle_message(:default, message, context)
-
-      assert %Message{status: :ok} = result
-
-      assert_receive {:published, _reply_to, payload}
-      assert {:ok, %{status: :up_to_date}} = Codec.decode(payload)
-    end
-
-    test "replies with :up_to_date when both manifests are empty", %{store_name: store_name} do
-      start_supervised!({FakeStore, name: store_name, manifest: %{}})
-      {channel, context} = build_context(store_name)
-
-      message = build_message(%{manifest: %{}}, channel)
+      message = build_message(%{manifest: server_manifest}, channel)
       result = SyncConsumer.handle_message(:default, message, context)
 
       assert %Message{status: :ok} = result
@@ -57,20 +41,10 @@ defmodule RuncomRmq.Server.SyncConsumerTest do
   end
 
   describe "handle_message/3 when client is missing runbooks" do
-    test "replies with updates for runbooks the client does not have", %{store_name: store_name} do
-      rb = Runcom.new("deploy-v1", name: "Deploy")
-      {:ok, {_struct_bin, _bytecodes} = _bundle} = Runcom.Bytecode.bundle(rb)
-      {:ok, hash} = Runcom.Bytecode.hash(rb)
-
-      start_supervised!(
-        {FakeStore,
-         name: store_name,
-         manifest: %{"deploy-v1" => hash},
-         runbooks: %{"deploy-v1" => rb}}
-      )
-
-      {channel, context} = build_context(store_name)
-
+    test "replies with updates for runbooks the client does not have", %{
+      channel: channel,
+      context: context
+    } do
       message = build_message(%{manifest: %{}}, channel)
       result = SyncConsumer.handle_message(:default, message, context)
 
@@ -80,31 +54,21 @@ defmodule RuncomRmq.Server.SyncConsumerTest do
       assert {:ok, response} = Codec.decode(payload)
       assert response.status == :update
       assert response.deletes == []
-      assert length(response.updates) == 1
 
-      [{id, {struct_binary, bytecodes}}] = response.updates
-      assert id == "deploy-v1"
-      assert is_binary(struct_binary)
-      assert is_list(bytecodes)
+      assert Enum.any?(response.updates, fn {id, {struct_binary, bytecodes}} ->
+               id == @test_runbook_name and is_binary(struct_binary) and is_list(bytecodes)
+             end)
     end
   end
 
   describe "handle_message/3 when client has stale runbooks" do
-    test "replies with updates for runbooks with different hashes", %{store_name: store_name} do
-      rb = Runcom.new("deploy-v1", name: "Deploy Updated")
-      {:ok, server_hash} = Runcom.Bytecode.hash(rb)
-      client_hash = :crypto.hash(:sha256, "stale-content")
+    test "replies with updates for runbooks with different hashes", %{
+      channel: channel,
+      context: context
+    } do
+      stale_manifest = %{@test_runbook_name => "stale-hash-value"}
 
-      start_supervised!(
-        {FakeStore,
-         name: store_name,
-         manifest: %{"deploy-v1" => server_hash},
-         runbooks: %{"deploy-v1" => rb}}
-      )
-
-      {channel, context} = build_context(store_name)
-
-      message = build_message(%{manifest: %{"deploy-v1" => client_hash}}, channel)
+      message = build_message(%{manifest: stale_manifest}, channel)
       result = SyncConsumer.handle_message(:default, message, context)
 
       assert %Message{status: :ok} = result
@@ -113,29 +77,39 @@ defmodule RuncomRmq.Server.SyncConsumerTest do
       assert {:ok, response} = Codec.decode(payload)
       assert response.status == :update
       assert response.deletes == []
-      assert length(response.updates) == 1
-      assert [{"deploy-v1", {_struct_binary, _bytecodes}}] = response.updates
+
+      assert Enum.any?(response.updates, fn {id, _bundle} ->
+               id == @test_runbook_name
+             end)
     end
   end
 
   describe "handle_message/3 when client has deleted runbooks" do
-    test "replies with deletes for runbooks no longer on the server", %{store_name: store_name} do
-      server_hash = :crypto.hash(:sha256, "active")
+    test "replies with deletes for runbooks no longer on the server", %{
+      channel: channel,
+      context: context
+    } do
+      server_manifest = build_server_manifest()
+      client_manifest = Map.put(server_manifest, "removed-rb", "some-hash")
 
-      rb = Runcom.new("active-rb", name: "Active")
+      message = build_message(%{manifest: client_manifest}, channel)
+      result = SyncConsumer.handle_message(:default, message, context)
 
-      start_supervised!(
-        {FakeStore,
-         name: store_name,
-         manifest: %{"active-rb" => server_hash},
-         runbooks: %{"active-rb" => rb}}
-      )
+      assert %Message{status: :ok} = result
 
-      {channel, context} = build_context(store_name)
+      assert_receive {:published, _reply_to, payload}
+      assert {:ok, response} = Codec.decode(payload)
+      assert "removed-rb" in response.deletes
+      assert response.updates == []
+    end
 
+    test "replies with both updates and deletes simultaneously", %{
+      channel: channel,
+      context: context
+    } do
       client_manifest = %{
-        "active-rb" => server_hash,
-        "removed-rb" => :crypto.hash(:sha256, "removed")
+        @test_runbook_name => "stale-hash",
+        "old-rb" => "old-hash"
       }
 
       message = build_message(%{manifest: client_manifest}, channel)
@@ -146,26 +120,17 @@ defmodule RuncomRmq.Server.SyncConsumerTest do
       assert_receive {:published, _reply_to, payload}
       assert {:ok, response} = Codec.decode(payload)
       assert response.status == :update
-      assert response.deletes == ["removed-rb"]
-      assert response.updates == []
+      assert "old-rb" in response.deletes
+
+      assert Enum.any?(response.updates, fn {id, _bundle} ->
+               id == @test_runbook_name
+             end)
     end
+  end
 
-    test "replies with both updates and deletes simultaneously", %{store_name: store_name} do
-      new_rb = Runcom.new("new-rb", name: "New")
-      {:ok, new_hash} = Runcom.Bytecode.hash(new_rb)
-
-      start_supervised!(
-        {FakeStore,
-         name: store_name,
-         manifest: %{"new-rb" => new_hash},
-         runbooks: %{"new-rb" => new_rb}}
-      )
-
-      {channel, context} = build_context(store_name)
-
-      client_manifest = %{"old-rb" => :crypto.hash(:sha256, "old")}
-
-      message = build_message(%{manifest: client_manifest}, channel)
+  describe "handle_message/3 with fetch request" do
+    test "replies with bundle for a known runbook", %{channel: channel, context: context} do
+      message = build_message(%{fetch: @test_runbook_name}, channel)
       result = SyncConsumer.handle_message(:default, message, context)
 
       assert %Message{status: :ok} = result
@@ -173,17 +138,27 @@ defmodule RuncomRmq.Server.SyncConsumerTest do
       assert_receive {:published, _reply_to, payload}
       assert {:ok, response} = Codec.decode(payload)
       assert response.status == :update
-      assert response.deletes == ["old-rb"]
-      assert length(response.updates) == 1
-      assert [{"new-rb", _bundle}] = response.updates
+      assert [{@test_runbook_name, {struct_binary, bytecodes}}] = response.updates
+      assert is_binary(struct_binary)
+      assert is_list(bytecodes)
+    end
+
+    test "replies with :not_found for an unknown runbook", %{channel: channel, context: context} do
+      message = build_message(%{fetch: "nonexistent"}, channel)
+      result = SyncConsumer.handle_message(:default, message, context)
+
+      assert %Message{status: :ok} = result
+
+      assert_receive {:published, _reply_to, payload}
+      assert {:ok, %{status: :not_found}} = Codec.decode(payload)
     end
   end
 
   describe "handle_message/3 error handling" do
-    test "marks message as failed when payload cannot be decoded", %{store_name: store_name} do
-      start_supervised!({FakeStore, name: store_name})
-      {channel, context} = build_context(store_name)
-
+    test "marks message as failed when payload cannot be decoded", %{
+      channel: channel,
+      context: context
+    } do
       bad_message = %Message{
         data: <<0, 1, 2, 3>>,
         metadata: %{
@@ -197,23 +172,10 @@ defmodule RuncomRmq.Server.SyncConsumerTest do
       result = SyncConsumer.handle_message(:default, bad_message, context)
       assert {:failed, _reason} = result.status
     end
-
-    test "marks message as failed when store returns an error", %{store_name: store_name} do
-      {channel, _context} = build_context(store_name)
-
-      context = %{store: {FailingStore, [name: store_name]}}
-
-      message = build_message(%{manifest: %{}}, channel)
-      result = SyncConsumer.handle_message(:default, message, context)
-      assert {:failed, _reason} = result.status
-    end
   end
 
-  defp build_context(store_name) do
-    {:ok, chan_pid} = start_supervised({FakeAmqpChannel, test_pid: self()})
-    channel = FakeAmqpChannel.channel(chan_pid)
-    context = %{store: {FakeStore, [name: store_name]}}
-    {channel, context}
+  defp build_server_manifest do
+    Map.new(Runcom.Runbook.list(), fn mod -> {mod.name(), mod.__runbook_hash__()} end)
   end
 
   defp build_message(request, channel) do

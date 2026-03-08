@@ -52,12 +52,10 @@ defmodule Runcom.Steps.GetUrlTest do
       assert result.output =~ "/tmp/app.tar.gz"
     end
 
-    test "resolves deferred url" do
-      rc = %{assigns: %{version: "1.0.0"}}
-
+    test "shows url in dryrun output" do
       {:ok, result} =
-        GetUrl.dryrun(rc, %{
-          url: fn rc -> "https://example.com/app-#{rc.assigns.version}.tar.gz" end,
+        GetUrl.dryrun(nil, %{
+          url: "https://example.com/app-1.0.0.tar.gz",
           dest: "/tmp/app.tar.gz"
         })
 
@@ -65,13 +63,11 @@ defmodule Runcom.Steps.GetUrlTest do
       assert result.output =~ "app-1.0.0.tar.gz"
     end
 
-    test "resolves deferred dest" do
-      rc = %{assigns: %{name: "my-app"}}
-
+    test "shows dest in dryrun output" do
       {:ok, result} =
-        GetUrl.dryrun(rc, %{
+        GetUrl.dryrun(nil, %{
           url: "https://example.com/app.tar.gz",
-          dest: fn rc -> "/tmp/#{rc.assigns.name}.tar.gz" end
+          dest: "/tmp/my-app.tar.gz"
         })
 
       assert result.status == :ok

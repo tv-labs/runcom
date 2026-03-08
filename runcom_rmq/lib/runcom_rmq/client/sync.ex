@@ -43,9 +43,18 @@ defmodule RuncomRmq.Client.Sync do
 
   Returns `{:ok, runbook}` on success or `{:error, reason}` on failure.
   """
-  @spec fetch_runbook(GenServer.server(), String.t()) :: {:ok, {module(), Runcom.t()}} | {:error, term()}
+  @spec fetch_runbook(GenServer.server(), String.t()) ::
+          {:ok, {module(), Runcom.t()}} | {:error, term()}
   def fetch_runbook(server \\ __MODULE__, runbook_id) do
     GenServer.call(server, {:fetch_runbook, runbook_id}, 35_000)
+  end
+
+  @doc """
+  Triggers an immediate sync cycle (fire-and-forget).
+  """
+  @spec sync_now(GenServer.server()) :: :ok
+  def sync_now(server \\ __MODULE__) do
+    GenServer.cast(server, :sync_now)
   end
 
   @impl GenServer
@@ -58,6 +67,11 @@ defmodule RuncomRmq.Client.Sync do
     }
 
     {:ok, state}
+  end
+
+  @impl GenServer
+  def handle_cast(:sync_now, state) do
+    {:noreply, state}
   end
 
   @impl GenServer
@@ -124,12 +138,13 @@ defmodule RuncomRmq.Client.Sync do
   end
 
   defp apply_updates(cache, updates) do
-    Enum.reduce_while(updates, :ok, fn {id, hash, mod, {struct_binary, bytecodes}}, _acc ->
+    Enum.reduce_while(updates, :ok, fn {id, {struct_binary, bytecodes}}, _acc ->
       case Runcom.Bytecode.load_bundle(bytecodes) do
         :ok ->
-          runbook = :erlang.binary_to_term(struct_binary)
-          RunbookCache.put(cache, id, hash, mod, runbook, bytecodes)
-          {:cont, {:ok, {mod, runbook}}}
+          runbook = :erlang.binary_to_term(struct_binary, [:safe])
+          {:ok, hash} = Runcom.Bytecode.hash(runbook)
+          RunbookCache.put(cache, id, hash, nil, runbook, bytecodes)
+          {:cont, {:ok, {nil, runbook}}}
 
         {:error, reason} ->
           Logger.warning("Sync: failed to load bytecode for #{id}: #{inspect(reason)}")

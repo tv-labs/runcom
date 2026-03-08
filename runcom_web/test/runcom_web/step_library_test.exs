@@ -40,6 +40,7 @@ defmodule RuncomWeb.StepLibraryTest do
         StepLibrary.list()
         |> Enum.map(fn {name, _steps} -> name end)
 
+      assert "Runbooks" in category_names
       assert "Commands" in category_names
       assert "Files" in category_names
       assert "Network" in category_names
@@ -53,7 +54,7 @@ defmodule RuncomWeb.StepLibraryTest do
 
       command_names = Enum.map(categories["Commands"], & &1.name)
       assert "Command" in command_names
-      assert "Bash Script" in command_names
+      assert "Bash" in command_names
 
       file_names = Enum.map(categories["Files"], & &1.name)
       assert "File" in file_names
@@ -61,8 +62,8 @@ defmodule RuncomWeb.StepLibraryTest do
       assert "Unarchive" in file_names
 
       network_names = Enum.map(categories["Network"], & &1.name)
-      assert "Get URL" in network_names
-      assert "Wait For" in network_names
+      assert "GetUrl" in network_names
+      assert "WaitFor" in network_names
     end
   end
 end

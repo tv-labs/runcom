@@ -24,7 +24,9 @@ defmodule RuncomWeb.StepLibrary do
   def list do
     steps =
       Runcom.Step.list()
-      |> Enum.map(fn mod -> %{module: inspect(mod), name: mod.__name__(), category: mod.__category__()} end)
+      |> Enum.map(fn mod ->
+        %{module: inspect(mod), name: mod.__name__(), category: mod.__category__()}
+      end)
       |> Enum.group_by(& &1.category)
       |> Enum.map(fn {cat, entries} ->
         {cat, Enum.map(entries, &Map.take(&1, [:module, :name]))}
@@ -33,7 +35,12 @@ defmodule RuncomWeb.StepLibrary do
     runbooks = [{"Runbooks", [%{module: inspect(Runcom.Steps.Runbook), name: "Runbook"}]}]
 
     known = Map.new(steps)
-    ordered = Enum.flat_map(@category_order, fn cat -> if known[cat], do: [{cat, known[cat]}], else: [] end)
+
+    ordered =
+      Enum.flat_map(@category_order, fn cat ->
+        if known[cat], do: [{cat, known[cat]}], else: []
+      end)
+
     extra = Enum.reject(steps, fn {cat, _} -> cat in @category_order end)
 
     runbooks ++ ordered ++ extra

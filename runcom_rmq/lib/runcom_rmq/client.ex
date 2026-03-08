@@ -74,14 +74,8 @@ defmodule RuncomRmq.Client do
     children =
       [
         {RunbookCache, name: cache_name},
-        {Sync,
-         connection: connection,
-         cache: cache_name,
-         sync_queue: sync_queue},
-        {EventPublisher,
-         connection: connection,
-         node_id: node_id,
-         event_queue: event_queue}
+        {Sync, connection: connection, cache: cache_name, sync_queue: sync_queue},
+        {EventPublisher, connection: connection, node_id: node_id, event_queue: event_queue}
       ] ++
         if dispatch_handler && dispatch_queue do
           [

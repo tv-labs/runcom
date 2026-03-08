@@ -70,7 +70,8 @@ defmodule RuncomWeb.Live.DispatchShowLive do
     end
   end
 
-  def handle_info({:step_event, %{dispatch_id: id}}, socket) when id == socket.assigns.dispatch_id do
+  def handle_info({:step_event, %{dispatch_id: id}}, socket)
+      when id == socket.assigns.dispatch_id do
     {:noreply, load_dispatch(socket, id)}
   end
 
@@ -119,7 +120,9 @@ defmodule RuncomWeb.Live.DispatchShowLive do
   end
 
   defp load_results_for_dispatch(mod, opts, dispatch_id) do
-    case apply(mod, :list_results, [Keyword.merge(normalize_store_args_flat(opts), dispatch_id: dispatch_id)]) do
+    case apply(mod, :list_results, [
+           Keyword.merge(normalize_store_args_flat(opts), dispatch_id: dispatch_id)
+         ]) do
       {:ok, results} ->
         Enum.reduce(results, %{}, fn r, acc ->
           node_id = result_field(r, :node_id)
@@ -293,8 +296,15 @@ defmodule RuncomWeb.Live.DispatchShowLive do
 
   defp result_click(dn, results_by_node, base_path) do
     case Map.get(results_by_node, dn.node_id) do
-      nil -> nil
-      result -> navigate_forward("result-detail", "#dn-#{dn.node_id}", "#{base_path}/result/#{result_field(result, :id)}")
+      nil ->
+        nil
+
+      result ->
+        navigate_forward(
+          "result-detail",
+          "#dn-#{dn.node_id}",
+          "#{base_path}/result/#{result_field(result, :id)}"
+        )
     end
   end
 
@@ -337,5 +347,4 @@ defmodule RuncomWeb.Live.DispatchShowLive do
     end)
     |> Enum.sort()
   end
-
 end

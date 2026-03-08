@@ -47,12 +47,10 @@ defmodule Runcom.MixProject do
 
   defp package do
     [
-      maintainers: ["TV Labs"],
+      maintainers: ["David Bernheisel"],
       licenses: ["Apache-2.0"],
-      links: %{
-        "GitHub" => @source_url
-      },
-      files: ~w(lib .formatter.exs mix.exs README.md LICENSE)
+      links: %{"GitHub" => @source_url},
+      files: ~w(lib priv .formatter.exs mix.exs README* LICENSE* CHANGELOG* usage-rules.md)
     ]
   end
 
@@ -101,9 +99,7 @@ defmodule Runcom.MixProject do
           ~r/^Runcom\.Formatter\.?/,
           Runcom.Redactor
         ],
-        Remote: ~r/^Runcom\.Remote\.?/,
         Server: ~r/^Runcom\.Server\.?/,
-        CLI: ~r/^Runcom\.CLI\.?/,
         Execution: [
           Runcom.CommandRunner,
           Runcom.Orchestrator,

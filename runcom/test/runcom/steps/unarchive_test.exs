@@ -145,30 +145,6 @@ defmodule Runcom.Steps.UnarchiveTest do
     end
   end
 
-  describe "run/2 with function values" do
-    @tag :tmp_dir
-    test "resolves src and dest from functions", %{tmp_dir: tmp_dir} do
-      archive_path = Path.join(tmp_dir, "app.tar.gz")
-      dest_path = Path.join(tmp_dir, "extracted")
-      content_file = "app.txt"
-      content = "App content"
-
-      create_tar_gz(archive_path, [{content_file, content}])
-
-      rc = %{assigns: %{archive: archive_path, dest: dest_path}}
-
-      {:ok, result} =
-        Unarchive.run(rc, %{
-          src: fn rc -> rc.assigns.archive end,
-          dest: fn rc -> rc.assigns.dest end
-        })
-
-      assert result.status == :ok
-      assert result.changed == true
-      assert File.read!(Path.join(dest_path, content_file)) == content
-    end
-  end
-
   describe "dryrun/2" do
     test "returns description without extracting" do
       {:ok, result} = Unarchive.dryrun(nil, %{src: "/tmp/app.tar.gz", dest: "/opt/app"})
@@ -179,13 +155,11 @@ defmodule Runcom.Steps.UnarchiveTest do
       assert result.output =~ "/opt/app"
     end
 
-    test "resolves function values in dryrun" do
-      rc = %{assigns: %{src: "/archive.tar.gz", dest: "/output"}}
-
+    test "shows src and dest in dryrun output" do
       {:ok, result} =
-        Unarchive.dryrun(rc, %{
-          src: fn rc -> rc.assigns.src end,
-          dest: fn rc -> rc.assigns.dest end
+        Unarchive.dryrun(nil, %{
+          src: "/archive.tar.gz",
+          dest: "/output"
         })
 
       assert result.output =~ "/archive.tar.gz"

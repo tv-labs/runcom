@@ -117,7 +117,9 @@ defmodule RuncomWeb.Live.BuilderLive do
   @impl true
   def render(assigns) do
     builder_html = render_builder_html(assigns.selected_node)
-    is_runbook_step = match?(%{"data" => %{"module" => "Runcom.Steps.Runbook"}}, assigns.selected_node)
+
+    is_runbook_step =
+      match?(%{"data" => %{"module" => "Runcom.Steps.Runbook"}}, assigns.selected_node)
 
     assigns =
       assigns
@@ -344,7 +346,12 @@ defmodule RuncomWeb.Live.BuilderLive do
       end
 
     socket
-    |> assign(nodes: nodes, edges: edges, selected_node: selected_node, selected_edge: selected_edge)
+    |> assign(
+      nodes: nodes,
+      edges: edges,
+      selected_node: selected_node,
+      selected_edge: selected_edge
+    )
     |> regenerate_source()
     |> then(&{:noreply, &1})
   end
@@ -371,9 +378,15 @@ defmodule RuncomWeb.Live.BuilderLive do
     |> then(&{:noreply, &1})
   end
 
-  def handle_event("drop_step", %{"module" => module, "name" => label, "x" => x, "y" => y}, socket) do
+  def handle_event(
+        "drop_step",
+        %{"module" => module, "name" => label, "x" => x, "y" => y},
+        socket
+      ) do
     name = generate_step_name(label, socket.assigns.nodes)
-    node = build_step_node(module, label, name, length(socket.assigns.nodes), %{"x" => x, "y" => y})
+
+    node =
+      build_step_node(module, label, name, length(socket.assigns.nodes), %{"x" => x, "y" => y})
 
     socket
     |> assign(:nodes, socket.assigns.nodes ++ [node])
@@ -402,8 +415,12 @@ defmodule RuncomWeb.Live.BuilderLive do
         edges =
           Enum.map(socket.assigns.edges, fn edge ->
             edge
-            |> then(fn e -> if e["source"] == old_id, do: Map.put(e, "source", new_name), else: e end)
-            |> then(fn e -> if e["target"] == old_id, do: Map.put(e, "target", new_name), else: e end)
+            |> then(fn e ->
+              if e["source"] == old_id, do: Map.put(e, "source", new_name), else: e
+            end)
+            |> then(fn e ->
+              if e["target"] == old_id, do: Map.put(e, "target", new_name), else: e
+            end)
             |> then(fn e -> Map.put(e, "id", "#{e["source"]}-#{e["target"]}") end)
           end)
 
@@ -454,7 +471,11 @@ defmodule RuncomWeb.Live.BuilderLive do
     {:noreply, update_map_field(socket, field_key, &List.delete_at(&1, idx))}
   end
 
-  def handle_event("update_edge_condition", %{"edge_id" => edge_id, "condition" => condition}, socket) do
+  def handle_event(
+        "update_edge_condition",
+        %{"edge_id" => edge_id, "condition" => condition},
+        socket
+      ) do
     condition = if condition == "", do: nil, else: condition
 
     edges =
@@ -504,8 +525,14 @@ defmodule RuncomWeb.Live.BuilderLive do
   def handle_event("clear_builder", _params, socket) do
     socket =
       socket
-      |> assign(nodes: [], edges: [], runbook_name: "", runbook_id: nil,
-                selected_node: nil, selected_edge: nil)
+      |> assign(
+        nodes: [],
+        edges: [],
+        runbook_name: "",
+        runbook_id: nil,
+        selected_node: nil,
+        selected_edge: nil
+      )
       |> regenerate_source()
       |> push_event("builder_state_cleared", %{})
 
@@ -521,6 +548,7 @@ defmodule RuncomWeb.Live.BuilderLive do
       |> Enum.reject(fn rb -> rb.id == socket.assigns.runbook_id end)
       |> Enum.filter(fn rb ->
         name = rb.name || rb.id
+
         String.contains?(String.downcase(name), query_down) or
           String.contains?(String.downcase(rb.id), query_down)
       end)
@@ -660,7 +688,9 @@ defmodule RuncomWeb.Live.BuilderLive do
 
         steps =
           case order do
-            false -> []
+            false ->
+              []
+
             names ->
               Enum.map(names, fn name ->
                 step = runbook.steps[name]
@@ -780,7 +810,7 @@ defmodule RuncomWeb.Live.BuilderLive do
     sections = [
       "defmodule #{module_name} do",
       "  use Runcom.Runbook",
-      (if requires != "", do: "\n#{requires}"),
+      if(requires != "", do: "\n#{requires}"),
       "",
       "  @impl true",
       "  def name, do: #{inspect(runbook_name)}",
@@ -809,7 +839,7 @@ defmodule RuncomWeb.Live.BuilderLive do
   defp build_opts_string(opts, deps) do
     opts_parts =
       opts
-      |> Enum.reject(fn {_k, v} -> v == "" or v == nil end)
+      |> Enum.reject(fn {k, v} -> v == "" or v == nil or String.starts_with?(k, "__group__") end)
       |> Enum.map(fn {k, v} -> "#{k}: #{format_opt_value(v)}" end)
 
     {await_parts, condition_parts} = build_edge_opts(deps)
@@ -823,6 +853,7 @@ defmodule RuncomWeb.Live.BuilderLive do
   end
 
   defp build_edge_opts([]), do: {[], []}
+
   defp build_edge_opts(deps) do
     deps = Enum.reverse(deps)
     sources = Enum.map(deps, fn {source, _condition} -> source end)
@@ -832,12 +863,18 @@ defmodule RuncomWeb.Live.BuilderLive do
       deps
       |> Enum.filter(fn {_source, condition} -> condition != nil end)
       |> case do
-        [] -> []
-        [{_src, cond_expr}] -> ["when: #{inspect(cond_expr)}"]
+        [] ->
+          []
+
+        [{_src, cond_expr}] ->
+          ["when: #{inspect(cond_expr)}"]
+
         pairs ->
-          map_str = Enum.map_join(pairs, ", ", fn {src, cond_expr} ->
-            "#{inspect(src)} => #{inspect(cond_expr)}"
-          end)
+          map_str =
+            Enum.map_join(pairs, ", ", fn {src, cond_expr} ->
+              "#{inspect(src)} => #{inspect(cond_expr)}"
+            end)
+
           ["when: %{#{map_str}}"]
       end
 
@@ -845,7 +882,9 @@ defmodule RuncomWeb.Live.BuilderLive do
   end
 
   defp regenerate_source(socket) do
-    source = graph_to_source(socket.assigns.nodes, socket.assigns.edges, socket.assigns.runbook_name)
+    source =
+      graph_to_source(socket.assigns.nodes, socket.assigns.edges, socket.assigns.runbook_name)
+
     highlighted = highlight_elixir(source)
 
     socket
@@ -964,6 +1003,7 @@ defmodule RuncomWeb.Live.BuilderLive do
   defp format_opt_value(v), do: inspect(v)
 
   defp highlight_elixir(""), do: ""
+
   defp highlight_elixir(source) do
     markdown = "```elixir\n#{source}\n```"
     MDEx.to_html!(markdown)
@@ -985,7 +1025,8 @@ defmodule RuncomWeb.Live.BuilderLive do
 
   defp compute_node_summary(module_string, opts) when is_binary(module_string) and is_map(opts) do
     module = String.to_existing_atom("Elixir." <> module_string)
-    atom_opts = Map.new(opts, fn {k, v} -> {String.to_existing_atom(k), v} end)
+    step_opts = Map.reject(opts, fn {k, _v} -> String.starts_with?(k, "__group__") end)
+    atom_opts = Map.new(step_opts, fn {k, v} -> {String.to_existing_atom(k), v} end)
     step = struct(module, atom_opts)
 
     assigns = %{
@@ -1008,7 +1049,8 @@ defmodule RuncomWeb.Live.BuilderLive do
   defp default_opts_for(mod_string) when is_binary(mod_string) do
     module = String.to_existing_atom("Elixir." <> mod_string)
 
-    module.__schema__(:ui_fields)
+    module.__schema__(:fields)
+    |> Enum.map(fn {name, _type, _opts} -> module.__schema__(:field, name) end)
     |> Enum.filter(& &1[:default])
     |> Map.new(fn field -> {field.key, to_string(field.default)} end)
   rescue
@@ -1019,15 +1061,22 @@ defmodule RuncomWeb.Live.BuilderLive do
 
   defp render_builder_html(%{"data" => %{"module" => mod_string, "opts" => opts}})
        when is_binary(mod_string) and is_map(opts) do
+    {group_keys, step_opts} =
+      Map.split_with(opts, fn {k, _v} -> String.starts_with?(k, "__group__") end)
+
+    active_group_fields =
+      Map.new(group_keys, fn {"__group__" <> name, field_key} -> {name, field_key} end)
+
     module = String.to_existing_atom("Elixir." <> mod_string)
-    atom_opts = Map.new(opts, fn {k, v} -> {String.to_existing_atom(k), v} end)
+    atom_opts = Map.new(step_opts, fn {k, v} -> {String.to_existing_atom(k), v} end)
     step = struct(module, atom_opts)
 
     assigns = %{
       step: step,
       result: nil,
       view_mode: :builder,
-      framework_opts: %{await: [], when: nil, assert: nil, retry: nil, post: nil}
+      framework_opts: %{await: [], when: nil, assert: nil, retry: nil, post: nil},
+      active_group_fields: active_group_fields
     }
 
     step

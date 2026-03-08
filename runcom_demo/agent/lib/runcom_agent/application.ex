@@ -16,7 +16,7 @@ defmodule RuncomAgent.Application do
 
     sync_queue = System.get_env("SYNC_QUEUE", "runcom.sync.request")
     event_queue = System.get_env("EVENT_QUEUE", "runcom.events")
-    dispatch_queue = System.get_env("DISPATCH_QUEUE", "tvlabs.palantir.#{node_id}")
+    dispatch_queue = System.get_env("DISPATCH_QUEUE", "runcom_demo.agent.#{node_id}")
 
     children = [
       {Bandit, plug: RuncomAgent.HealthPlug, port: 4001},

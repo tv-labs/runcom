@@ -692,5 +692,4 @@ defmodule RuncomWeb.Live.DashboardLive do
   def status_color("running"), do: "#3b82f6"
   def status_color("pending"), do: "#9ca3af"
   def status_color(_), do: "#6b7280"
-
 end

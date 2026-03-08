@@ -45,7 +45,7 @@ defmodule Runcom.Runbook do
       @behaviour Runcom.Runbook
       @before_compile Runcom.Runbook
 
-      import Runcom.Schema, only: [schema: 1, field: 1, field: 2, field: 3]
+      import Runcom.Schema, only: [schema: 1, field: 1, field: 2, field: 3, group: 1, group: 2]
 
       defimpl Runcom.Runbook.Compiled do
         def module(_), do: @for
@@ -115,9 +115,16 @@ defmodule Runcom.Runbook do
     Enum.map(list(), fn mod ->
       base = %{id: mod.name(), name: mod.name(), hash: mod.__runbook_hash__(), type: :compiled}
 
-      if function_exported?(mod, :__schema__, 1),
-        do: Map.put(base, :fields, mod.__schema__(:ui_fields)),
-        else: Map.put(base, :fields, [])
+      if function_exported?(mod, :__schema__, 1) do
+        fields =
+          Enum.map(mod.__schema__(:fields), fn {name, _type, _opts} ->
+            mod.__schema__(:field, name)
+          end)
+
+        Map.put(base, :fields, fields)
+      else
+        Map.put(base, :fields, [])
+      end
     end)
   end
 

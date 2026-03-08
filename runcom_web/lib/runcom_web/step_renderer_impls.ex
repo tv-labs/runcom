@@ -38,11 +38,16 @@ defimpl RuncomWeb.StepRenderer, for: Runcom.Steps.Apt do
   end
 
   defp render_builder(assigns) do
-    fields = assigns.step.__struct__.__schema__(:ui_fields)
-    assigns = Map.put(assigns, :fields, fields)
+    fields = field_infos(assigns.step)
+    active = Map.get(assigns, :active_group_fields, %{})
+
+    assigns =
+      assigns
+      |> Map.put(:fields, fields)
+      |> Map.put(:active_group_fields, active)
 
     ~H"""
-    <.builder_fields fields={@fields} step={@step} />
+    <.builder_fields fields={@fields} step={@step} active_group_fields={@active_group_fields} />
     <.framework_details framework_opts={@framework_opts} />
     """
   end
@@ -103,11 +108,16 @@ defimpl RuncomWeb.StepRenderer, for: Runcom.Steps.Bash do
   end
 
   defp render_builder(assigns) do
-    fields = assigns.step.__struct__.__schema__(:ui_fields)
-    assigns = Map.put(assigns, :fields, fields)
+    fields = field_infos(assigns.step)
+    active = Map.get(assigns, :active_group_fields, %{})
+
+    assigns =
+      assigns
+      |> Map.put(:fields, fields)
+      |> Map.put(:active_group_fields, active)
 
     ~H"""
-    <.builder_fields fields={@fields} step={@step} />
+    <.builder_fields fields={@fields} step={@step} active_group_fields={@active_group_fields} />
     <.framework_details framework_opts={@framework_opts} />
     """
   end
@@ -158,7 +168,10 @@ defimpl RuncomWeb.StepRenderer, for: Runcom.Steps.Bash do
   defp put_env(acc, _), do: acc
 
   defp put_prop(acc, _label, nil), do: acc
-  defp put_prop(acc, label, value) when is_binary(value), do: acc ++ [%{label: label, value: value}]
+
+  defp put_prop(acc, label, value) when is_binary(value),
+    do: acc ++ [%{label: label, value: value}]
+
   defp put_prop(acc, _, _), do: acc
 end
 
@@ -207,11 +220,16 @@ defimpl RuncomWeb.StepRenderer, for: Runcom.Steps.Brew do
   end
 
   defp render_builder(assigns) do
-    fields = assigns.step.__struct__.__schema__(:ui_fields)
-    assigns = Map.put(assigns, :fields, fields)
+    fields = field_infos(assigns.step)
+    active = Map.get(assigns, :active_group_fields, %{})
+
+    assigns =
+      assigns
+      |> Map.put(:fields, fields)
+      |> Map.put(:active_group_fields, active)
 
     ~H"""
-    <.builder_fields fields={@fields} step={@step} />
+    <.builder_fields fields={@fields} step={@step} active_group_fields={@active_group_fields} />
     <.framework_details framework_opts={@framework_opts} />
     """
   end
@@ -274,20 +292,30 @@ defimpl RuncomWeb.StepRenderer, for: Runcom.Steps.Command do
   end
 
   defp render_builder(assigns) do
-    fields = assigns.step.__struct__.__schema__(:ui_fields)
-    assigns = Map.put(assigns, :fields, fields)
+    fields = field_infos(assigns.step)
+    active = Map.get(assigns, :active_group_fields, %{})
+
+    assigns =
+      assigns
+      |> Map.put(:fields, fields)
+      |> Map.put(:active_group_fields, active)
 
     ~H"""
-    <.builder_fields fields={@fields} step={@step} />
+    <.builder_fields fields={@fields} step={@step} active_group_fields={@active_group_fields} />
     <.framework_details framework_opts={@framework_opts} />
     """
   end
 
   defp put_prop(acc, _label, nil), do: acc
-  defp put_prop(acc, label, value) when is_binary(value), do: acc ++ [%{label: label, value: value}]
+
+  defp put_prop(acc, label, value) when is_binary(value),
+    do: acc ++ [%{label: label, value: value}]
+
   defp put_prop(acc, _, _), do: acc
 
-  defp put_args(acc, args) when is_list(args) and args != [], do: acc ++ [%{label: "args", value: Enum.join(args, " ")}]
+  defp put_args(acc, args) when is_list(args) and args != [],
+    do: acc ++ [%{label: "args", value: Enum.join(args, " ")}]
+
   defp put_args(acc, _), do: acc
 
   defp format_int(val) when is_integer(val), do: to_string(val) <> "ms"
@@ -348,11 +376,16 @@ defimpl RuncomWeb.StepRenderer, for: Runcom.Steps.Copy do
   end
 
   defp render_builder(assigns) do
-    fields = assigns.step.__struct__.__schema__(:ui_fields)
-    assigns = Map.put(assigns, :fields, fields)
+    fields = field_infos(assigns.step)
+    active = Map.get(assigns, :active_group_fields, %{})
+
+    assigns =
+      assigns
+      |> Map.put(:fields, fields)
+      |> Map.put(:active_group_fields, active)
 
     ~H"""
-    <.builder_fields fields={@fields} step={@step} />
+    <.builder_fields fields={@fields} step={@step} active_group_fields={@active_group_fields} />
     <.framework_details framework_opts={@framework_opts} />
     """
   end
@@ -361,10 +394,15 @@ defimpl RuncomWeb.StepRenderer, for: Runcom.Steps.Copy do
   defp shorten(path), do: path
 
   defp put_prop(acc, _label, nil), do: acc
-  defp put_prop(acc, label, value) when is_binary(value), do: acc ++ [%{label: label, value: value}]
+
+  defp put_prop(acc, label, value) when is_binary(value),
+    do: acc ++ [%{label: label, value: value}]
+
   defp put_prop(acc, _, _), do: acc
 
-  defp put_content(acc, content) when is_binary(content), do: acc ++ [%{label: "content", value: content}]
+  defp put_content(acc, content) when is_binary(content),
+    do: acc ++ [%{label: "content", value: content}]
+
   defp put_content(acc, _), do: acc
 end
 
@@ -409,11 +447,16 @@ defimpl RuncomWeb.StepRenderer, for: Runcom.Steps.Debug do
   end
 
   defp render_builder(assigns) do
-    fields = assigns.step.__struct__.__schema__(:ui_fields)
-    assigns = Map.put(assigns, :fields, fields)
+    fields = field_infos(assigns.step)
+    active = Map.get(assigns, :active_group_fields, %{})
+
+    assigns =
+      assigns
+      |> Map.put(:fields, fields)
+      |> Map.put(:active_group_fields, active)
 
     ~H"""
-    <.builder_fields fields={@fields} step={@step} />
+    <.builder_fields fields={@fields} step={@step} active_group_fields={@active_group_fields} />
     <.framework_details framework_opts={@framework_opts} />
     """
   end
@@ -447,7 +490,7 @@ defimpl RuncomWeb.StepRenderer, for: Runcom.Steps.EExTemplate do
     props =
       []
       |> put_prop("dest", assigns.step.dest)
-      |> put_prop("src", assigns.step.src)
+      |> put_prop("file", assigns.step.file)
       |> put_template(assigns.step.template)
 
     assigns = Map.put(assigns, :props, props)
@@ -459,20 +502,30 @@ defimpl RuncomWeb.StepRenderer, for: Runcom.Steps.EExTemplate do
   end
 
   defp render_builder(assigns) do
-    fields = assigns.step.__struct__.__schema__(:ui_fields)
-    assigns = Map.put(assigns, :fields, fields)
+    fields = field_infos(assigns.step)
+    active = Map.get(assigns, :active_group_fields, %{})
+
+    assigns =
+      assigns
+      |> Map.put(:fields, fields)
+      |> Map.put(:active_group_fields, active)
 
     ~H"""
-    <.builder_fields fields={@fields} step={@step} />
+    <.builder_fields fields={@fields} step={@step} active_group_fields={@active_group_fields} />
     <.framework_details framework_opts={@framework_opts} />
     """
   end
 
   defp put_prop(acc, _label, nil), do: acc
-  defp put_prop(acc, label, value) when is_binary(value), do: acc ++ [%{label: label, value: value}]
+
+  defp put_prop(acc, label, value) when is_binary(value),
+    do: acc ++ [%{label: label, value: value}]
+
   defp put_prop(acc, _, _), do: acc
 
-  defp put_template(acc, tmpl) when is_binary(tmpl), do: acc ++ [%{label: "template", value: tmpl}]
+  defp put_template(acc, tmpl) when is_binary(tmpl),
+    do: acc ++ [%{label: "template", value: tmpl}]
+
   defp put_template(acc, _), do: acc
 end
 
@@ -530,11 +583,16 @@ defimpl RuncomWeb.StepRenderer, for: Runcom.Steps.File do
   end
 
   defp render_builder(assigns) do
-    fields = assigns.step.__struct__.__schema__(:ui_fields)
-    assigns = Map.put(assigns, :fields, fields)
+    fields = field_infos(assigns.step)
+    active = Map.get(assigns, :active_group_fields, %{})
+
+    assigns =
+      assigns
+      |> Map.put(:fields, fields)
+      |> Map.put(:active_group_fields, active)
 
     ~H"""
-    <.builder_fields fields={@fields} step={@step} />
+    <.builder_fields fields={@fields} step={@step} active_group_fields={@active_group_fields} />
     <.framework_details framework_opts={@framework_opts} />
     """
   end
@@ -544,10 +602,15 @@ defimpl RuncomWeb.StepRenderer, for: Runcom.Steps.File do
   defp to_str(_), do: nil
 
   defp put_prop(acc, _label, nil), do: acc
-  defp put_prop(acc, label, value) when is_binary(value), do: acc ++ [%{label: label, value: value}]
+
+  defp put_prop(acc, label, value) when is_binary(value),
+    do: acc ++ [%{label: label, value: value}]
+
   defp put_prop(acc, _, _), do: acc
 
-  defp put_mode(acc, mode) when is_integer(mode), do: acc ++ [%{label: "mode", value: Integer.to_string(mode, 8)}]
+  defp put_mode(acc, mode) when is_integer(mode),
+    do: acc ++ [%{label: "mode", value: Integer.to_string(mode, 8)}]
+
   defp put_mode(acc, _), do: acc
 end
 
@@ -592,17 +655,25 @@ defimpl RuncomWeb.StepRenderer, for: Runcom.Steps.GetUrl do
   end
 
   defp render_builder(assigns) do
-    fields = assigns.step.__struct__.__schema__(:ui_fields)
-    assigns = Map.put(assigns, :fields, fields)
+    fields = field_infos(assigns.step)
+    active = Map.get(assigns, :active_group_fields, %{})
+
+    assigns =
+      assigns
+      |> Map.put(:fields, fields)
+      |> Map.put(:active_group_fields, active)
 
     ~H"""
-    <.builder_fields fields={@fields} step={@step} />
+    <.builder_fields fields={@fields} step={@step} active_group_fields={@active_group_fields} />
     <.framework_details framework_opts={@framework_opts} />
     """
   end
 
   defp put_prop(acc, _label, nil), do: acc
-  defp put_prop(acc, label, value) when is_binary(value), do: acc ++ [%{label: label, value: value}]
+
+  defp put_prop(acc, label, value) when is_binary(value),
+    do: acc ++ [%{label: label, value: value}]
+
   defp put_prop(acc, _, _), do: acc
 end
 
@@ -652,11 +723,16 @@ defimpl RuncomWeb.StepRenderer, for: Runcom.Steps.Pause do
   end
 
   defp render_builder(assigns) do
-    fields = assigns.step.__struct__.__schema__(:ui_fields)
-    assigns = Map.put(assigns, :fields, fields)
+    fields = field_infos(assigns.step)
+    active = Map.get(assigns, :active_group_fields, %{})
+
+    assigns =
+      assigns
+      |> Map.put(:fields, fields)
+      |> Map.put(:active_group_fields, active)
 
     ~H"""
-    <.builder_fields fields={@fields} step={@step} />
+    <.builder_fields fields={@fields} step={@step} active_group_fields={@active_group_fields} />
     <.framework_details framework_opts={@framework_opts} />
     """
   end
@@ -701,17 +777,25 @@ defimpl RuncomWeb.StepRenderer, for: Runcom.Steps.Reboot do
   end
 
   defp render_builder(assigns) do
-    fields = assigns.step.__struct__.__schema__(:ui_fields)
-    assigns = Map.put(assigns, :fields, fields)
+    fields = field_infos(assigns.step)
+    active = Map.get(assigns, :active_group_fields, %{})
+
+    assigns =
+      assigns
+      |> Map.put(:fields, fields)
+      |> Map.put(:active_group_fields, active)
 
     ~H"""
-    <.builder_fields fields={@fields} step={@step} />
+    <.builder_fields fields={@fields} step={@step} active_group_fields={@active_group_fields} />
     <.framework_details framework_opts={@framework_opts} />
     """
   end
 
   defp put_prop(acc, _label, nil), do: acc
-  defp put_prop(acc, label, value) when is_binary(value), do: acc ++ [%{label: label, value: value}]
+
+  defp put_prop(acc, label, value) when is_binary(value),
+    do: acc ++ [%{label: label, value: value}]
+
   defp put_prop(acc, _, _), do: acc
 
   defp format_delay(delay) when is_integer(delay), do: "#{delay}s"
@@ -770,11 +854,16 @@ defimpl RuncomWeb.StepRenderer, for: Runcom.Steps.Systemd do
   end
 
   defp render_builder(assigns) do
-    fields = assigns.step.__struct__.__schema__(:ui_fields)
-    assigns = Map.put(assigns, :fields, fields)
+    fields = field_infos(assigns.step)
+    active = Map.get(assigns, :active_group_fields, %{})
+
+    assigns =
+      assigns
+      |> Map.put(:fields, fields)
+      |> Map.put(:active_group_fields, active)
 
     ~H"""
-    <.builder_fields fields={@fields} step={@step} />
+    <.builder_fields fields={@fields} step={@step} active_group_fields={@active_group_fields} />
     <.framework_details framework_opts={@framework_opts} />
     """
   end
@@ -784,7 +873,10 @@ defimpl RuncomWeb.StepRenderer, for: Runcom.Steps.Systemd do
   defp to_str(_), do: nil
 
   defp put_prop(acc, _label, nil), do: acc
-  defp put_prop(acc, label, value) when is_binary(value), do: acc ++ [%{label: label, value: value}]
+
+  defp put_prop(acc, label, value) when is_binary(value),
+    do: acc ++ [%{label: label, value: value}]
+
   defp put_prop(acc, _, _), do: acc
 
   defp put_bool(acc, label, true), do: acc ++ [%{label: label, value: "true"}]
@@ -838,17 +930,25 @@ defimpl RuncomWeb.StepRenderer, for: Runcom.Steps.Unarchive do
   end
 
   defp render_builder(assigns) do
-    fields = assigns.step.__struct__.__schema__(:ui_fields)
-    assigns = Map.put(assigns, :fields, fields)
+    fields = field_infos(assigns.step)
+    active = Map.get(assigns, :active_group_fields, %{})
+
+    assigns =
+      assigns
+      |> Map.put(:fields, fields)
+      |> Map.put(:active_group_fields, active)
 
     ~H"""
-    <.builder_fields fields={@fields} step={@step} />
+    <.builder_fields fields={@fields} step={@step} active_group_fields={@active_group_fields} />
     <.framework_details framework_opts={@framework_opts} />
     """
   end
 
   defp put_prop(acc, _label, nil), do: acc
-  defp put_prop(acc, label, value) when is_binary(value), do: acc ++ [%{label: label, value: value}]
+
+  defp put_prop(acc, label, value) when is_binary(value),
+    do: acc ++ [%{label: label, value: value}]
+
   defp put_prop(acc, _, _), do: acc
 end
 
@@ -892,7 +992,7 @@ defimpl RuncomWeb.StepRenderer, for: Runcom.Steps.WaitFor do
     assigns = Map.put(assigns, :summary, summary)
 
     ~H"""
-    <span :if={@summary} class="step-summary">{format_ms(@timeout)} {@summary}</span>
+    <span :if={@summary} class="step-summary">{format_ms(@step.timeout)} {@summary}</span>
     """
   end
 
@@ -913,11 +1013,16 @@ defimpl RuncomWeb.StepRenderer, for: Runcom.Steps.WaitFor do
   end
 
   defp render_builder(assigns) do
-    fields = assigns.step.__struct__.__schema__(:ui_fields)
-    assigns = Map.put(assigns, :fields, fields)
+    fields = field_infos(assigns.step)
+    active = Map.get(assigns, :active_group_fields, %{})
+
+    assigns =
+      assigns
+      |> Map.put(:fields, fields)
+      |> Map.put(:active_group_fields, active)
 
     ~H"""
-    <.builder_fields fields={@fields} step={@step} />
+    <.builder_fields fields={@fields} step={@step} active_group_fields={@active_group_fields} />
     <.framework_details framework_opts={@framework_opts} />
     """
   end
@@ -933,7 +1038,10 @@ defimpl RuncomWeb.StepRenderer, for: Runcom.Steps.WaitFor do
   defp put_port(acc, _), do: acc
 
   defp put_prop(acc, _label, nil), do: acc
-  defp put_prop(acc, label, value) when is_binary(value), do: acc ++ [%{label: label, value: value}]
+
+  defp put_prop(acc, label, value) when is_binary(value),
+    do: acc ++ [%{label: label, value: value}]
+
   defp put_prop(acc, _, _), do: acc
 
   defp format_ms(val) when is_integer(val), do: "#{val}ms"

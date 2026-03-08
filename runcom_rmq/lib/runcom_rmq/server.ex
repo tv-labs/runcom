@@ -93,7 +93,10 @@ defmodule RuncomRmq.Server do
   def init(opts) do
     connection = Keyword.fetch!(opts, :connection)
     {store_mod, store_opts} = Keyword.get_lazy(opts, :store, &Runcom.Store.impl/0)
-    pubsub = Keyword.get_lazy(opts, :pubsub, fn -> Application.fetch_env!(:runcom_rmq, :pubsub) end)
+
+    pubsub =
+      Keyword.get_lazy(opts, :pubsub, fn -> Application.fetch_env!(:runcom_rmq, :pubsub) end)
+
     sync_queue = Keyword.get(opts, :sync_queue, @default_sync_queue)
     event_queue = Keyword.get(opts, :event_queue, @default_event_queue)
     sync_consumer_opts = Keyword.get(opts, :sync_consumer, [])
@@ -105,10 +108,14 @@ defmodule RuncomRmq.Server do
        [connection: connection, queue: sync_queue, store: {store_mod, store_opts}] ++
          sync_consumer_opts},
       {RuncomRmq.Server.EventConsumer,
-       [connection: connection, queue: event_queue, store: {store_mod, store_opts}, pubsub: pubsub] ++
+       [
+         connection: connection,
+         queue: event_queue,
+         store: {store_mod, store_opts},
+         pubsub: pubsub
+       ] ++
          event_consumer_opts},
-      {RuncomRmq.Server.Dispatcher,
-       [connection: connection] ++ dispatcher_opts}
+      {RuncomRmq.Server.Dispatcher, [connection: connection] ++ dispatcher_opts}
     ]
 
     Supervisor.init(children, strategy: :one_for_one)

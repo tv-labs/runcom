@@ -33,3 +33,7 @@ config :phoenix_live_view,
 # Sort query params output of verified routes for robust url comparisons
 config :phoenix,
   sort_verified_routes_query_params: true
+
+# Runcom RMQ — same broker as dev, test uses its own database
+config :runcom_demo,
+  rmq_connection: "amqp://guest:guest@localhost:5673"

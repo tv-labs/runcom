@@ -269,7 +269,10 @@ defmodule RuncomWeb.Live.MetricsLive do
       |> Enum.group_by(& &1.bucket)
       |> Enum.sort_by(fn {bucket, _} -> bucket end)
 
-    max_count = buckets |> Enum.map(fn {_, rows} -> Enum.sum(Enum.map(rows, & &1.count)) end) |> Enum.max(fn -> 1 end)
+    max_count =
+      buckets
+      |> Enum.map(fn {_, rows} -> Enum.sum(Enum.map(rows, & &1.count)) end)
+      |> Enum.max(fn -> 1 end)
 
     padding = 50
     chart_w = width - padding - 20
@@ -343,9 +346,19 @@ defmodule RuncomWeb.Live.MetricsLive do
       |> Easel.set_fill_style("#22c55e")
       |> Easel.fill_rect(padding_left, round(y), round(completed_w), round(bar_h))
       |> Easel.set_fill_style("#ef4444")
-      |> Easel.fill_rect(round(padding_left + completed_w), round(y), round(failed_w), round(bar_h))
+      |> Easel.fill_rect(
+        round(padding_left + completed_w),
+        round(y),
+        round(failed_w),
+        round(bar_h)
+      )
       |> Easel.set_fill_style("#71717a")
-      |> Easel.fill_rect(round(padding_left + completed_w + failed_w), round(y), round(chart_w - completed_w - failed_w), round(bar_h))
+      |> Easel.fill_rect(
+        round(padding_left + completed_w + failed_w),
+        round(y),
+        round(chart_w - completed_w - failed_w),
+        round(bar_h)
+      )
       |> Easel.set_fill_style("#fafafa")
       |> Easel.set_text_align("left")
       |> Easel.fill_text("#{pct}%", round(padding_left + 4), round(y + bar_h / 2))
@@ -483,7 +496,16 @@ defmodule RuncomWeb.Live.MetricsLive do
   end
 
   defp runbook_colors(data) do
-    palette = ["#6366f1", "#f59e0b", "#22c55e", "#ef4444", "#3b82f6", "#ec4899", "#8b5cf6", "#14b8a6"]
+    palette = [
+      "#6366f1",
+      "#f59e0b",
+      "#22c55e",
+      "#ef4444",
+      "#3b82f6",
+      "#ec4899",
+      "#8b5cf6",
+      "#14b8a6"
+    ]
 
     data
     |> Enum.map(& &1.runbook_id)
@@ -525,5 +547,4 @@ defmodule RuncomWeb.Live.MetricsLive do
 
   defp maybe_put(opts, _key, nil), do: opts
   defp maybe_put(opts, key, value), do: Keyword.put(opts, key, value)
-
 end

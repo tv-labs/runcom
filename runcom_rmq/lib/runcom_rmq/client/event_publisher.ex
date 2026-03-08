@@ -140,7 +140,8 @@ defmodule RuncomRmq.Client.EventPublisher do
       steps_failed: metadata[:steps_failed],
       steps_skipped: metadata[:steps_skipped],
       duration: measurements[:duration],
-      duration_ms: div(System.convert_time_unit(measurements[:duration] || 0, :native, :millisecond), 1),
+      duration_ms:
+        div(System.convert_time_unit(measurements[:duration] || 0, :native, :millisecond), 1),
       timestamp: DateTime.utc_now()
     }
 

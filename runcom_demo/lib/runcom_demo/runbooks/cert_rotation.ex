@@ -62,39 +62,40 @@ defmodule RuncomDemo.Runbooks.CertRotation do
 
     # ── Check current cert ──
     |> Command.add("check_expiry",
-      cmd: &("openssl x509 -enddate -noout -in /etc/ssl/#{&1.assigns.domain}/cert.pem"),
+      cmd: &"openssl x509 -enddate -noout -in /etc/ssl/#{&1.assigns.domain}/cert.pem",
       await: []
     )
 
     # ── Fan-out: parallel downloads ──
     |> GetUrl.add("fetch_cert",
-      url: &("#{&1.assigns.cert_url}/#{&1.assigns.domain}/cert.pem"),
-      dest: &("/tmp/certs/#{&1.assigns.domain}/cert.pem"),
+      url: &"#{&1.assigns.cert_url}/#{&1.assigns.domain}/cert.pem",
+      dest: &"/tmp/certs/#{&1.assigns.domain}/cert.pem",
       await: ["check_expiry"]
     )
     |> GetUrl.add("fetch_key",
-      url: &("#{&1.assigns.cert_url}/#{&1.assigns.domain}/key.pem"),
-      dest: &("/tmp/certs/#{&1.assigns.domain}/key.pem"),
+      url: &"#{&1.assigns.cert_url}/#{&1.assigns.domain}/key.pem",
+      dest: &"/tmp/certs/#{&1.assigns.domain}/key.pem",
       await: ["check_expiry"]
     )
     |> GetUrl.add("fetch_chain",
-      url: &("#{&1.assigns.cert_url}/#{&1.assigns.domain}/chain.pem"),
-      dest: &("/tmp/certs/#{&1.assigns.domain}/chain.pem"),
+      url: &"#{&1.assigns.cert_url}/#{&1.assigns.domain}/chain.pem",
+      dest: &"/tmp/certs/#{&1.assigns.domain}/chain.pem",
       await: ["check_expiry"]
     )
 
     # ── Fan-in: validate needs all files ──
     |> Command.add("validate_chain",
-      cmd: &("openssl verify -CAfile /tmp/certs/#{&1.assigns.domain}/chain.pem /tmp/certs/#{&1.assigns.domain}/cert.pem"),
+      cmd:
+        &"openssl verify -CAfile /tmp/certs/#{&1.assigns.domain}/chain.pem /tmp/certs/#{&1.assigns.domain}/cert.pem",
       await: ["fetch_cert", "fetch_key", "fetch_chain"]
     )
 
     # ── Sequential install ──
     |> Command.add("backup_certs",
-      cmd: &("cp -a /etc/ssl/#{&1.assigns.domain} /etc/ssl/#{&1.assigns.domain}.bak")
+      cmd: &"cp -a /etc/ssl/#{&1.assigns.domain} /etc/ssl/#{&1.assigns.domain}.bak"
     )
     |> Command.add("install_certs",
-      cmd: &("cp -f /tmp/certs/#{&1.assigns.domain}/* /etc/ssl/#{&1.assigns.domain}/")
+      cmd: &"cp -f /tmp/certs/#{&1.assigns.domain}/* /etc/ssl/#{&1.assigns.domain}/"
     )
 
     # ── Fan-out: parallel service restarts ──
@@ -109,7 +110,8 @@ defmodule RuncomDemo.Runbooks.CertRotation do
 
     # ── Fan-in: verify after both restarts ──
     |> Command.add("verify_tls",
-      cmd: &("openssl s_client -connect #{&1.assigns.domain}:443 -servername #{&1.assigns.domain} </dev/null 2>/dev/null | openssl x509 -noout -dates"),
+      cmd:
+        &"openssl s_client -connect #{&1.assigns.domain}:443 -servername #{&1.assigns.domain} </dev/null 2>/dev/null | openssl x509 -noout -dates",
       await: ["restart_nginx", "restart_app"]
     )
     |> Debug.add("done",

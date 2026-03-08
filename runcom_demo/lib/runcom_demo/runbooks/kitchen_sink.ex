@@ -92,7 +92,7 @@ defmodule RuncomDemo.Runbooks.KitchenSink do
       message: &"Kitchen sink #{&1.assigns.run_id} starting"
     )
     |> RCFile.add("setup_dir",
-      path: &(&1.assigns.work_dir),
+      path: & &1.assigns.work_dir,
       state: :directory
     )
     |> RCBash.add("sysinfo",

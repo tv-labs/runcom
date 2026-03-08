@@ -148,10 +148,14 @@ defmodule RuncomWeb.GraphHelpers do
     {:arity, arity} = Function.info(v, :arity)
     "fn/#{arity}"
   end
+
   defp sanitize_value(v) when is_struct(v) do
     if String.Chars.impl_for(v), do: to_string(v), else: inspect(v)
   end
-  defp sanitize_value(v) when is_map(v), do: Map.new(v, fn {k, val} -> {k, sanitize_value(val)} end)
+
+  defp sanitize_value(v) when is_map(v),
+    do: Map.new(v, fn {k, val} -> {k, sanitize_value(val)} end)
+
   defp sanitize_value(v) when is_list(v), do: Enum.map(v, &sanitize_value/1)
   defp sanitize_value(v) when is_tuple(v), do: v |> Tuple.to_list() |> Enum.map(&sanitize_value/1)
   defp sanitize_value(v) when is_pid(v) or is_port(v) or is_reference(v), do: inspect(v)

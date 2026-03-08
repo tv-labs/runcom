@@ -63,7 +63,8 @@ defmodule RuncomRmq.Client.RunbookCache do
 
   Reads directly from ETS — does not go through the GenServer.
   """
-  @spec get_with_hash(GenServer.server(), id()) :: {:ok, {hash(), module(), Runcom.t(), [{module(), binary()}]}} | {:error, :not_found}
+  @spec get_with_hash(GenServer.server(), id()) ::
+          {:ok, {hash(), module(), Runcom.t(), [{module(), binary()}]}} | {:error, :not_found}
   def get_with_hash(cache \\ __MODULE__, id) do
     case :ets.lookup(cache, id) do
       [{^id, hash, mod, runbook, bytecodes}] -> {:ok, {hash, mod, runbook, bytecodes}}

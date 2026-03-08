@@ -98,7 +98,9 @@ defmodule RuncomEcto.Migrations.V1 do
     create index(:runcom_dispatches, [:inserted_at], prefix: prefix)
 
     create table(:runcom_dispatch_nodes, prefix: prefix) do
-      add :dispatch_id, references(:runcom_dispatches, type: :binary_id, on_delete: :delete_all), null: false
+      add :dispatch_id, references(:runcom_dispatches, type: :binary_id, on_delete: :delete_all),
+        null: false
+
       add :node_id, :string, null: false
       add :status, :string, null: false, default: "pending"
       add :result_id, references(:runcom_results, on_delete: :nilify_all)

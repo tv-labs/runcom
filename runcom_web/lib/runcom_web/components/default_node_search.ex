@@ -120,5 +120,4 @@ defmodule RuncomWeb.Components.DefaultNodeSearch do
       %{value: id, label: label}
     end)
   end
-
 end

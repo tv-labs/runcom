@@ -60,11 +60,9 @@ defmodule RuncomDemo.Runbooks.AgentProbe do
     |> Runcom.assign(:probe_id, probe_id)
     |> Runcom.assign(:report_dir, report_dir)
     |> Runcom.assign(:check_url, check_url)
-
     |> Debug.add("start",
       message: &"Starting agent probe #{&1.assigns.probe_id}"
     )
-
     |> Bash.add("uname",
       script: ~BASH"uname -a",
       await: ["start"]
@@ -77,57 +75,57 @@ defmodule RuncomDemo.Runbooks.AgentProbe do
       script: ~BASH"cat /proc/meminfo | head -3",
       await: ["start"]
     )
-
     |> Bash.add("collect",
-      script: &~b"""
-      echo '=== Agent Probe Report ==='
-      echo "Probe ID: #{&1.assigns.probe_id}"
-      echo "Node: $(hostname)"
-      echo "Date: $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
-      echo ''
-      echo '--- Kernel ---'
-      uname -a
-      echo ''
-      echo '--- Disk ---'
-      df -h / | tail -1
-      echo ''
-      echo '--- Memory ---'
-      cat /proc/meminfo | head -3
-      echo ''
-      echo '--- Load ---'
-      cat /proc/loadavg
-      echo ''
-      echo '--- Uptime ---'
-      cat /proc/uptime
-      """,
+      script:
+        &~b"""
+        echo '=== Agent Probe Report ==='
+        echo "Probe ID: #{&1.assigns.probe_id}"
+        echo "Node: $(hostname)"
+        echo "Date: $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+        echo ''
+        echo '--- Kernel ---'
+        uname -a
+        echo ''
+        echo '--- Disk ---'
+        df -h / | tail -1
+        echo ''
+        echo '--- Memory ---'
+        cat /proc/meminfo | head -3
+        echo ''
+        echo '--- Load ---'
+        cat /proc/loadavg
+        echo ''
+        echo '--- Uptime ---'
+        cat /proc/uptime
+        """,
       await: ["uname", "disk", "memory"]
     )
-
     |> Bash.add("write",
-      script: &~b"""
-      REPORT_DIR="#{&1.assigns.report_dir}"
-      PROBE_ID="#{&1.assigns.probe_id}"
-      REPORT="$REPORT_DIR/probe-$PROBE_ID.txt"
+      script:
+        &~b"""
+        REPORT_DIR="#{&1.assigns.report_dir}"
+        PROBE_ID="#{&1.assigns.probe_id}"
+        REPORT="$REPORT_DIR/probe-$PROBE_ID.txt"
 
-      mkdir -p "$REPORT_DIR"
+        mkdir -p "$REPORT_DIR"
 
-      echo '=== Agent Probe Report ===' > "$REPORT"
-      echo "Probe ID: $PROBE_ID" >> "$REPORT"
-      echo "Node: $(hostname)" >> "$REPORT"
-      echo "Date: $(date -u '+%Y-%m-%dT%H:%M:%SZ')" >> "$REPORT"
-      uname -a >> "$REPORT"
-      df -h / >> "$REPORT"
-      cat /proc/meminfo | head -3 >> "$REPORT"
-      cat /proc/loadavg >> "$REPORT"
-      echo "Report written to $REPORT"
-      """,
+        echo '=== Agent Probe Report ===' > "$REPORT"
+        echo "Probe ID: $PROBE_ID" >> "$REPORT"
+        echo "Node: $(hostname)" >> "$REPORT"
+        echo "Date: $(date -u '+%Y-%m-%dT%H:%M:%SZ')" >> "$REPORT"
+        uname -a >> "$REPORT"
+        df -h / >> "$REPORT"
+        cat /proc/meminfo | head -3 >> "$REPORT"
+        cat /proc/loadavg >> "$REPORT"
+        echo "Report written to $REPORT"
+        """,
       await: ["collect"]
     )
     |> Bash.add("curl_check",
-      script: &~b"curl -sf -o /dev/null -w '%{http_code}' '#{&1.assigns.check_url}' || echo 'unreachable'",
+      script:
+        &~b"curl -sf -o /dev/null -w '%{http_code}' '#{&1.assigns.check_url}' || echo 'unreachable'",
       await: ["collect"]
     )
-
     |> Debug.add("done",
       message: "Agent probe complete",
       await: ["write", "curl_check"]

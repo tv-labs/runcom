@@ -5,6 +5,17 @@ defmodule RuncomWeb.StepRendererComponents do
 
   use Phoenix.Component
 
+  @doc """
+  Returns field info maps for a step's schema fields.
+  """
+  def field_infos(step) do
+    mod = step.__struct__
+
+    Enum.map(mod.__schema__(:fields), fn {name, _type, _opts} ->
+      mod.__schema__(:field, name)
+    end)
+  end
+
   attr :props, :list, required: true
 
   def detail_props(assigns) do
@@ -72,94 +83,192 @@ defmodule RuncomWeb.StepRendererComponents do
 
   attr :fields, :list, required: true
   attr :step, :any, required: true
+  attr :active_group_fields, :map, default: %{}
 
   def builder_fields(assigns) do
+    sections = build_sections(assigns.fields, assigns.step, assigns.active_group_fields)
+    assigns = Map.put(assigns, :sections, sections)
+
     ~H"""
     <div class="space-y-2">
-      <div :for={field <- @fields}>
-        <label class="text-xs font-semibold text-base-content/70 block mb-0.5">
-          {field.label}
-          <span :if={field[:required]} class="text-error">*</span>
-        </label>
-
-        <input
-          :if={field.type == :text}
-          type="text"
-          name={"opts[#{field.key}]"}
-          value={field_value(@step, field.key)}
-          placeholder={field[:placeholder] || ""}
-          phx-debounce="300"
-          class="input input-bordered input-sm w-full"
+      <div :for={section <- @sections}>
+        <.group_section
+          :if={section.type == :group}
+          group_name={section.name}
+          group_opts={section.opts}
+          fields={section.fields}
+          active_key={section.active_key}
+          step={@step}
         />
-
-        <input
-          :if={field.type == :number}
-          type="number"
-          name={"opts[#{field.key}]"}
-          value={field_value(@step, field.key)}
-          placeholder={field[:placeholder] || ""}
-          phx-debounce="300"
-          class="input input-bordered input-sm w-full"
+        <.builder_field
+          :if={section.type == :field}
+          field={section.field}
+          step={@step}
         />
-
-        <textarea
-          :if={field.type == :textarea}
-          name={"opts[#{field.key}]"}
-          placeholder={field[:placeholder] || ""}
-          rows="3"
-          phx-debounce="300"
-          class="textarea textarea-bordered textarea-sm w-full font-mono text-xs"
-        >{field_value(@step, field.key)}</textarea>
-
-        <select
-          :if={field.type == :select}
-          name={"opts[#{field.key}]"}
-          class="select select-bordered select-sm w-full"
-        >
-          <option value="">-- select --</option>
-          <option
-            :for={opt <- field[:options] || []}
-            value={opt}
-            selected={field_value(@step, field.key) == opt}
-          >
-            {opt}
-          </option>
-        </select>
-
-        <label :if={field.type == :checkbox} class="flex items-center gap-2 cursor-pointer">
-          <input type="hidden" name={"opts[#{field.key}]"} value="false" />
-          <input
-            type="checkbox"
-            name={"opts[#{field.key}]"}
-            value="true"
-            checked={field_value(@step, field.key) == true or field_value(@step, field.key) == "true"}
-            class="checkbox checkbox-sm"
-          />
-        </label>
-
-        <textarea
-          :if={field.type == :code}
-          name={"opts[#{field.key}]"}
-          placeholder={field[:placeholder] || ""}
-          rows="5"
-          data-language={field[:language]}
-          phx-debounce="300"
-          class="textarea textarea-bordered textarea-sm w-full font-mono text-xs"
-        >{field_value(@step, field.key)}</textarea>
-
-        <.array_field :if={field.type == :array} field={field} step={@step} />
-
-        <.map_field :if={field.type == :map} field={field} step={@step} />
       </div>
+    </div>
+    """
+  end
+
+  attr :group_name, :atom, required: true
+  attr :group_opts, :list, required: true
+  attr :fields, :list, required: true
+  attr :active_key, :string, default: nil
+  attr :step, :any, required: true
+
+  defp group_section(assigns) do
+    exclusive? = Keyword.get(assigns.group_opts, :exclusive, false)
+    required? = Keyword.get(assigns.group_opts, :required, false)
+
+    assigns =
+      assigns
+      |> Map.put(:exclusive, exclusive?)
+      |> Map.put(:required, required?)
+
+    ~H"""
+    <fieldset class="border border-base-300 rounded-lg p-2 space-y-2">
+      <legend class="text-xs px-1 flex items-center gap-1.5">
+        <span class="font-semibold text-base-content/50 uppercase tracking-wider">
+          {Runcom.Schema.humanize(@group_name)}
+        </span>
+        <span :if={@required} class="text-error">*</span>
+        <span :if={@exclusive} class="badge badge-xs badge-outline">one of</span>
+      </legend>
+
+      <div :if={@exclusive}>
+        <div class="flex gap-0.5 mb-2" role="tablist">
+          <label
+            :for={field <- @fields}
+            class={[
+              "btn btn-xs flex-1",
+              if(field.key == @active_key, do: "btn-primary", else: "btn-ghost border-base-300")
+            ]}
+          >
+            <input
+              type="radio"
+              name={"opts[__group__#{@group_name}]"}
+              value={field.key}
+              checked={field.key == @active_key}
+              class="hidden"
+            />
+            {field.label}
+          </label>
+        </div>
+
+        <.field_input
+          :for={field <- @fields}
+          :if={field.key == @active_key}
+          field={field}
+          step={@step}
+        />
+      </div>
+
+      <div :if={!@exclusive} class="space-y-2">
+        <.builder_field :for={field <- @fields} field={field} step={@step} />
+      </div>
+    </fieldset>
+    """
+  end
+
+  attr :field, :map, required: true
+  attr :step, :any, required: true
+  attr :name_prefix, :string, default: "opts"
+
+  def builder_field(assigns) do
+    ~H"""
+    <div>
+      <label class="text-xs font-semibold text-base-content/70 block mb-0.5">
+        {@field.label}
+        <span :if={@field[:required]} class="text-error">*</span>
+      </label>
+      <.field_input field={@field} step={@step} name_prefix={@name_prefix} />
     </div>
     """
   end
 
   attr :field, :map, required: true
   attr :step, :any, required: true
+  attr :name_prefix, :string, default: "opts"
+
+  def field_input(assigns) do
+    ~H"""
+    <input
+      :if={@field.ui_type == :text}
+      type="text"
+      name={"#{@name_prefix}[#{@field.key}]"}
+      value={field_value(@step, @field.name)}
+      placeholder={@field[:placeholder] || ""}
+      phx-debounce="300"
+      class="input input-bordered input-sm w-full"
+    />
+
+    <input
+      :if={@field.ui_type == :number}
+      type="number"
+      name={"#{@name_prefix}[#{@field.key}]"}
+      value={field_value(@step, @field.name)}
+      placeholder={@field[:placeholder] || ""}
+      phx-debounce="300"
+      class="input input-bordered input-sm w-full"
+    />
+
+    <textarea
+      :if={@field.ui_type == :textarea}
+      name={"#{@name_prefix}[#{@field.key}]"}
+      placeholder={@field[:placeholder] || ""}
+      rows="3"
+      phx-debounce="300"
+      class="textarea textarea-bordered textarea-sm w-full font-mono text-xs"
+    >{field_value(@step, @field.name)}</textarea>
+
+    <select
+      :if={@field.ui_type == :select}
+      name={"#{@name_prefix}[#{@field.key}]"}
+      class="select select-bordered select-sm w-full"
+    >
+      <option value="">-- select --</option>
+      <option
+        :for={opt <- @field[:options] || []}
+        value={opt}
+        selected={field_value(@step, @field.name) == opt}
+      >
+        {opt}
+      </option>
+    </select>
+
+    <label :if={@field.ui_type == :checkbox} class="flex items-center gap-2 cursor-pointer">
+      <input type="hidden" name={"#{@name_prefix}[#{@field.key}]"} value="false" />
+      <input
+        type="checkbox"
+        name={"#{@name_prefix}[#{@field.key}]"}
+        value="true"
+        checked={field_value(@step, @field.name) == true or field_value(@step, @field.name) == "true"}
+        class="checkbox checkbox-sm"
+      />
+    </label>
+
+    <textarea
+      :if={@field.ui_type == :code}
+      name={"#{@name_prefix}[#{@field.key}]"}
+      placeholder={@field[:placeholder] || ""}
+      rows="5"
+      data-language={@field[:language]}
+      phx-debounce="300"
+      class="textarea textarea-bordered textarea-sm w-full font-mono text-xs"
+    >{field_value(@step, @field.name)}</textarea>
+
+    <.array_field :if={@field.ui_type == :array} field={@field} step={@step} name_prefix={@name_prefix} />
+
+    <.map_field :if={@field.ui_type == :map} field={@field} step={@step} name_prefix={@name_prefix} />
+    """
+  end
+
+  attr :field, :map, required: true
+  attr :step, :any, required: true
+  attr :name_prefix, :string, default: "opts"
 
   def array_field(assigns) do
-    items = array_items(assigns.step, assigns.field.key)
+    items = array_items(assigns.step, assigns.field.name)
     item_type = assigns.field[:item_type] || :text
 
     assigns =
@@ -175,6 +284,7 @@ defmodule RuncomWeb.StepRendererComponents do
           item_type={@item_type}
           idx={idx}
           value={item}
+          name_prefix={@name_prefix}
         />
         <button
           type="button"
@@ -204,11 +314,12 @@ defmodule RuncomWeb.StepRendererComponents do
   attr :item_type, :atom, required: true
   attr :idx, :integer, required: true
   attr :value, :string, default: ""
+  attr :name_prefix, :string, default: "opts"
 
   defp array_item_input(%{item_type: :select} = assigns) do
     ~H"""
     <select
-      name={"opts[#{@field.key}][#{@idx}]"}
+      name={"#{@name_prefix}[#{@field.key}][#{@idx}]"}
       class="select select-bordered select-sm flex-1"
     >
       <option value="">-- select --</option>
@@ -227,7 +338,7 @@ defmodule RuncomWeb.StepRendererComponents do
     ~H"""
     <input
       type="number"
-      name={"opts[#{@field.key}][#{@idx}]"}
+      name={"#{@name_prefix}[#{@field.key}][#{@idx}]"}
       value={@value}
       class="input input-bordered input-sm flex-1"
     />
@@ -237,10 +348,10 @@ defmodule RuncomWeb.StepRendererComponents do
   defp array_item_input(%{item_type: :checkbox} = assigns) do
     ~H"""
     <label class="flex items-center gap-2 cursor-pointer flex-1">
-      <input type="hidden" name={"opts[#{@field.key}][#{@idx}]"} value="false" />
+      <input type="hidden" name={"#{@name_prefix}[#{@field.key}][#{@idx}]"} value="false" />
       <input
         type="checkbox"
-        name={"opts[#{@field.key}][#{@idx}]"}
+        name={"#{@name_prefix}[#{@field.key}][#{@idx}]"}
         value="true"
         checked={@value == true or @value == "true"}
         class="checkbox checkbox-sm"
@@ -253,7 +364,7 @@ defmodule RuncomWeb.StepRendererComponents do
     ~H"""
     <input
       type="text"
-      name={"opts[#{@field.key}][#{@idx}]"}
+      name={"#{@name_prefix}[#{@field.key}][#{@idx}]"}
       value={@value}
       phx-debounce="300"
       class="input input-bordered input-sm flex-1"
@@ -263,9 +374,10 @@ defmodule RuncomWeb.StepRendererComponents do
 
   attr :field, :map, required: true
   attr :step, :any, required: true
+  attr :name_prefix, :string, default: "opts"
 
   def map_field(assigns) do
-    entries = map_entries(assigns.step, assigns.field.key)
+    entries = map_entries(assigns.step, assigns.field.name)
     assigns = Map.put(assigns, :entries, entries)
 
     ~H"""
@@ -273,7 +385,7 @@ defmodule RuncomWeb.StepRendererComponents do
       <div :for={{key, val, idx} <- @entries} class="flex items-center gap-1">
         <input
           type="text"
-          name={"opts[#{@field.key}][#{idx}][key]"}
+          name={"#{@name_prefix}[#{@field.key}][#{idx}][key]"}
           value={key}
           placeholder="key"
           phx-debounce="300"
@@ -281,7 +393,7 @@ defmodule RuncomWeb.StepRendererComponents do
         />
         <input
           type="text"
-          name={"opts[#{@field.key}][#{idx}][value]"}
+          name={"#{@name_prefix}[#{@field.key}][#{idx}][value]"}
           value={val}
           placeholder="value"
           phx-debounce="300"
@@ -311,23 +423,74 @@ defmodule RuncomWeb.StepRendererComponents do
     """
   end
 
-  defp array_items(step, key) when is_binary(key) do
-    atom_key = String.to_existing_atom(key)
-    val = Map.get(step, atom_key)
+  defp build_sections(fields, step, active_group_fields) do
+    {sections, _seen_groups} =
+      Enum.reduce(fields, {[], MapSet.new()}, fn field, {acc, seen} ->
+        cond do
+          field.group != nil and field.group.name not in seen ->
+            group_fields = Enum.filter(fields, &(&1.group && &1.group.name == field.group.name))
+            active_key = resolve_active_key(field.group, group_fields, step, active_group_fields)
 
-    case val do
+            section = %{
+              type: :group,
+              name: field.group.name,
+              opts: field.group.opts,
+              fields: group_fields,
+              active_key: active_key
+            }
+
+            {[section | acc], MapSet.put(seen, field.group.name)}
+
+          field.group != nil ->
+            {acc, seen}
+
+          field.depends_on != nil ->
+            dep_value = Map.get(step, field.depends_on)
+
+            if dep_value != nil and dep_value != "" do
+              {[%{type: :field, field: field} | acc], seen}
+            else
+              {acc, seen}
+            end
+
+          true ->
+            {[%{type: :field, field: field} | acc], seen}
+        end
+      end)
+
+    Enum.reverse(sections)
+  end
+
+  defp resolve_active_key(group, group_fields, step, active_group_fields) do
+    if Keyword.get(group.opts, :exclusive, false) do
+      explicit = Map.get(active_group_fields, to_string(group.name))
+
+      cond do
+        explicit ->
+          explicit
+
+        field =
+            Enum.find(group_fields, fn f ->
+              val = Map.get(step, f.name)
+              val != nil and val != ""
+            end) ->
+          field.key
+
+        true ->
+          hd(group_fields).key
+      end
+    end
+  end
+
+  defp array_items(step, name) when is_atom(name) do
+    case Map.get(step, name) do
       items when is_list(items) -> Enum.map(items, &to_string/1)
       _ -> []
     end
-  rescue
-    _ -> []
   end
 
-  defp map_entries(step, key) when is_binary(key) do
-    atom_key = String.to_existing_atom(key)
-    val = Map.get(step, atom_key)
-
-    case val do
+  defp map_entries(step, name) when is_atom(name) do
+    case Map.get(step, name) do
       pairs when is_list(pairs) ->
         pairs
         |> Enum.with_index()
@@ -341,16 +504,11 @@ defmodule RuncomWeb.StepRendererComponents do
       _ ->
         []
     end
-  rescue
-    _ -> []
   end
 
-  defp field_value(step, key) when is_binary(key) do
-    atom_key = String.to_existing_atom(key)
-    val = Map.get(step, atom_key)
-    format_field_value(val)
-  rescue
-    _ -> nil
+  defp field_value(step, name) when is_atom(name) do
+    value = Map.get(step, name) || Map.get(step, to_string(name))
+    format_field_value(value)
   end
 
   defp format_field_value(nil), do: nil

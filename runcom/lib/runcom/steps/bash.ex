@@ -27,12 +27,14 @@ defmodule Runcom.Steps.Bash do
   use Runcom.Step, category: "Commands"
 
   schema do
-    field :script, :string, ui_type: {:code, :bash}
-    field :file, :string
+    field :script, :string, group: :content, ui_type: {:code, :bash}
+    field :file, :string, group: :content
     field :args, {:array, :string}, default: []
     field :env, :map
     field :env_include, {:array, :string}
     field :env_exclude, {:array, :string}
+
+    group :content, required: true, exclusive: true
   end
 
   alias Runcom.CommandRunner
@@ -44,41 +46,23 @@ defmodule Runcom.Steps.Bash do
   def name, do: "Bash"
 
   @impl true
-  def validate(opts) do
-    modes = [:script, :file]
-    present = Enum.filter(modes, &Map.has_key?(opts, &1))
-
-    case present do
-      [] ->
-        {:error, "one of script or file is required"}
-
-      [_single] ->
-        :ok
-
-      _ ->
-        {:error, "script and file are mutually exclusive"}
-    end
-  end
-
-  @impl true
-  def run(rc, %{file: file, sink: sink} = opts) do
+  def run(_rc, %{file: file, sink: sink} = opts) do
     args = Map.get(opts, :args, [])
 
     CommandRunner.run(
       cmd: "bash",
-      args: [resolve_value(rc, file) | args],
+      args: [file | args],
       env: Map.get(opts, :env, []),
       stdout_sink: sink,
       stderr_sink: sink
     )
   end
 
-  def run(rc, %{script: script} = opts) do
-    resolved = resolve_value(rc, script)
+  def run(_rc, %{script: script} = opts) do
     sink = opts[:sink]
     session_opts = Map.take(opts, ~w[env env_include env_exclude]a)
 
-    case Bash.run(resolved, session_opts) do
+    case Bash.run(script, session_opts) do
       {status, result, _session} when status in [:ok, :error, :exit] ->
         stdout = Bash.stdout(result) || ""
         stderr = Bash.stderr(result) || ""
@@ -106,15 +90,11 @@ defmodule Runcom.Steps.Bash do
   end
 
   @impl true
-  def dryrun(rc, %{file: file}) do
-    resolved_file = resolve_value(rc, file)
-    {:ok, Result.ok(output: "Would execute bash file: #{resolved_file}")}
+  def dryrun(_rc, %{file: file}) do
+    {:ok, Result.ok(output: "Would execute bash file: #{file}")}
   end
 
   def dryrun(_rc, %{script: _script}) do
     {:ok, Result.ok(output: "Would execute inline script via Bash interpreter")}
   end
-
-  defp resolve_value(rc, value) when is_function(value, 1), do: value.(rc)
-  defp resolve_value(_rc, value), do: value
 end

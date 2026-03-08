@@ -90,7 +90,16 @@ defmodule RuncomDemo.MixProject do
         "esbuild runcom_demo --minify",
         "phx.digest"
       ],
-      precommit: ["compile --warnings-as-errors", "deps.unlock --unused", "format", "test"]
+      precommit: ["compile --warnings-as-errors", "deps.unlock --unused", "format", "test"],
+      dev: &dev/1
     ]
+  end
+
+  defp dev(_args) do
+    {_, status} = System.cmd("docker", ~w(compose up --build -d), into: IO.stream())
+
+    if status != 0 do
+      Mix.raise("docker compose up failed")
+    end
   end
 end

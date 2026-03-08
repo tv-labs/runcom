@@ -69,7 +69,8 @@ defmodule RuncomWeb.Helpers do
 
     {completed_pct, failed_pct} =
       if assigns.total > 0 do
-        {round(assigns.completed / assigns.total * 100), round(assigns.failed / assigns.total * 100)}
+        {round(assigns.completed / assigns.total * 100),
+         round(assigns.failed / assigns.total * 100)}
       else
         {0, 0}
       end

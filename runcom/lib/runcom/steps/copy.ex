@@ -34,9 +34,11 @@ defmodule Runcom.Steps.Copy do
   use Runcom.Step, category: "Files"
 
   schema do
-    field :src, :string
+    field :src, :string, group: :source
+    field :content, :string, group: :source, ui_type: :textarea
     field :dest, :string, required: true
-    field :content, :string, ui_type: :textarea
+
+    group :source, required: true, exclusive: true
   end
 
   @impl true
