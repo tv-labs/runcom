@@ -21,7 +21,6 @@ defmodule RuncomEcto.Store do
   alias RuncomEcto.Schema.Dispatch
   alias RuncomEcto.Schema.DispatchNode
   alias RuncomEcto.Schema.Result
-  alias RuncomEcto.Schema.Secret
   alias RuncomEcto.Schema.StepResult
 
   @failure_statuses ["failed", "error"]
@@ -580,64 +579,6 @@ defmodule RuncomEcto.Store do
     {:ok, repo.all(query)}
   end
 
-  @impl true
-  def list_secrets(opts \\ []) do
-    repo = repo!(opts)
-
-    secrets =
-      from(s in Secret,
-        select: %{name: s.name, inserted_at: s.inserted_at},
-        order_by: [asc: s.name]
-      )
-      |> repo.all()
-
-    {:ok, secrets}
-  end
-
-  @impl true
-  def fetch_secret(name, opts \\ []) do
-    repo = repo!(opts)
-
-    case repo.get_by(Secret, name: name) do
-      nil -> {:error, :not_found}
-      secret -> {:ok, decrypt(secret.encrypted_value)}
-    end
-  end
-
-  @impl true
-  def put_secret(name, value, opts \\ []) do
-    repo = repo!(opts)
-    encrypted = encrypt(value)
-    attrs = %{name: name, encrypted_value: encrypted}
-
-    case repo.get_by(Secret, name: name) do
-      nil ->
-        %Secret{}
-        |> Secret.changeset(attrs)
-        |> repo.insert()
-        |> case do
-          {:ok, _} -> :ok
-          {:error, changeset} -> {:error, changeset}
-        end
-
-      existing ->
-        existing
-        |> Secret.changeset(attrs)
-        |> repo.update()
-        |> case do
-          {:ok, _} -> :ok
-          {:error, changeset} -> {:error, changeset}
-        end
-    end
-  end
-
-  @impl true
-  def delete_secret(name, opts \\ []) do
-    repo = repo!(opts)
-    from(s in Secret, where: s.name == ^name) |> repo.delete_all()
-    :ok
-  end
-
   defp insert_step_results(_repo, _result_id, empty) when empty in [[], %{}], do: {:ok, []}
 
   defp insert_step_results(repo, result_id, step_results_attrs) do
@@ -662,7 +603,7 @@ defmodule RuncomEcto.Store do
   end
 
   @step_result_fields ~w(name order status module exit_code duration_ms attempts
-    started_at completed_at output output_ref error bytes changed opts meta)a
+    started_at completed_at output output_ref error changed opts meta)a
 
   # Normalize step_results from map format %{name => result} to list of maps with :name key
   defp normalize_step_results(attrs) when is_map(attrs) do
@@ -676,7 +617,9 @@ defmodule RuncomEcto.Store do
     end)
   end
 
-  defp normalize_step_results(attrs) when is_list(attrs), do: attrs
+  defp normalize_step_results(attrs) when is_list(attrs) do
+    Enum.map(attrs, &Map.take(&1, [:result_id, :inserted_at | @step_result_fields]))
+  end
 
   defp repo!(opts), do: RuncomEcto.repo!(opts, Runcom.Store)
 
@@ -746,31 +689,5 @@ defmodule RuncomEcto.Store do
   defp maybe_search_dispatch(query, term) do
     pattern = "%" <> escape_like(term) <> "%"
     where(query, [d], ilike(d.runbook_id, ^pattern))
-  end
-
-  defp derive_keys do
-    raw =
-      case Application.get_env(:runcom, :vault_key) do
-        nil -> raise "No :vault_key configured. Set config :runcom, vault_key: \"some-secret\""
-        key when is_binary(key) -> key
-      end
-
-    secret = :crypto.hash(:sha256, raw)
-    sign_secret = :crypto.hash(:sha256, raw <> "sign")
-    {secret, sign_secret}
-  end
-
-  defp encrypt(plaintext) do
-    {secret, sign_secret} = derive_keys()
-    Plug.Crypto.MessageEncryptor.encrypt(plaintext, secret, sign_secret)
-  end
-
-  defp decrypt(ciphertext) do
-    {secret, sign_secret} = derive_keys()
-
-    case Plug.Crypto.MessageEncryptor.decrypt(ciphertext, secret, sign_secret) do
-      {:ok, plaintext} -> plaintext
-      :error -> raise "Failed to decrypt secret — vault key may have changed"
-    end
   end
 end

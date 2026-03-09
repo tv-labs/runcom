@@ -23,18 +23,15 @@ defmodule Runcom.Steps.Apt do
       |> Apt.add("install_deps", name: ["curl", "wget"], state: :present)
   """
 
-  use Runcom.Step, category: "Packages"
+  use Runcom.Step, name: "Apt", category: "Packages"
 
   schema do
-    field :name, [:string, {:array, :string}], required: true, label: "Package Name(s)"
-    field :state, :enum, required: true, values: [:present, :absent, :latest]
-    field :update_cache, :boolean, label: "Update Cache"
+    field(:name, [:string, {:array, :string}], required: true, label: "Package Name(s)")
+    field(:state, :enum, required: true, values: [:present, :absent, :latest])
+    field(:update_cache, :boolean, label: "Update Cache")
   end
 
   alias Runcom.CommandRunner
-
-  @impl true
-  def name, do: "Apt"
 
   @impl true
   def run(_rc, %{sink: sink} = opts) do

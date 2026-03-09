@@ -24,19 +24,16 @@ defmodule Runcom.Steps.Systemd do
       |> Systemd.add("enable", name: "myapp", state: :started, enabled: true)
   """
 
-  use Runcom.Step, category: "Services"
+  use Runcom.Step, name: "Systemd", category: "Services"
 
   schema do
-    field :name, :string, required: true, label: "Service Name"
-    field :state, :enum, values: [:started, :stopped, :restarted, :reloaded], required: true
-    field :enabled, :boolean, label: "Enabled on Boot"
-    field :daemon_reload, :boolean, label: "Daemon Reload"
+    field(:name, :string, required: true, label: "Service Name")
+    field(:state, :enum, values: [:started, :stopped, :restarted, :reloaded], required: true)
+    field(:enabled, :boolean, label: "Enabled on Boot")
+    field(:daemon_reload, :boolean, label: "Daemon Reload")
   end
 
   alias Runcom.CommandRunner
-
-  @impl true
-  def name, do: "Systemd"
 
   @impl true
   def run(_rc, %{sink: sink} = opts) do

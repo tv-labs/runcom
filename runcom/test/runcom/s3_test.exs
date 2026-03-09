@@ -67,9 +67,8 @@ defmodule Runcom.S3Test do
     end
 
     test "strips trailing slash from endpoint_url" do
-      assert S3.url("bucket", "us-east-1", "key.txt",
-               endpoint_url: "http://minio:9000/"
-             ) == "http://minio:9000/bucket/key.txt"
+      assert S3.url("bucket", "us-east-1", "key.txt", endpoint_url: "http://minio:9000/") ==
+               "http://minio:9000/bucket/key.txt"
     end
   end
 end

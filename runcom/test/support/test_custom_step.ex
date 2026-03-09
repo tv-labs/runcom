@@ -1,9 +1,6 @@
 defmodule Runcom.TestCustomStep do
   @moduledoc false
-  use Runcom.Step
-
-  @impl true
-  def name, do: "Test Custom Step"
+  use Runcom.Step, name: "Test Custom Step"
 
   @impl true
   def validate(_opts), do: :ok

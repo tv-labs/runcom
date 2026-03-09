@@ -3,9 +3,9 @@ defmodule Runcom.Steps.WaitForTest do
 
   alias Runcom.Steps.WaitFor
 
-  describe "name/0" do
-    test "returns step name" do
-      assert WaitFor.name() == "WaitFor"
+  describe "__name__/0" do
+    test "returns step name via __name__" do
+      assert WaitFor.__name__() == "WaitFor"
     end
   end
 

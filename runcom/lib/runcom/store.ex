@@ -1,18 +1,17 @@
 defmodule Runcom.Store do
   @moduledoc """
-  Behaviour for persisting execution results, secrets, dispatches, and metrics.
+  Behaviour for persisting execution results, dispatches, and metrics.
 
   Store implementations provide the persistence layer for all operational data
-  in the Runcom system. Runbook discovery is handled by `Runcom.Runbook`
-  via the `Runcom.Runbook.Compiled` protocol.
+  in the Runcom system. Runbook discovery is handled by `Runcom.Runbook`.
+
+  See `RuncomEcto` as an example implementation.
 
   ## Callbacks
 
-  Required callbacks cover two areas:
+  Required callbacks:
 
     * **Results** - `save_result/2`, `list_results/1`, `get_result/2`
-    * **Secrets** - `list_secrets/1`, `fetch_secret/2`, `put_secret/3`,
-      `delete_secret/2`
 
   Optional callbacks extend the store with:
 
@@ -69,36 +68,6 @@ defmodule Runcom.Store do
   """
   @callback search_results(query :: String.t(), opts :: keyword()) ::
               {:ok, [map()]} | {:error, term()}
-
-  @doc """
-  Lists all secret names with metadata.
-
-  Returns names and timestamps only — never values.
-  """
-  @callback list_secrets(opts :: keyword()) ::
-              {:ok, [%{name: String.t(), inserted_at: DateTime.t()}]}
-
-  @doc """
-  Fetches a secret value by name.
-
-  Returns the decrypted value.
-  """
-  @callback fetch_secret(name :: String.t(), opts :: keyword()) ::
-              {:ok, binary()} | {:error, :not_found | term()}
-
-  @doc """
-  Creates or updates a secret.
-
-  The implementation is responsible for encrypting the value before storage.
-  """
-  @callback put_secret(name :: String.t(), value :: binary(), opts :: keyword()) ::
-              :ok | {:error, term()}
-
-  @doc """
-  Deletes a secret by name.
-  """
-  @callback delete_secret(name :: String.t(), opts :: keyword()) ::
-              :ok | {:error, term()}
 
   @doc "Creates a dispatch record."
   @callback create_dispatch(attrs :: map(), opts :: keyword()) ::

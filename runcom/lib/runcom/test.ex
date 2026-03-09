@@ -8,8 +8,8 @@ defmodule Runcom.Test do
 
       test "my runbook", %{test: test_name} do
         Runcom.Test.stub(test_name, fn
-          {"download", _opts} -> {:ok, Result.ok(bytes: 1024)}
-          {"extract", _opts} -> {:ok, Result.ok(changed: true)}
+          {"download", _opts} -> {:ok, Result.ok(output: "downloaded")}
+          {"extract", _opts} -> {:ok, Result.ok(output: "extracted")}
         end)
 
         runbook = Runcom.new(test_name) |> ...
@@ -34,7 +34,7 @@ defmodule Runcom.Test do
   ## Examples
 
       Runcom.Test.stub(test_name, fn
-        {"download", _opts} -> {:ok, Result.ok(bytes: 1024)}
+        {"download", _opts} -> {:ok, Result.ok(output: "downloaded")}
         {"extract", %{dest: dest}} -> {:ok, Result.ok(output: dest)}
       end)
   """

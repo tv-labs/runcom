@@ -3,9 +3,9 @@ defmodule Runcom.Steps.EExTemplateTest do
 
   alias Runcom.Steps.EExTemplate
 
-  describe "name/0" do
-    test "returns step name" do
-      assert EExTemplate.name() == "EExTemplate"
+  describe "__name__/0" do
+    test "returns step name via __name__" do
+      assert EExTemplate.__name__() == "EExTemplate"
     end
   end
 

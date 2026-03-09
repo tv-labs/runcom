@@ -35,8 +35,13 @@ erDiagram
         string module
         integer exit_code
         integer duration_ms
+        integer attempts
+        datetime started_at
+        datetime completed_at
         bytea output "zstd compressed"
+        jsonb output_ref
         text error
+        boolean changed
         jsonb opts
         jsonb meta
     }
@@ -45,11 +50,14 @@ erDiagram
         uuid id PK
         string runbook_id
         string status
+        integer nodes_acked
         integer nodes_completed
         integer nodes_failed
-        integer nodes_acked
         datetime started_at
         datetime completed_at
+        integer duration_ms
+        jsonb assigns
+        jsonb secret_names
     }
 
     runcom_dispatch_nodes {
@@ -58,17 +66,17 @@ erDiagram
         string node_id
         string status
         bigint result_id FK
+        datetime started_at
+        datetime completed_at
+        integer duration_ms
         integer steps_completed
         integer steps_failed
         integer steps_skipped
         integer steps_total
+        text error_message
+        datetime acked_at
     }
 
-    runcom_secrets {
-        bigint id PK
-        string name UK
-        binary encrypted_value
-    }
 ```
 
 ## Installation
@@ -85,8 +93,7 @@ end
 
 ```elixir
 config :runcom,
-  store: {RuncomEcto.Store, repo: MyApp.Repo},
-  vault_key: "a-32-byte-secret-key-here!!!!!!"
+  store: {RuncomEcto.Store, repo: MyApp.Repo}
 ```
 
 2. Create a migration in your consuming app:
@@ -110,8 +117,6 @@ end
 | `runcom_step_results` | Per-step results with compressed output |
 | `runcom_dispatches` | Dispatch batch records |
 | `runcom_dispatch_nodes` | Per-node dispatch tracking |
-| `runcom_secrets` | AES-256 encrypted secrets |
-
 ## Store API
 
 `RuncomEcto.Store` implements `Runcom.Store`:
@@ -122,12 +127,6 @@ RuncomEcto.Store.save_result(attrs)
 RuncomEcto.Store.get_result(id)
 RuncomEcto.Store.list_results()
 RuncomEcto.Store.search_results("deploy failure")
-
-# Secrets
-RuncomEcto.Store.put_secret("api_key", "sk-secret-value")
-RuncomEcto.Store.fetch_secret("api_key")    # {:ok, "sk-secret-value"}
-RuncomEcto.Store.list_secrets()              # {:ok, [%{name: "api_key", inserted_at: ...}]}
-RuncomEcto.Store.delete_secret("api_key")
 
 # Analytics
 RuncomEcto.Store.run_rate()              # runs per time bucket
@@ -150,4 +149,3 @@ All functions accept an optional `repo: MyApp.Repo` keyword argument.
 - Application-level zstd compression for step output (OTP 28+)
 - Full-text search via Postgres tsvector
 - Versioned migrations for safe upgrades
-- Encrypted secret storage at rest via `Plug.Crypto.MessageEncryptor`

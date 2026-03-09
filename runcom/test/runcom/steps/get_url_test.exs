@@ -3,9 +3,9 @@ defmodule Runcom.Steps.GetUrlTest do
 
   alias Runcom.Steps.GetUrl
 
-  describe "name/0" do
-    test "returns step name" do
-      assert GetUrl.name() == "GetUrl"
+  describe "__name__/0" do
+    test "returns step name via __name__" do
+      assert GetUrl.__name__() == "GetUrl"
     end
   end
 

@@ -29,21 +29,18 @@ defmodule Runcom.Steps.Reboot do
   5. On next boot, `Runcom.resume/2` continues from the next step
   """
 
-  use Runcom.Step, category: "Services"
+  use Runcom.Step, name: "Reboot", category: "Services"
   @default_delay 5
   @default_message "Runcom scheduled reboot"
 
   schema do
-    field :delay, :integer, default: @default_delay, label: "Delay (seconds)"
-    field :message, :string, default: @default_message
+    field(:delay, :integer, default: @default_delay, label: "Delay (seconds)")
+    field(:message, :string, default: @default_message)
   end
 
   import Bash.Sigil
 
   alias Runcom.CommandRunner
-
-  @impl true
-  def name, do: "Reboot"
 
   @impl true
   def run(_rc, %{sink: sink, delay: delay, message: message}) do

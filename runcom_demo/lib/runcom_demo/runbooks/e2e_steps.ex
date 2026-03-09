@@ -6,7 +6,7 @@ defmodule RuncomDemo.Runbooks.E2ESteps do
   directory under `/tmp/runcom-e2e-<run_id>/` and cleans up at the end.
   """
 
-  use Runcom.Runbook
+  use Runcom.Runbook, name: "e2e_steps"
 
   import Bash.Sigil
 
@@ -24,9 +24,6 @@ defmodule RuncomDemo.Runbooks.E2ESteps do
   schema do
     field :run_id, :string, default: "e2e"
   end
-
-  @impl true
-  def name, do: "e2e_steps"
 
   @impl true
   def build(params) do

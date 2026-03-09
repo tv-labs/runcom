@@ -113,12 +113,12 @@ defimpl Runcom.Sink, for: Runcom.Sink.S3 do
   end
 
   def write(%{agent: agent} = sink, {:stdout, data}) do
-    buffer_write(sink, agent, data)
+    :ok = buffer_write(sink, agent, data)
     sink
   end
 
   def write(%{agent: agent} = sink, {:stderr, data}) do
-    buffer_write(sink, agent, data)
+    :ok = buffer_write(sink, agent, data)
     sink
   end
 
@@ -161,8 +161,11 @@ defimpl Runcom.Sink, for: Runcom.Sink.S3 do
             30_000 -> {:halt, {:timeout, resp}}
           end
 
-        :done -> {:halt, :done}
-        {:timeout, _resp} -> {:halt, :done}
+        :done ->
+          {:halt, :done}
+
+        {:timeout, _resp} ->
+          {:halt, :done}
       end,
       fn
         {:timeout, resp} -> Req.cancel_async_response(resp)
@@ -175,7 +178,6 @@ defimpl Runcom.Sink, for: Runcom.Sink.S3 do
 
   def close(%{agent: agent} = sink) do
     try do
-      # Flush remaining buffer as final part
       Agent.update(agent, fn state ->
         flush_buffer(sink, state)
       end)
@@ -188,7 +190,8 @@ defimpl Runcom.Sink, for: Runcom.Sink.S3 do
 
       complete_xml = build_complete_xml(parts)
 
-      case Req.post("#{url}?uploadId=#{upload_id}",
+      case Req.post(
+             "#{url}?uploadId=#{upload_id}",
              Keyword.merge(req_opts,
                body: complete_xml,
                headers: [{"content-type", "application/xml"}],
@@ -203,11 +206,19 @@ defimpl Runcom.Sink, for: Runcom.Sink.S3 do
             "[Runcom.Sink.S3] complete multipart failed for #{sink.bucket}/#{key}: HTTP #{status} — #{inspect(body)}"
           )
 
+          abort_upload(sink, key, upload_id)
+
         {:error, reason} ->
           Logger.warning(
             "[Runcom.Sink.S3] complete multipart failed for #{sink.bucket}/#{key}: #{inspect(reason)}"
           )
+
+          abort_upload(sink, key, upload_id)
       end
+    rescue
+      error ->
+        abort_upload_from_agent(sink, agent)
+        reraise error, __STACKTRACE__
     after
       Agent.stop(agent)
     end
@@ -245,7 +256,33 @@ defimpl Runcom.Sink, for: Runcom.Sink.S3 do
     %{sink | key: "#{prefix}#{sanitized}.log", agent: nil}
   end
 
-  # -- Private --
+  defp abort_upload_from_agent(sink, agent) do
+    case Agent.get(agent, & &1) do
+      %{upload_id: upload_id} ->
+        key = sink.key || sink.prefix
+        abort_upload(sink, key, upload_id)
+
+      _ ->
+        :ok
+    end
+  rescue
+    _ -> :ok
+  end
+
+  defp abort_upload(sink, key, upload_id) do
+    url = key_url(sink, key)
+    req_opts = base_req_opts(sink)
+
+    case Req.delete("#{url}?uploadId=#{upload_id}", req_opts) do
+      {:ok, %{status: status}} when status in [200, 204] ->
+        :ok
+
+      other ->
+        Logger.warning(
+          "[Runcom.Sink.S3] abort multipart failed for #{sink.bucket}/#{key}: #{inspect(other)}"
+        )
+    end
+  end
 
   defp buffer_write(sink, agent, data) do
     Agent.update(agent, fn state ->
@@ -262,11 +299,7 @@ defimpl Runcom.Sink, for: Runcom.Sink.S3 do
   defp flush_buffer(_sink, %{buffer: []} = state), do: state
 
   defp flush_buffer(sink, state) do
-    if IO.iodata_length(state.buffer) > 0 do
-      upload_part(sink, state)
-    else
-      state
-    end
+    upload_part(sink, state)
   end
 
   defp upload_part(sink, state) do
@@ -282,7 +315,13 @@ defimpl Runcom.Sink, for: Runcom.Sink.S3 do
     case Req.put("#{url}?partNumber=#{part_number}&uploadId=#{state.upload_id}", req_opts) do
       {:ok, %{status: 200, headers: headers}} ->
         etag = get_etag(headers)
-        %{state | parts: [{part_number, etag} | state.parts], part_number: part_number, buffer: []}
+
+        %{
+          state
+          | parts: [{part_number, etag} | state.parts],
+            part_number: part_number,
+            buffer: []
+        }
 
       {:ok, %{status: status, body: resp_body}} ->
         raise "S3 part #{part_number} upload failed for #{sink.bucket}/#{key}: HTTP #{status} — #{inspect(resp_body)}"

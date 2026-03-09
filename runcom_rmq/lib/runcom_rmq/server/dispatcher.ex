@@ -40,7 +40,6 @@ defmodule RuncomRmq.Server.Dispatcher do
 
     * `:dispatch_id` -- UUID for this dispatch batch (required)
     * `:assigns` -- map of variable overrides
-    * `:secrets` -- map of secrets to inject
   """
   @spec dispatch(String.t(), [map()], keyword()) :: [{String.t(), :acked | {:error, term()}}]
   def dispatch(runbook_id, nodes, opts \\ []) do
@@ -61,15 +60,13 @@ defmodule RuncomRmq.Server.Dispatcher do
   def handle_call({:dispatch, runbook_id, nodes, opts}, _from, state) do
     dispatch_id = Keyword.fetch!(opts, :dispatch_id)
     assigns = Keyword.get(opts, :assigns, %{})
-    secrets = Keyword.get(opts, :secrets, %{})
     runbook_hash = fetch_runbook_hash(runbook_id)
 
     message = %{
       dispatch_id: dispatch_id,
       runbook_id: runbook_id,
       runbook_hash: runbook_hash,
-      assigns: assigns,
-      secrets: secrets
+      assigns: assigns
     }
 
     results =
@@ -78,7 +75,14 @@ defmodule RuncomRmq.Server.Dispatcher do
         fn node ->
           node_id = Map.get(node, :node_id) || Map.get(node, "node_id")
           queue = Map.get(node, :queue) || Map.get(node, "queue")
-          result = dispatch_to_node(state.connection, queue, message, state.ack_timeout)
+
+          result =
+            if queue do
+              dispatch_to_node(state.connection, queue, message, state.ack_timeout)
+            else
+              {:error, :no_queue}
+            end
+
           {node_id, result}
         end,
         timeout: state.ack_timeout + 5_000,
@@ -140,7 +144,7 @@ defmodule RuncomRmq.Server.Dispatcher do
 
   defp safe_close_channel(chan) do
     AMQP.Channel.close(chan)
-  rescue
-    _ -> :ok
+  catch
+    :exit, _ -> :ok
   end
 end

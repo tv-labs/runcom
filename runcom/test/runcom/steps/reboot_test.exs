@@ -3,9 +3,9 @@ defmodule Runcom.Steps.RebootTest do
 
   alias Runcom.Steps.Reboot
 
-  describe "name/0" do
-    test "returns step name" do
-      assert Reboot.name() == "Reboot"
+  describe "__name__/0" do
+    test "returns step name via __name__" do
+      assert Reboot.__name__() == "Reboot"
     end
   end
 

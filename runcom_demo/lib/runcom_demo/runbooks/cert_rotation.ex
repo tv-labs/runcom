@@ -37,7 +37,7 @@ defmodule RuncomDemo.Runbooks.CertRotation do
     * `:cert_url` - base URL for certificate distribution (default: `"https://vault.example.com/certs"`)
   """
 
-  use Runcom.Runbook
+  use Runcom.Runbook, name: "cert_rotation"
 
   require Runcom.Steps.Command, as: Command
   require Runcom.Steps.Debug, as: Debug
@@ -47,9 +47,6 @@ defmodule RuncomDemo.Runbooks.CertRotation do
     field :domain, :string, required: true, default: "example.com"
     field :cert_url, :string, default: "https://vault.example.com/certs"
   end
-
-  @impl true
-  def name, do: "cert_rotation"
 
   @impl true
   def build(params) do

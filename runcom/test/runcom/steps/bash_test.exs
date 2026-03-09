@@ -5,9 +5,9 @@ defmodule Runcom.Steps.BashTest do
 
   @moduletag :tmp_dir
 
-  describe "name/0" do
-    test "returns step name" do
-      assert Bash.name() == "Bash"
+  describe "__name__/0" do
+    test "returns step name via __name__" do
+      assert Bash.__name__() == "Bash"
     end
   end
 
@@ -88,7 +88,7 @@ defmodule Runcom.Steps.BashTest do
       {:ok, result} = Bash.run(nil, %{script: "echo line1\necho line2"})
 
       assert result.status == :ok
-      assert result.lines == ["line1", "line2"]
+      assert result.output == "line1\nline2"
     end
 
     test "returns error for failed script" do
@@ -120,6 +120,5 @@ defmodule Runcom.Steps.BashTest do
       assert result.status == :ok
       assert result.output =~ "inline script"
     end
-
   end
 end

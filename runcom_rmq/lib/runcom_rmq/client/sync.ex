@@ -139,10 +139,10 @@ defmodule RuncomRmq.Client.Sync do
 
   defp apply_updates(cache, updates) do
     Enum.reduce_while(updates, :ok, fn {id, {struct_binary, bytecodes}}, _acc ->
-      case Runcom.Bytecode.load_bundle(bytecodes) do
+      case Runcom.CodeSync.load_bundle(bytecodes) do
         :ok ->
           runbook = :erlang.binary_to_term(struct_binary)
-          {:ok, hash} = Runcom.Bytecode.hash(runbook)
+          {:ok, hash} = Runcom.CodeSync.hash(runbook)
           mod = resolve_runbook_module(id, runbook)
           RunbookCache.put(cache, id, hash, mod, runbook, bytecodes)
           {:cont, {:ok, {mod, runbook}}}

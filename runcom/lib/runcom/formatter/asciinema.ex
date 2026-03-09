@@ -279,26 +279,45 @@ defmodule Runcom.Formatter.Asciinema do
         extract_system_command(opts) || name
 
       module ->
-        module.name()
+        module.__name__()
     end
   end
 
   defp extract_bash_command(opts) do
-    cond do
-      is_binary(opts[:script]) ->
-        String.trim(opts[:script])
+    script =
+      cond do
+        is_binary(opts[:script]) ->
+          String.trim(opts[:script])
 
-      is_function(opts[:script]) ->
-        extract_fn_script(opts[:script])
+        is_function(opts[:script]) ->
+          extract_fn_script(opts[:script])
 
-      is_binary(opts[:file]) ->
-        "bash #{opts[:file]}"
+        is_binary(opts[:file]) ->
+          "bash #{opts[:file]}"
 
-      is_binary(opts[:definition]) ->
-        opts[:definition]
+        is_binary(opts[:definition]) ->
+          opts[:definition]
 
-      true ->
-        nil
+        true ->
+          nil
+      end
+
+    truncate_command(script)
+  end
+
+  defp truncate_command(nil), do: nil
+
+  defp truncate_command(script) do
+    lines =
+      script
+      |> String.split("\n")
+      |> Enum.map(&String.trim/1)
+      |> Enum.reject(&(&1 == ""))
+
+    case lines do
+      [single] -> single
+      [first | _] -> "#{first} ..."
+      [] -> nil
     end
   end
 

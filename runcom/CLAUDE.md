@@ -20,6 +20,16 @@
 **Prefer** defguard to extract common questions in function heads
 **Avoid** Aliasing modules as different names. If there is a conflict in names, alias to its parent module and qualify with the parent at callsites.
 
+## Code Sync
+
+`Runcom.CodeSync` bundles custom step bytecodes for remote agents. It relies on `Runcom.CodeSync.Tracer` to build precise dependency manifests at compile time. Apps defining custom steps must add to `mix.exs`:
+
+```elixir
+elixirc_options: [tracers: [Runcom.CodeSync.Tracer]]
+```
+
+The tracer is not needed in `runcom`'s own `mix.exs` (builtin steps are filtered out). Only downstream apps that define custom steps need it.
+
 ## Gotchas
 
 - Steps use `use Runcom.Step` which auto-implements a `stub/2` that looks up stubs from the process dictionary (like `Req.Test`). Configure `config Runcom, mode: :stub` in test.exs.

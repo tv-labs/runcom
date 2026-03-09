@@ -16,13 +16,12 @@ defmodule RuncomWeb.Live.BuilderLiveTest do
       source = BuilderLive.graph_to_source([], [], "My Runbook")
 
       assert source =~ "defmodule MyRunbook do"
-      assert source =~ "use Runcom.Runbook"
+      assert source =~ "use Runcom.Runbook, name: \"My Runbook\""
     end
 
-    test "generates @impl name/0 and build/1" do
+    test "generates build/1" do
       source = BuilderLive.graph_to_source([], [], "My Runbook")
 
-      assert source =~ "@impl true\n  def name, do: \"My Runbook\""
       assert source =~ "@impl true\n  def build(params) do"
       assert source =~ "Runcom.new(\"my-runbook\", name: \"My Runbook\")"
     end

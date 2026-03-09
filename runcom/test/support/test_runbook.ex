@@ -6,10 +6,7 @@ defmodule Runcom.Test.Runbook do
   for tests that need to verify bytecode operations like Server.get_runbook_bytecode/2.
   """
 
-  use Runcom.Runbook
-
-  @impl true
-  def name, do: "test_fixture_runbook"
+  use Runcom.Runbook, name: "test_fixture_runbook"
 
   @impl true
   def build(params) do

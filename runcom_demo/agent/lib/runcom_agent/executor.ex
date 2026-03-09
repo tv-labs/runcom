@@ -31,9 +31,9 @@ defmodule RuncomAgent.Executor do
   Called by the DispatchConsumer when a dispatch command arrives.
   The message includes a pre-resolved `:runbook` key.
   """
-  @spec dispatch(map()) :: :ok
-  def dispatch(message) do
-    GenServer.cast(__MODULE__, {:dispatch, message})
+  @spec dispatch(map(), GenServer.name()) :: :ok
+  def dispatch(message, name \\ __MODULE__) do
+    GenServer.cast(name, {:dispatch, message})
   end
 
   @impl GenServer
@@ -49,15 +49,7 @@ defmodule RuncomAgent.Executor do
 
   @impl GenServer
   def handle_cast({:dispatch, message}, state) do
-    target_nodes = message[:target_nodes] || message["target_nodes"]
-
-    if targeted?(target_nodes, state.node_id) do
-      dispatch_runbook(message, state)
-    else
-      runbook_id = message[:runbook_id] || message["runbook_id"]
-      Logger.debug("[#{state.node_id}] Ignoring dispatch for #{runbook_id} (not targeted)")
-    end
-
+    dispatch_runbook(message, state)
     {:noreply, state}
   end
 
@@ -68,20 +60,14 @@ defmodule RuncomAgent.Executor do
   end
 
   defp dispatch_runbook(message, state) do
-    runbook_id = message[:runbook_id] || message["runbook_id"]
-    dispatch_id = message[:dispatch_id] || message["dispatch_id"]
+    runbook_id = message[:runbook_id]
+    dispatch_id = message[:dispatch_id]
     runbook = message[:runbook]
-    secrets = message[:secrets] || message["secrets"] || %{}
 
     if is_nil(runbook) do
       Logger.warning("[#{state.node_id}] Dispatch for #{runbook_id} has no resolved runbook")
-      emit_dispatch_error(runbook_id, dispatch_id, "No resolved runbook in dispatch message")
     else
       Logger.info("[#{state.node_id}] Dispatch received for #{runbook_id} (dispatch=#{dispatch_id})")
-
-      runbook = apply_secrets(runbook, secrets)
-
-      Logger.info("[#{state.node_id}] Starting async execution of #{runbook_id}")
 
       case Runcom.run_async(runbook, mode: :run, artifact_dir: artifact_dir(), dispatch_id: dispatch_id) do
         {:ok, _pid} ->
@@ -89,46 +75,11 @@ defmodule RuncomAgent.Executor do
 
         {:error, {:already_started, _pid}} ->
           Logger.warning("[#{state.node_id}] Orchestrator already running for #{runbook_id}, skipping")
-          emit_dispatch_error(runbook_id, dispatch_id, "Orchestrator already running, dispatch skipped")
 
         {:error, reason} ->
           Logger.error("[#{state.node_id}] Failed to start #{runbook_id}: #{inspect(reason)}")
-          emit_dispatch_error(runbook_id, dispatch_id, "Failed to start: #{inspect(reason)}")
       end
     end
-  end
-
-  defp emit_dispatch_error(runbook_id, dispatch_id, reason) do
-    :telemetry.execute(
-      [:runcom, :run, :stop],
-      %{duration: 0},
-      %{
-        runcom_id: runbook_id,
-        status: :failed,
-        dispatch_id: dispatch_id,
-        steps_completed: 0,
-        steps_failed: 0,
-        steps_skipped: 0,
-        step_count: 0,
-        step_results: [],
-        edges: [],
-        errors: %{"_dispatch" => reason},
-        started_at: DateTime.utc_now()
-      }
-    )
-  end
-
-  defp targeted?(nil, _node_id), do: true
-  defp targeted?([], _node_id), do: true
-  defp targeted?(nodes, node_id) when is_list(nodes), do: node_id in nodes
-
-  defp apply_secrets(runbook, secrets) when secrets == %{}, do: runbook
-
-  defp apply_secrets(runbook, secrets) do
-    Enum.reduce(secrets, runbook, fn {k, v}, rc ->
-      key = if is_binary(k), do: String.to_atom(k), else: k
-      Runcom.secret(rc, key, v)
-    end)
   end
 
   defp check_and_resume_checkpoints(state) do
@@ -162,11 +113,6 @@ defmodule RuncomAgent.Executor do
         end
       end
     end
-  rescue
-    error ->
-      Logger.error(
-        "[#{state.node_id}] Checkpoint check failed: #{Exception.message(error)}"
-      )
   end
 
   defp artifact_dir do

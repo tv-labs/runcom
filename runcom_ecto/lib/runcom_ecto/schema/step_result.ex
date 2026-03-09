@@ -29,7 +29,6 @@ defmodule RuncomEcto.Schema.StepResult do
     field :output, CompressedBinary
     field :output_ref, :map
     field :error, :string
-    field :bytes, :integer
     field :changed, :boolean
     field :opts, :map, default: %{}
     field :meta, :map, default: %{}
@@ -55,7 +54,6 @@ defmodule RuncomEcto.Schema.StepResult do
       :output,
       :output_ref,
       :error,
-      :bytes,
       :changed,
       :opts,
       :meta

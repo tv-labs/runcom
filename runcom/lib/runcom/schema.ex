@@ -55,7 +55,7 @@ defmodule Runcom.Schema do
 
   ## Supported Types
 
-    * `:string`, `:integer`, `:float`, `:boolean`, `:enum`, `:map`, `:any`
+    * `:string`, `:integer`, `:pos_integer`, `:float`, `:boolean`, `:enum`, `:map`, `:any`
     * `{:array, inner_type}` — list of inner type
     * `[type1, type2, ...]` — union of types (value must match at least one)
 
@@ -80,24 +80,24 @@ defmodule Runcom.Schema do
       @__has_schema__ true
 
       @__field_infos Map.new(@__schema_fields, fn {name, _type, opts} = field ->
-        group_info =
-          case opts[:group] do
-            nil ->
-              nil
+                       group_info =
+                         case opts[:group] do
+                           nil ->
+                             nil
 
-            group_name ->
-              case Enum.find(@__schema_groups, fn {n, _} -> n == group_name end) do
-                {^group_name, group_opts} -> %{name: group_name, opts: group_opts}
-                nil -> %{name: group_name, opts: []}
-              end
-          end
+                           group_name ->
+                             case Enum.find(@__schema_groups, fn {n, _} -> n == group_name end) do
+                               {^group_name, group_opts} -> %{name: group_name, opts: group_opts}
+                               nil -> %{name: group_name, opts: []}
+                             end
+                         end
 
-        {name, Runcom.Schema.to_field_info(field, group_info)}
-      end)
+                       {name, Runcom.Schema.to_field_info(field, group_info)}
+                     end)
 
       defstruct Enum.map(@__schema_fields, fn {name, _type, opts} ->
-        {name, Keyword.get(opts, :default)}
-      end)
+                  {name, Keyword.get(opts, :default)}
+                end)
 
       def __schema__(:fields), do: @__schema_fields
 
@@ -313,6 +313,7 @@ defmodule Runcom.Schema do
   def check_type(_value, :any), do: :ok
   def check_type(value, :string) when is_binary(value), do: :ok
   def check_type(value, :integer) when is_integer(value), do: :ok
+  def check_type(value, :pos_integer) when is_integer(value) and value > 0, do: :ok
   def check_type(value, :float) when is_float(value), do: :ok
   def check_type(value, :boolean) when is_boolean(value), do: :ok
   def check_type(value, :enum) when is_atom(value), do: :ok
@@ -366,7 +367,9 @@ defmodule Runcom.Schema do
   defp resolve_ui_type(nil, type, opts), do: {type_to_ui(type, opts), nil}
   defp resolve_ui_type(ui_type, _type, _opts) when is_atom(ui_type), do: {ui_type, nil}
 
-  defp maybe_put_item_type(field, {:array, inner}), do: Map.put(field, :item_type, type_to_ui(inner))
+  defp maybe_put_item_type(field, {:array, inner}),
+    do: Map.put(field, :item_type, type_to_ui(inner))
+
   defp maybe_put_item_type(field, _type), do: field
 
   @doc """
@@ -386,6 +389,7 @@ defmodule Runcom.Schema do
   @spec type_to_ui(atom() | tuple()) :: atom()
   def type_to_ui(:string), do: :text
   def type_to_ui(:integer), do: :number
+  def type_to_ui(:pos_integer), do: :number
   def type_to_ui(:float), do: :number
   def type_to_ui(:boolean), do: :checkbox
   def type_to_ui(:enum), do: :select

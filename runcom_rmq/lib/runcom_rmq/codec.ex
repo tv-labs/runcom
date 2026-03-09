@@ -2,8 +2,8 @@ defmodule RuncomRmq.Codec do
   @moduledoc """
   Encodes and decodes messages exchanged between RuncomRmq client and server.
 
-  All messages use `:erlang.term_to_binary/1` and `:erlang.binary_to_term/1`.
-  Messages are trusted internal traffic between runcom components.
+  Messages are serialized with `:erlang.term_to_binary/1` and compressed with
+  zstd. Messages are trusted internal traffic between runcom components.
 
   ## Examples
 
@@ -12,11 +12,13 @@ defmodule RuncomRmq.Codec do
   """
 
   @spec encode(term()) :: binary()
-  def encode(term), do: :erlang.term_to_binary(term)
+  def encode(term) do
+    term |> :erlang.term_to_binary() |> :zstd.compress() |> IO.iodata_to_binary()
+  end
 
   @spec decode(binary()) :: {:ok, term()} | {:error, term()}
   def decode(binary) when is_binary(binary) do
-    {:ok, :erlang.binary_to_term(binary)}
+    {:ok, binary |> :zstd.decompress() |> IO.iodata_to_binary() |> :erlang.binary_to_term()}
   rescue
     e -> {:error, e}
   end

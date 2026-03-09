@@ -3,9 +3,9 @@ defmodule Runcom.Steps.AptTest do
 
   alias Runcom.Steps.Apt
 
-  describe "name/0" do
-    test "returns step name" do
-      assert Apt.name() == "Apt"
+  describe "__name__/0" do
+    test "returns step name via __name__" do
+      assert Apt.__name__() == "Apt"
     end
   end
 

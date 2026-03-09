@@ -3,9 +3,9 @@ defmodule Runcom.Steps.FileTest do
 
   alias Runcom.Steps.File, as: FileStep
 
-  describe "name/0" do
-    test "returns step name" do
-      assert FileStep.name() == "File"
+  describe "__name__/0" do
+    test "returns step name via __name__" do
+      assert FileStep.__name__() == "File"
     end
   end
 
@@ -34,7 +34,7 @@ defmodule Runcom.Steps.FileTest do
       {:ok, result} = FileStep.run(nil, %{path: path, state: :directory})
 
       assert result.status == :ok
-      assert result.changed == true
+
       assert File.dir?(path)
     end
 
@@ -46,7 +46,6 @@ defmodule Runcom.Steps.FileTest do
       {:ok, result} = FileStep.run(nil, %{path: path, state: :directory})
 
       assert result.status == :ok
-      assert result.changed == false
     end
   end
 
@@ -59,7 +58,7 @@ defmodule Runcom.Steps.FileTest do
       {:ok, result} = FileStep.run(nil, %{path: path, state: :absent})
 
       assert result.status == :ok
-      assert result.changed == true
+
       refute File.exists?(path)
     end
 
@@ -70,7 +69,6 @@ defmodule Runcom.Steps.FileTest do
       {:ok, result} = FileStep.run(nil, %{path: path, state: :absent})
 
       assert result.status == :ok
-      assert result.changed == false
     end
   end
 
@@ -82,7 +80,7 @@ defmodule Runcom.Steps.FileTest do
       {:ok, result} = FileStep.run(nil, %{path: path, state: :touch})
 
       assert result.status == :ok
-      assert result.changed == true
+
       assert File.exists?(path)
     end
   end
@@ -122,7 +120,7 @@ defmodule Runcom.Steps.FileTest do
       {:ok, result} = FileStep.run(rc, %{path: path_fn, state: :directory})
 
       assert result.status == :ok
-      assert result.changed == true
+
       assert File.dir?(Path.join(tmp_dir, "test_dir"))
     end
   end

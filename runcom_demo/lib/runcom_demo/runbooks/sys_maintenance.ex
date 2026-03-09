@@ -34,7 +34,7 @@ defmodule RuncomDemo.Runbooks.SysMaintenance do
     * `:tmp_max_age` - max age in days for /tmp cleanup (default: 7)
   """
 
-  use Runcom.Runbook
+  use Runcom.Runbook, name: "sys_maintenance"
 
   require Runcom.Steps.Command, as: Command
   require Runcom.Steps.Debug, as: Debug
@@ -43,9 +43,6 @@ defmodule RuncomDemo.Runbooks.SysMaintenance do
     field :vacuum_days, :integer, default: 7
     field :tmp_max_age, :integer, default: 7
   end
-
-  @impl true
-  def name, do: "sys_maintenance"
 
   @impl true
   def build(params) do

@@ -2,10 +2,7 @@ defmodule Runcom.StepTest do
   use ExUnit.Case, async: true
 
   defmodule TestStep do
-    use Runcom.Step
-
-    @impl true
-    def name, do: "Test Step"
+    use Runcom.Step, name: "Test Step"
 
     @impl true
     def validate(%{required: _}), do: :ok
@@ -21,9 +18,9 @@ defmodule Runcom.StepTest do
     use Runcom.Step
 
     schema do
-      field :cmd, :string, required: true, doc: "Command to execute"
-      field :args, {:array, :string}, default: [], doc: "Arguments list"
-      field :timeout, :integer
+      field(:cmd, :string, required: true, doc: "Command to execute")
+      field(:args, {:array, :string}, default: [], doc: "Arguments list")
+      field(:timeout, :integer)
     end
 
     @impl true
@@ -31,8 +28,8 @@ defmodule Runcom.StepTest do
   end
 
   describe "use Runcom.Step" do
-    test "defines name/0 callback" do
-      assert TestStep.name() == "Test Step"
+    test "defines __name__/0 from use opts" do
+      assert TestStep.__name__() == "Test Step"
     end
 
     test "defines validate/1 callback" do
@@ -69,7 +66,7 @@ defmodule Runcom.StepTest do
     end
   end
 
-  describe "serialize_all/1" do
+  describe "serialize/1" do
     alias Runcom.StepNode
     alias Runcom.Step.Result
 
@@ -84,17 +81,20 @@ defmodule Runcom.StepTest do
     test "emits all steps including those without results" do
       steps = %{
         "ok_step" => %{step_node("ok_step", TestStep) | result: Result.ok(order: 1, exit_code: 0)},
-        "err_step" => %{step_node("err_step", TestStep) | result: Result.error(order: 2, error: "boom")},
+        "err_step" => %{
+          step_node("err_step", TestStep)
+          | result: Result.error(order: 2, error: "boom")
+        },
         "never_ran" => step_node("never_ran", TestStep)
       }
 
-      results = Runcom.Step.serialize_all(build_runbook(:failed, steps))
+      results = Runcom.Step.serialize(build_runbook(:failed, steps))
 
       assert length(results) == 3
 
       skipped = Enum.find(results, &(&1.name == "never_ran"))
       assert skipped.status == "skipped"
-      assert skipped.order == nil
+      assert skipped.order == 3
       assert skipped.exit_code == nil
 
       ok = Enum.find(results, &(&1.name == "ok_step"))
@@ -109,7 +109,7 @@ defmodule Runcom.StepTest do
         "waiting" => step_node("waiting", TestStep)
       }
 
-      [result] = Runcom.Step.serialize_all(build_runbook(:running, steps))
+      [result] = Runcom.Step.serialize(build_runbook(:running, steps))
       assert result.status == "pending"
     end
 
@@ -118,20 +118,22 @@ defmodule Runcom.StepTest do
       later = DateTime.add(now, 5, :second)
 
       steps = %{
-        "full" => %{step_node("full", TestStep) | result: Result.ok(
-          order: 3,
-          exit_code: 0,
-          duration_ms: 5000,
-          attempts: 2,
-          started_at: now,
-          completed_at: later,
-          output: "hello",
-          bytes: 1024,
-          changed: true
-        )}
+        "full" => %{
+          step_node("full", TestStep)
+          | result:
+              Result.ok(
+                order: 3,
+                exit_code: 0,
+                duration_ms: 5000,
+                attempts: 2,
+                started_at: now,
+                completed_at: later,
+                output: "hello"
+              )
+        }
       }
 
-      [result] = Runcom.Step.serialize_all(build_runbook(:completed, steps))
+      [result] = Runcom.Step.serialize(build_runbook(:completed, steps))
 
       assert result.order == 3
       assert result.exit_code == 0
@@ -140,35 +142,38 @@ defmodule Runcom.StepTest do
       assert result.started_at == now
       assert result.completed_at == later
       assert result.output == "hello"
-      assert result.bytes == 1024
-      assert result.changed == true
       assert result.error == nil
     end
 
     test "falls back to stdout when output is nil" do
       steps = %{
-        "stdout_only" => %{step_node("stdout_only", TestStep) | result: Result.ok(
-          order: 1,
-          output: nil,
-          stdout: "from stdout"
-        )}
+        "stdout_only" => %{
+          step_node("stdout_only", TestStep)
+          | result:
+              Result.ok(
+                order: 1,
+                output: nil,
+                stdout: "from stdout"
+              )
+        }
       }
 
-      [result] = Runcom.Step.serialize_all(build_runbook(:completed, steps))
+      [result] = Runcom.Step.serialize(build_runbook(:completed, steps))
       assert result.output == "from stdout"
     end
 
     test "meta correctly captures assert, post, and retry" do
       steps = %{
-        "with_meta" => %{step_node("with_meta", TestStep) |
-          assert_fn: fn _ -> true end,
-          post_fn: fn x -> x end,
-          retry_opts: %{max: 3, delay: 1000}
+        "with_meta" => %{
+          step_node("with_meta", TestStep)
+          | assert_fn: fn _ -> true end,
+            post_fn: fn x -> x end,
+            retry_opts: %{max: 3, delay: 1000}
         },
         "without_meta" => step_node("without_meta", TestStep)
       }
 
-      results = Runcom.Step.serialize_all(build_runbook(:running, steps))
+      results = Runcom.Step.serialize(build_runbook(:running, steps))
 
       with_meta = Enum.find(results, &(&1.name == "with_meta"))
       assert with_meta.meta.has_assert == true
@@ -183,21 +188,33 @@ defmodule Runcom.StepTest do
 
     test "non-string errors get inspected" do
       steps = %{
-        "atom_err" => %{step_node("atom_err", TestStep) | result: Result.error(
-          order: 1,
-          error: :timeout
-        )},
-        "tuple_err" => %{step_node("tuple_err", TestStep) | result: Result.error(
-          order: 2,
-          error: {:connection_refused, "localhost:5432"}
-        )},
-        "string_err" => %{step_node("string_err", TestStep) | result: Result.error(
-          order: 3,
-          error: "simple error"
-        )}
+        "atom_err" => %{
+          step_node("atom_err", TestStep)
+          | result:
+              Result.error(
+                order: 1,
+                error: :timeout
+              )
+        },
+        "tuple_err" => %{
+          step_node("tuple_err", TestStep)
+          | result:
+              Result.error(
+                order: 2,
+                error: {:connection_refused, "localhost:5432"}
+              )
+        },
+        "string_err" => %{
+          step_node("string_err", TestStep)
+          | result:
+              Result.error(
+                order: 3,
+                error: "simple error"
+              )
+        }
       }
 
-      results = Runcom.Step.serialize_all(build_runbook(:failed, steps))
+      results = Runcom.Step.serialize(build_runbook(:failed, steps))
 
       atom_err = Enum.find(results, &(&1.name == "atom_err"))
       assert atom_err.error == ":timeout"

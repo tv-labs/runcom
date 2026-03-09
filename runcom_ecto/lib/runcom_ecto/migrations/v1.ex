@@ -65,7 +65,6 @@ defmodule RuncomEcto.Migrations.V1 do
       add :output, :binary
       add :output_ref, :jsonb
       add :error, :text
-      add :bytes, :bigint
       add :changed, :boolean
       add :opts, :jsonb, default: "{}"
       add :meta, :jsonb, default: "{}"
@@ -121,15 +120,6 @@ defmodule RuncomEcto.Migrations.V1 do
     create index(:runcom_dispatch_nodes, [:dispatch_id], prefix: prefix)
     create index(:runcom_dispatch_nodes, [:node_id], prefix: prefix)
     create unique_index(:runcom_dispatch_nodes, [:dispatch_id, :node_id], prefix: prefix)
-
-    create table(:runcom_secrets, prefix: prefix) do
-      add :name, :string, null: false
-      add :encrypted_value, :binary, null: false
-
-      timestamps type: :utc_datetime
-    end
-
-    create unique_index(:runcom_secrets, [:name], prefix: prefix)
   end
 
   def down(opts \\ []) do
@@ -137,7 +127,6 @@ defmodule RuncomEcto.Migrations.V1 do
 
     drop_if_exists table(:runcom_dispatch_nodes, prefix: prefix)
     drop_if_exists table(:runcom_dispatches, prefix: prefix)
-    drop_if_exists table(:runcom_secrets, prefix: prefix)
     drop_if_exists table(:runcom_step_results, prefix: prefix)
     drop_if_exists table(:runcom_results, prefix: prefix)
   end

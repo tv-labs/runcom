@@ -1,7 +1,7 @@
-defmodule Runcom.BytecodeTest do
+defmodule Runcom.CodeSyncTest do
   use ExUnit.Case, async: true
 
-  alias Runcom.Bytecode
+  alias Runcom.CodeSync
 
   describe "bundle/1" do
     test "returns empty bytecode list for built-in steps only" do
@@ -9,7 +9,7 @@ defmodule Runcom.BytecodeTest do
         Runcom.new("builtin-only", sink: nil)
         |> Runcom.add("cmd", Runcom.Steps.Command, %{cmd: "echo hi", sink: nil})
 
-      assert {:ok, {payload, []}} = Bytecode.bundle(rc)
+      assert {:ok, {payload, []}} = CodeSync.bundle(rc)
       assert is_binary(payload)
       assert :erlang.binary_to_term(payload) == rc
     end
@@ -20,12 +20,11 @@ defmodule Runcom.BytecodeTest do
         |> Runcom.add("builtin", Runcom.Steps.Command, %{cmd: "echo hi", sink: nil})
         |> Runcom.add("custom", Runcom.TestCustomStep, %{sink: nil})
 
-      assert {:ok, {payload, bytecodes}} = Bytecode.bundle(rc)
+      assert {:ok, {payload, bytecodes}} = CodeSync.bundle(rc)
       assert is_binary(payload)
 
-      assert [{Runcom.TestCustomStep, bytecode}] = bytecodes
-      assert is_binary(bytecode)
-      assert byte_size(bytecode) > 0
+      bundled_modules = Enum.map(bytecodes, &elem(&1, 0))
+      assert Runcom.TestCustomStep in bundled_modules
     end
 
     test "returns error when custom module bytecode is not found" do
@@ -40,7 +39,7 @@ defmodule Runcom.BytecodeTest do
         }
       }
 
-      assert {:error, {:bytecode_not_found, NoSuchModule.DoesNotExist}} = Bytecode.bundle(rc)
+      assert {:error, {:bytecode_not_found, NoSuchModule.DoesNotExist}} = CodeSync.bundle(rc)
     end
 
     test "deduplicates modules used in multiple steps" do
@@ -49,8 +48,41 @@ defmodule Runcom.BytecodeTest do
         |> Runcom.add("first", Runcom.TestCustomStep, %{sink: nil})
         |> Runcom.add("second", Runcom.TestCustomStep, %{sink: nil, await: []})
 
-      assert {:ok, {_payload, bytecodes}} = Bytecode.bundle(rc)
-      assert length(bytecodes) == 1
+      assert {:ok, {_payload, bytecodes}} = CodeSync.bundle(rc)
+
+      module_counts =
+        bytecodes
+        |> Enum.map(&elem(&1, 0))
+        |> Enum.frequencies()
+
+      assert Map.get(module_counts, Runcom.TestCustomStep) == 1
+    end
+  end
+
+  describe "resolve_deps/1" do
+    test "returns empty list for empty input" do
+      assert [] = CodeSync.resolve_deps([])
+    end
+
+    test "skips built-in step modules" do
+      result = CodeSync.resolve_deps([Runcom.Steps.Command])
+      assert result == []
+    end
+
+    test "skips erlang modules" do
+      result = CodeSync.resolve_deps([:erlang, :lists])
+      assert result == []
+    end
+
+    test "discovers the module itself" do
+      result = CodeSync.resolve_deps([Runcom.TestCustomStep])
+      assert Runcom.TestCustomStep in result
+    end
+  end
+
+  describe "__deps__/0" do
+    test "step modules expose __deps__/0" do
+      assert is_list(Runcom.TestCustomStep.__deps__())
     end
   end
 
@@ -58,8 +90,8 @@ defmodule Runcom.BytecodeTest do
     test "returns consistent hash for same struct" do
       rc = Runcom.new("consistent", sink: nil)
 
-      assert {:ok, hash1} = Bytecode.hash(rc)
-      assert {:ok, hash2} = Bytecode.hash(rc)
+      assert {:ok, hash1} = CodeSync.hash(rc)
+      assert {:ok, hash2} = CodeSync.hash(rc)
       assert hash1 == hash2
     end
 
@@ -67,51 +99,51 @@ defmodule Runcom.BytecodeTest do
       rc1 = Runcom.new("first", sink: nil)
       rc2 = Runcom.new("second", sink: nil)
 
-      assert {:ok, hash1} = Bytecode.hash(rc1)
-      assert {:ok, hash2} = Bytecode.hash(rc2)
+      assert {:ok, hash1} = CodeSync.hash(rc1)
+      assert {:ok, hash2} = CodeSync.hash(rc2)
       refute hash1 == hash2
     end
 
     test "produces 32-byte binary (SHA256)" do
       rc = Runcom.new("sha-test", sink: nil)
 
-      assert {:ok, hash} = Bytecode.hash(rc)
+      assert {:ok, hash} = CodeSync.hash(rc)
       assert byte_size(hash) == 32
     end
   end
 
   describe "hash_source/1" do
     test "returns SHA256 of source string" do
-      hash = Bytecode.hash_source("defmodule Foo, do: nil")
+      hash = CodeSync.hash_source("defmodule Foo, do: nil")
       assert byte_size(hash) == 32
     end
 
     test "same source produces same hash" do
       source = ~S|Runcom.new("test")|
-      assert Bytecode.hash_source(source) == Bytecode.hash_source(source)
+      assert CodeSync.hash_source(source) == CodeSync.hash_source(source)
     end
 
     test "different source produces different hash" do
-      refute Bytecode.hash_source("a") == Bytecode.hash_source("b")
+      refute CodeSync.hash_source("a") == CodeSync.hash_source("b")
     end
   end
 
   describe "load_bundle/1" do
     test "loads bytecode into the VM" do
-      {Runcom.Bytecode, bytecode, _} = :code.get_object_code(Runcom.Bytecode)
+      {Runcom.CodeSync, bytecode, _} = :code.get_object_code(Runcom.CodeSync)
 
-      assert :ok = Bytecode.load_bundle([{Runcom.Bytecode, bytecode}])
+      assert :ok = CodeSync.load_bundle([{Runcom.CodeSync, bytecode}])
     end
 
     test "loads multiple modules" do
-      {Runcom.Bytecode, bc1, _} = :code.get_object_code(Runcom.Bytecode)
+      {Runcom.CodeSync, bc1, _} = :code.get_object_code(Runcom.CodeSync)
       {Runcom.StepNode, bc2, _} = :code.get_object_code(Runcom.StepNode)
 
-      assert :ok = Bytecode.load_bundle([{Runcom.Bytecode, bc1}, {Runcom.StepNode, bc2}])
+      assert :ok = CodeSync.load_bundle([{Runcom.CodeSync, bc1}, {Runcom.StepNode, bc2}])
     end
 
     test "returns ok for empty list" do
-      assert :ok = Bytecode.load_bundle([])
+      assert :ok = CodeSync.load_bundle([])
     end
   end
 end

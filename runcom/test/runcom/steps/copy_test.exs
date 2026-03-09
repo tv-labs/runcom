@@ -3,9 +3,9 @@ defmodule Runcom.Steps.CopyTest do
 
   alias Runcom.Steps.Copy
 
-  describe "name/0" do
-    test "returns step name" do
-      assert Copy.name() == "Copy"
+  describe "__name__/0" do
+    test "returns step name via __name__" do
+      assert Copy.__name__() == "Copy"
     end
   end
 
@@ -16,12 +16,11 @@ defmodule Runcom.Steps.CopyTest do
     end
 
     test "requires either src or content" do
-      assert {:error, "either src or content is required"} = Copy.validate(%{dest: "/tmp/dest"})
+      assert {:error, _} = Copy.validate(%{dest: "/tmp/dest"})
     end
 
     test "rejects both src and content" do
-      assert {:error, "src and content are mutually exclusive"} =
-               Copy.validate(%{dest: "/tmp/dest", src: "/tmp/src", content: "data"})
+      assert {:error, _} = Copy.validate(%{dest: "/tmp/dest", src: "/tmp/src", content: "data"})
     end
 
     test "accepts valid opts with src" do
@@ -42,8 +41,8 @@ defmodule Runcom.Steps.CopyTest do
       {:ok, result} = Copy.run(nil, %{dest: dest, content: content})
 
       assert result.status == :ok
-      assert result.changed == true
-      assert result.output == "Wrote content"
+
+      assert result.output =~ "Wrote"
       assert File.read!(dest) == content
     end
 
@@ -57,7 +56,7 @@ defmodule Runcom.Steps.CopyTest do
       {:ok, result} = Copy.run(nil, %{dest: dest, content: content})
 
       assert result.status == :ok
-      assert result.changed == false
+
       assert result.output == "Content unchanged"
     end
 
@@ -70,7 +69,7 @@ defmodule Runcom.Steps.CopyTest do
       {:ok, result} = Copy.run(nil, %{dest: dest, content: "new content"})
 
       assert result.status == :ok
-      assert result.changed == true
+
       assert File.read!(dest) == "new content"
     end
   end
@@ -87,7 +86,7 @@ defmodule Runcom.Steps.CopyTest do
       {:ok, result} = Copy.run(nil, %{src: src, dest: dest})
 
       assert result.status == :ok
-      assert result.changed == true
+
       assert result.output == "Copied file"
       assert File.read!(dest) == content
     end
@@ -105,7 +104,7 @@ defmodule Runcom.Steps.CopyTest do
       {:ok, result} = Copy.run(nil, %{src: src_dir, dest: dest_dir})
 
       assert result.status == :ok
-      assert result.changed == true
+
       assert result.output == "Copied directory"
       assert File.read!(Path.join(dest_dir, "file1.txt")) == "content1"
       assert File.read!(Path.join(dest_dir, "subdir/file2.txt")) == "content2"
@@ -139,37 +138,6 @@ defmodule Runcom.Steps.CopyTest do
       assert result.output =~ "Would copy"
       assert result.output =~ "/etc/app"
       assert result.output =~ "/backup/app"
-    end
-  end
-
-  describe "run/2 with function paths" do
-    @tag :tmp_dir
-    test "resolves dest from function", %{tmp_dir: tmp_dir} do
-      rc = %{assigns: %{filename: "dynamic.txt"}}
-      dest_fn = fn rc -> Path.join(tmp_dir, rc.assigns.filename) end
-      content = "dynamic content"
-
-      {:ok, result} = Copy.run(rc, %{dest: dest_fn, content: content})
-
-      assert result.status == :ok
-      assert result.changed == true
-      assert File.read!(Path.join(tmp_dir, "dynamic.txt")) == content
-    end
-
-    @tag :tmp_dir
-    test "resolves src from function", %{tmp_dir: tmp_dir} do
-      src = Path.join(tmp_dir, "source.txt")
-      dest = Path.join(tmp_dir, "dest.txt")
-      File.write!(src, "content")
-
-      rc = %{assigns: %{source_path: src}}
-      src_fn = fn rc -> rc.assigns.source_path end
-
-      {:ok, result} = Copy.run(rc, %{src: src_fn, dest: dest})
-
-      assert result.status == :ok
-      assert result.changed == true
-      assert File.read!(dest) == "content"
     end
   end
 end

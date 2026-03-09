@@ -147,11 +147,11 @@ defimpl RuncomWeb.StepRenderer, for: Runcom.Steps.Bash do
   end
 
   defp put_script(acc, %{script: script}) when is_binary(script) do
-    acc ++ [%{label: "script", value: script}]
+    acc ++ [%{label: "script", value: script, type: :code, language: "bash"}]
   end
 
   defp put_script(acc, %{script: %Bash.Script{} = script}) do
-    acc ++ [%{label: "script", value: to_string(script)}]
+    acc ++ [%{label: "script", value: to_string(script), type: :code, language: "bash"}]
   end
 
   defp put_script(acc, %{script: script}) when is_function(script) do

@@ -12,7 +12,7 @@ defmodule Runcom.Steps.GetUrl do
     * `:dest` - Destination path (required). Can be string or function.
     * `:checksum` - Expected checksum in format "algo:hash" (e.g., "sha256:abc123...")
     * `:headers` - Additional HTTP headers as a list of tuples
-    * `:s3` - S3 credential options for authenticated downloads (see `Runcom.S3`)
+    * `:s3` - S3 credential options for authenticated downloads
 
   ## Examples
 
@@ -53,17 +53,14 @@ defmodule Runcom.Steps.GetUrl do
          )
   """
 
-  use Runcom.Step, category: "Network"
+  use Runcom.Step, name: "GetUrl", category: "Network"
 
   schema do
-    field :url, :string, required: true
-    field :dest, :string, required: true
-    field :checksum, :string, placeholder: "sha256:abc123..."
-    field :s3, :map
+    field(:url, :string, required: true)
+    field(:dest, :string, required: true)
+    field(:checksum, :string, placeholder: "sha256:abc123...")
+    field(:s3, :map)
   end
-
-  @impl true
-  def name, do: "GetUrl"
 
   @impl true
   def run(_rc, opts) do
@@ -97,12 +94,10 @@ defmodule Runcom.Steps.GetUrl do
     case Req.get(url, req_opts) do
       {:ok, %{status: status}} when status in 200..299 ->
         completed_at = DateTime.utc_now()
-        bytes = File.stat!(dest).size
 
         result =
           Result.ok(
             output: dest,
-            bytes: bytes,
             started_at: started_at,
             completed_at: completed_at,
             duration_ms: DateTime.diff(completed_at, started_at, :millisecond)
@@ -144,5 +139,4 @@ defmodule Runcom.Steps.GetUrl do
       {:ok, Result.error(error: "Checksum mismatch: expected #{expected}, got #{actual}")}
     end
   end
-
 end

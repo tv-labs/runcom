@@ -192,24 +192,6 @@ defmodule RuncomWeb.Live.DispatchShowLive do
                 <span class="font-semibold text-base-content/60">{key}</span>
                 <span class="font-mono">{value}</span>
               </div>
-              <div
-                :for={name <- @dispatch.secret_names || []}
-                class="flex items-center gap-1.5"
-              >
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  viewBox="0 0 20 20"
-                  fill="currentColor"
-                  class="w-3 h-3 text-warning"
-                >
-                  <path
-                    fill-rule="evenodd"
-                    d="M8 7a5 5 0 113.61 4.804l-1.903 1.903A1 1 0 019 14H8v1a1 1 0 01-1 1H6v1a1 1 0 01-1 1H3a1 1 0 01-1-1v-2a1 1 0 01.293-.707L8.196 8.39A5.002 5.002 0 018 7zm5-3a.75.75 0 000 1.5A1.5 1.5 0 0114.5 7 .75.75 0 0016 7a3 3 0 00-3-3z"
-                    clip-rule="evenodd"
-                  />
-                </svg>
-                <span class="font-mono text-base-content/60">{name}</span>
-              </div>
             </div>
           </div>
 
@@ -266,8 +248,8 @@ defmodule RuncomWeb.Live.DispatchShowLive do
                   </div>
 
                   <div class="flex items-center gap-3 text-xs text-base-content/60">
-                    <span :if={dn.duration_ms}>
-                      {format_duration(dn.duration_ms)}
+                    <span :if={node_duration(dn, @results_by_node)}>
+                      {format_duration(node_duration(dn, @results_by_node))}
                     </span>
                     <span :if={dn.acked_at}>
                       acked {format_time(dn.acked_at)}
@@ -327,6 +309,22 @@ defmodule RuncomWeb.Live.DispatchShowLive do
 
   defp total_nodes(dispatch), do: length(dispatch.dispatch_nodes)
 
+  defp node_duration(dn, results_by_node) do
+    case dn.duration_ms do
+      ms when is_integer(ms) and ms > 0 ->
+        ms
+
+      _ ->
+        result = Map.get(results_by_node, dn.node_id)
+        started = (result && result_field(result, :started_at)) || dn.started_at
+        completed = dn.completed_at || (result && result_field(result, :completed_at))
+
+        if started && completed do
+          DateTime.diff(completed, started, :millisecond)
+        end
+    end
+  end
+
   defp node_card_bg(status) when status in ~w(completed ok), do: "bg-success/10"
   defp node_card_bg(status) when status in ~w(failed error), do: "bg-error/10"
   defp node_card_bg("halted"), do: "bg-warning/10"
@@ -335,7 +333,7 @@ defmodule RuncomWeb.Live.DispatchShowLive do
   defp has_properties?(nil), do: false
 
   defp has_properties?(dispatch) do
-    display_assigns(dispatch.assigns) != [] or (dispatch.secret_names || []) != []
+    display_assigns(dispatch.assigns) != []
   end
 
   defp display_assigns(nil), do: []

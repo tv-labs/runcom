@@ -58,7 +58,10 @@ defimpl Runcom.Sink, for: Runcom.Sink.Multi do
           Sink.close(sink)
         rescue
           e ->
-            Logger.warning("[Runcom.Sink.Multi] close failed for #{inspect(sink.__struct__)}: #{Exception.message(e)}")
+            Logger.warning(
+              "[Runcom.Sink.Multi] close failed for #{inspect(sink.__struct__)}: #{Exception.message(e)}"
+            )
+
             sink
         end
       end)

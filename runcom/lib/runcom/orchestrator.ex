@@ -62,7 +62,6 @@ defmodule Runcom.Orchestrator do
 
   alias Runcom.Checkpoint
   alias Runcom.Redactor
-  alias Runcom.Store
   alias Runcom.StepNode
   alias Runcom.Sink
 
@@ -138,14 +137,6 @@ defmodule Runcom.Orchestrator do
     GenServer.call(server, :get_runbook)
   end
 
-  @doc """
-  Fetches a secret from the Orchestrator's Store.
-  """
-  @spec fetch_secret(GenServer.server(), atom()) :: {:ok, binary()} | {:error, :not_found}
-  def fetch_secret(server, name) do
-    GenServer.call(server, {:fetch_secret, name})
-  end
-
   defp via_tuple(id) do
     {:via, Registry, {Runcom.Registry, {:orchestrator, id}}}
   end
@@ -157,8 +148,7 @@ defmodule Runcom.Orchestrator do
     resume = Keyword.get(opts, :resume, false)
     artifact_dir = Keyword.get(opts, :artifact_dir)
 
-    # Create process-local secret store
-    {:ok, secret_store} = Store.Memory.new()
+    secret_store = :ets.new(:runcom_secrets, [:set, :protected])
 
     # Initialize secrets from runbook
     initialize_secrets(secret_store, runbook)
@@ -240,11 +230,6 @@ defmodule Runcom.Orchestrator do
     {:reply, state.runbook, state}
   end
 
-  def handle_call({:fetch_secret, name}, _from, state) do
-    result = Store.Memory.fetch_secret(to_string(name), store: state.secret_store)
-    {:reply, result, state}
-  end
-
   @impl true
   def handle_info({ref, {:step_completed, step_name, result}}, state) when is_reference(ref) do
     Logger.info("[Orchestrator] step_completed: #{step_name}")
@@ -316,7 +301,37 @@ defmodule Runcom.Orchestrator do
 
   defp initialize_secrets(secret_store, runbook) do
     for {name, loader} <- Map.get(runbook.assigns, :__secrets__, %{}) do
-      Store.Memory.put_secret(to_string(name), loader, store: secret_store)
+      put_secret(secret_store, to_string(name), loader)
+    end
+  end
+
+  defp put_secret(table, name, value) do
+    entry =
+      case value do
+        fun when is_function(fun, 0) -> {:lazy, fun}
+        binary when is_binary(binary) -> {:value, binary}
+      end
+
+    true = :ets.insert(table, {name, entry})
+    :ok
+  end
+
+  defp fetch_secret_value(table, name) do
+    case :ets.lookup(table, name) do
+      [{^name, {:value, value}}] ->
+        {:ok, value}
+
+      [{^name, {:lazy, fun}}] ->
+        value = fun.()
+
+        if :ets.info(table, :owner) == self() do
+          true = :ets.insert(table, {name, {:value, value}})
+        end
+
+        {:ok, value}
+
+      [] ->
+        {:error, :not_found}
     end
   end
 
@@ -375,11 +390,14 @@ defmodule Runcom.Orchestrator do
     end)
   end
 
-  defp do_execute_step(ctx, %StepNode{name: name, module: module, opts: opts, sink: step_sink} = step) do
+  defp do_execute_step(
+         ctx,
+         %StepNode{name: name, module: module, opts: opts, sink: step_sink} = step
+       ) do
     sink = step_sink || derive_step_sink(ctx, name)
 
     resolver = fn secret_name ->
-      case Store.Memory.fetch_secret(to_string(secret_name), store: ctx.secret_store) do
+      case fetch_secret_value(ctx.secret_store, to_string(secret_name)) do
         {:ok, value} -> value
         {:error, :not_found} -> raise "Secret #{inspect(secret_name)} not found"
       end
@@ -468,6 +486,8 @@ defmodule Runcom.Orchestrator do
         {:error, reason} -> Runcom.Step.Result.error(error: reason)
       end
 
+    sink = write_result_to_sink(sink, res)
+
     res = add_timing(res, started_at, completed_at, duration_ms, ctx.step_order)
 
     # Apply framework callbacks
@@ -519,14 +539,18 @@ defmodule Runcom.Orchestrator do
   end
 
   defp collect_secret_values(secret_store) do
-    secret_store.secrets
+    secret_store
     |> :ets.tab2list()
     |> Enum.flat_map(fn
-      {_name, {:value, value}, _ts} when is_binary(value) and value != "" -> [value]
-      {_name, {:lazy, fun}, _ts} ->
+      {_name, {:value, value}} when is_binary(value) and value != "" ->
+        [value]
+
+      {_name, {:lazy, fun}} ->
         value = fun.()
         if is_binary(value) and value != "", do: [value], else: []
-      _ -> []
+
+      _ ->
+        []
     end)
   end
 
@@ -538,12 +562,9 @@ defmodule Runcom.Orchestrator do
       | stdout: Redactor.redact(result.stdout, secrets),
         stderr: Redactor.redact(result.stderr, secrets),
         output: Redactor.redact(result.output, secrets),
-        output_raw: Redactor.redact(result.output_raw, secrets),
-        error: Redactor.redact(result.error, secrets),
-        lines: Redactor.redact(result.lines, secrets)
+        error: Redactor.redact(result.error, secrets)
     }
   end
-
 
   defp finish_execution(state, opts \\ []) do
     Logger.info("[Orchestrator] finish_execution for #{state.runbook.id}")
@@ -609,7 +630,10 @@ defmodule Runcom.Orchestrator do
 
   defp write_checkpoint(state) do
     opts = if state.artifact_dir, do: [artifact_dir: state.artifact_dir], else: []
-    opts = if state.dispatch_id, do: Keyword.put(opts, :dispatch_id, state.dispatch_id), else: opts
+
+    opts =
+      if state.dispatch_id, do: Keyword.put(opts, :dispatch_id, state.dispatch_id), else: opts
+
     Checkpoint.write(state.runbook, opts)
   end
 
@@ -688,7 +712,8 @@ defmodule Runcom.Orchestrator do
     end)
   end
 
-  defp apply_assert(%Runcom.Step.Result{status: :ok} = res, assert_fn) when is_function(assert_fn) do
+  defp apply_assert(%Runcom.Step.Result{status: :ok} = res, assert_fn)
+       when is_function(assert_fn) do
     if assert_fn.(res) do
       res
     else
@@ -701,7 +726,7 @@ defmodule Runcom.Orchestrator do
   defp apply_assert(res, _assert_fn), do: res
 
   defp apply_post(%Runcom.Step.Result{status: :ok} = res, post_fn) when is_function(post_fn) do
-    %{res | output_raw: res.output, output: post_fn.(res.output)}
+    %{res | output: post_fn.(res.output)}
   rescue
     e -> %{res | status: :error, error: "post callback raised: #{Exception.message(e)}"}
   end
@@ -742,7 +767,7 @@ defmodule Runcom.Orchestrator do
 
   defp resolve_secrets(secret_store, module, opts) do
     # Check if this is a Bash step - pass secrets as environment variables
-    if function_exported?(module, :__bash_step__, 0) and module.__bash_step__() do
+    if module in [Runcom.Steps.Bash, Runcom.Steps.Command] do
       resolve_bash_secrets(secret_store, opts)
     else
       resolve_regular_secrets(secret_store, opts)
@@ -768,7 +793,7 @@ defmodule Runcom.Orchestrator do
           Map.new(secret_names, fn name ->
             env_name = name |> to_string() |> String.upcase()
 
-            case Store.Memory.fetch_secret(to_string(name), store: secret_store) do
+            case fetch_secret_value(secret_store, to_string(name)) do
               {:ok, value} ->
                 {env_name, value}
 
@@ -789,10 +814,9 @@ defmodule Runcom.Orchestrator do
         opts
 
       {secret_names, opts} ->
-        # For regular steps, add secrets as resolved values
         secrets =
           Enum.reduce(secret_names, %{}, fn name, acc ->
-            case Store.Memory.fetch_secret(to_string(name), store: secret_store) do
+            case fetch_secret_value(secret_store, to_string(name)) do
               {:ok, value} ->
                 Map.put(acc, name, value)
 
@@ -815,6 +839,12 @@ defmodule Runcom.Orchestrator do
         order: result.order || order
     }
   end
+
+  defp write_result_to_sink(sink, %{output: output}) when is_binary(output) and output != "" do
+    Sink.write(sink, output <> "\n")
+  end
+
+  defp write_result_to_sink(sink, _res), do: sink
 
   defp safe_close_sink(nil), do: nil
 

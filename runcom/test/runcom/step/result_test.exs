@@ -8,7 +8,6 @@ defmodule Runcom.Step.ResultTest do
       result = Result.new()
       assert result.status == nil
       assert result.exit_code == nil
-      assert result.lines == []
     end
 
     test "creates result with provided fields" do

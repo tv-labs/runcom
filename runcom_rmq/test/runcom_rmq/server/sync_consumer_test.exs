@@ -175,7 +175,7 @@ defmodule RuncomRmq.Server.SyncConsumerTest do
   end
 
   defp build_server_manifest do
-    Map.new(Runcom.Runbook.list(), fn mod -> {mod.name(), mod.__runbook_hash__()} end)
+    Map.new(Runcom.Runbook.list(), fn mod -> {mod.__name__(), mod.__runbook_hash__()} end)
   end
 
   defp build_message(request, channel) do

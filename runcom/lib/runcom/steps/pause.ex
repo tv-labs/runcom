@@ -24,34 +24,16 @@ defmodule Runcom.Steps.Pause do
       |> Command.add("health_check", cmd: "curl localhost:4000/health")
   """
 
-  use Runcom.Step, category: "Utility"
+  use Runcom.Step, name: "Pause", category: "Utility"
 
   schema do
-    field :duration, :integer, required: true, label: "Duration (ms)"
-  end
-
-  @impl true
-  def name, do: "Pause"
-
-  @impl true
-  def validate(opts) do
-    case opts[:duration] do
-      nil -> {:error, "duration is required"}
-      d when is_integer(d) and d > 0 -> :ok
-      _ -> {:error, "duration must be a positive integer"}
-    end
+    field(:duration, :pos_integer, required: true, label: "Duration (ms)")
   end
 
   @impl true
   def run(_rc, opts) do
-    duration = opts.duration
-
-    receive do
-    after
-      duration -> :ok
-    end
-
-    {:ok, Result.ok(output: "Paused for #{duration}ms")}
+    Process.sleep(opts.duration)
+    {:ok, Result.ok(output: "Paused for #{opts.duration}ms")}
   end
 
   @impl true

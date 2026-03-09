@@ -3,9 +3,9 @@ defmodule Runcom.Steps.BrewTest do
 
   alias Runcom.Steps.Brew
 
-  describe "name/0" do
-    test "returns step name" do
-      assert Brew.name() == "Brew"
+  describe "__name__/0" do
+    test "returns step name via __name__" do
+      assert Brew.__name__() == "Brew"
     end
   end
 

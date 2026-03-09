@@ -7,7 +7,6 @@ defmodule Runcom.Step do
 
   ## Callbacks
 
-    * `name/0` - Human-readable step name for display and logging
     * `validate/1` - Validate options before execution
     * `run/2` - Execute the step with the runbook context and options
     * `dryrun/2` (optional) - Describe what would happen without executing
@@ -16,10 +15,7 @@ defmodule Runcom.Step do
   ## Usage
 
       defmodule MyApp.Steps.CustomStep do
-        use Runcom.Step
-
-        @impl true
-        def name, do: "Custom Step"
+        use Runcom.Step, name: "Custom Step"
 
         @impl true
         def validate(opts) do
@@ -88,9 +84,6 @@ defmodule Runcom.Step do
 
   alias Runcom.Step.Result
 
-  @doc "Human-readable step name"
-  @callback name() :: String.t()
-
   @doc "Validate options before execution"
   @callback validate(opts :: map()) :: :ok | {:error, term()}
 
@@ -103,7 +96,7 @@ defmodule Runcom.Step do
   @doc "Test stub: return canned/configurable response"
   @callback stub(rc :: term(), opts :: map()) :: {:ok, Result.t()} | {:error, term()}
 
-  @optional_callbacks [name: 0, dryrun: 2, stub: 2]
+  @optional_callbacks [dryrun: 2, stub: 2]
 
   @doc false
   def extract_metadata(opts_ast) when is_list(opts_ast) do
@@ -162,70 +155,57 @@ defmodule Runcom.Step do
   end
 
   @doc """
-  Serializes a runbook's step results into a JSON-safe map.
-  """
-  @spec serialize(Runcom.t()) :: map()
-  def serialize(runbook) do
-    for {name, %{result: result, module: module, opts: opts} = step} <- runbook.steps,
-        result != nil,
-        into: %{} do
-      output = result.output || result.stdout
-      output_ref = if step.sink, do: serialize_ref(Runcom.Sink.ref(step.sink))
-      output_remote = if step.sink, do: Runcom.Sink.remote?(step.sink), else: false
-
-      {name,
-       %{
-         status: to_string(result.status),
-         exit_code: result.exit_code,
-         duration_ms: result.duration_ms,
-         output: output,
-         output_ref: output_ref,
-         output_remote: output_remote,
-         error: result.error,
-         module: inspect(module),
-         opts: sanitize_for_json(opts),
-         has_assert: step.assert_fn != nil,
-         retry: sanitize_for_json(step.retry_opts),
-         has_post: step.post_fn != nil
-       }}
-    end
-  end
-
-  @doc """
   Serializes all steps in a runbook to a list of maps, including steps
   that were never executed (marked as "skipped" or "pending").
   """
-  @spec serialize_all(Runcom.t()) :: [map()]
-  def serialize_all(runbook) do
-    for {name, %{module: module, opts: opts} = step} <- runbook.steps do
-      result = step.result
-      output_ref = if step.sink, do: serialize_ref(Runcom.Sink.ref(step.sink))
-      output_remote = if step.sink, do: Runcom.Sink.remote?(step.sink), else: false
+  @spec serialize(Runcom.t()) :: [map()]
+  def serialize(runbook) do
+    max_order =
+      runbook.steps
+      |> Enum.reduce(0, fn {_name, step}, acc ->
+        if step.result && step.result.order, do: max(acc, step.result.order), else: acc
+      end)
 
-      %{
-        name: name,
-        order: result && result.order,
-        status: step_status(result, runbook),
-        module: inspect(module),
-        exit_code: result && result.exit_code,
-        duration_ms: result && result.duration_ms,
-        attempts: result && result.attempts,
-        started_at: result && result.started_at,
-        completed_at: result && result.completed_at,
-        output: result && (result.output || result.stdout),
-        output_ref: output_ref,
-        output_remote: output_remote,
-        error: result && format_error(result.error),
-        bytes: result && result.bytes,
-        changed: result && result.changed,
-        opts: sanitize_for_json(opts),
-        meta: %{
-          has_assert: step.assert_fn != nil,
-          has_post: step.post_fn != nil,
-          retry: sanitize_for_json(step.retry_opts)
+    {serialized, _} =
+      runbook.steps
+      |> Enum.map(fn {name, %{module: module, opts: opts} = step} ->
+        result = step.result
+        output_ref = if step.sink, do: serialize_ref(Runcom.Sink.ref(step.sink))
+        output_remote = if step.sink, do: Runcom.Sink.remote?(step.sink), else: false
+
+        %{
+          name: name,
+          order: result && result.order,
+          status: step_status(result, runbook),
+          module: inspect(module),
+          exit_code: result && result.exit_code,
+          duration_ms: result && result.duration_ms,
+          attempts: result && result.attempts,
+          started_at: result && result.started_at,
+          completed_at: result && result.completed_at,
+          output: result && (result.output || result.stdout),
+          output_ref: output_ref,
+          output_remote: output_remote,
+          error: result && format_error(result.error),
+          opts: sanitize_for_json(opts),
+          meta: %{
+            has_assert: step.assert_fn != nil,
+            has_post: step.post_fn != nil,
+            retry: sanitize_for_json(step.retry_opts)
+          }
         }
-      }
-    end
+      end)
+      |> Enum.sort_by(fn s -> s.order || :infinity end)
+      |> Enum.map_reduce(max_order, fn step, next_order ->
+        if step.order do
+          {step, next_order}
+        else
+          order = next_order + 1
+          {%{step | order: order}, order}
+        end
+      end)
+
+    serialized
   end
 
   defp serialize_ref(nil), do: nil
@@ -275,8 +255,9 @@ defmodule Runcom.Step do
       import Runcom.Schema, only: [schema: 1, field: 1, field: 2, field: 3, group: 1, group: 2]
       alias Runcom.Step.Result
 
+      @__runcom_step__ true
       @__step_category__ unquote(category)
-      @__step_name__ (unquote(name) || List.last(Module.split(__MODULE__)))
+      @__step_name__ unquote(name) || List.last(Module.split(__MODULE__))
 
       defimpl Runcom.Step.Compiled do
         def module(_), do: @for
@@ -304,6 +285,7 @@ defmodule Runcom.Step do
 
   defmacro __before_compile__(env) do
     has_schema = Module.get_attribute(env.module, :__has_schema__) == true
+    traced_deps = Runcom.CodeSync.Tracer.deps_for(env.module)
 
     struct_ast =
       unless has_schema do
@@ -341,6 +323,9 @@ defmodule Runcom.Step do
     quote do
       unquote(struct_ast)
       unquote(validate_ast)
+
+      @doc false
+      def __deps__, do: unquote(traced_deps)
 
       @doc unquote(add_doc)
       defmacro add(runbook, name, opts) do

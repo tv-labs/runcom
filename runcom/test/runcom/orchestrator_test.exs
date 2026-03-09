@@ -1,10 +1,9 @@
 defmodule Runcom.OrchestratorTest.HaltStep do
   @moduledoc "Test step that returns halt: true"
-  use Runcom.Step
+  use Runcom.Step, name: "Halt Step"
 
   alias Runcom.Step.Result
 
-  def name, do: "Halt Step"
   def validate(_), do: :ok
 
   def run(_rc, _opts) do
@@ -14,11 +13,10 @@ end
 
 defmodule Runcom.OrchestratorTest.OkStep do
   @moduledoc "Test step that returns a normal result"
-  use Runcom.Step
+  use Runcom.Step, name: "Ok Step"
 
   alias Runcom.Step.Result
 
-  def name, do: "Ok Step"
   def validate(_), do: :ok
 
   def run(_rc, _opts) do
@@ -90,40 +88,6 @@ defmodule Runcom.OrchestratorTest do
   end
 
   describe "secrets" do
-    test "stores secrets and fetches them", %{test: test_name} do
-      runbook =
-        Runcom.new("#{test_name}")
-        |> Runcom.secret(:api_key, "sk-123")
-        |> Command.add("noop", cmd: "true")
-
-      {:ok, pid} = Orchestrator.start_link(runbook: runbook, mode: :run)
-
-      assert {:ok, "sk-123"} = Orchestrator.fetch_secret(pid, :api_key)
-      assert {:error, :not_found} = Orchestrator.fetch_secret(pid, :unknown)
-    end
-
-    test "evaluates lazy secret loaders", %{test: test_name} do
-      test_pid = self()
-
-      runbook =
-        Runcom.new("#{test_name}")
-        |> Runcom.secret(:api_key, fn ->
-          send(test_pid, :loader_called)
-          "lazy-secret"
-        end)
-        |> Command.add("noop", cmd: "true")
-
-      {:ok, pid} = Orchestrator.start_link(runbook: runbook, mode: :run)
-
-      # First fetch evaluates loader
-      assert {:ok, "lazy-secret"} = Orchestrator.fetch_secret(pid, :api_key)
-      assert_received :loader_called
-
-      # Second fetch returns cached value
-      assert {:ok, "lazy-secret"} = Orchestrator.fetch_secret(pid, :api_key)
-      refute_received :loader_called
-    end
-
     test "bash step receives secrets as env vars and output is redacted", %{test: test_name} do
       runbook =
         Runcom.new("#{test_name}")

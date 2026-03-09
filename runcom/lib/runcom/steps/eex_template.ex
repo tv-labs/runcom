@@ -80,16 +80,16 @@ defmodule Runcom.Steps.EExTemplate do
          )
   """
 
-  use Runcom.Step, category: "Files"
+  use Runcom.Step, name: "EExTemplate", category: "Files"
 
   schema do
-    field :file, :any, group: :source
-    field :template, :string, group: :source, ui_type: {:code, :eex}
-    field :fun, :any, group: :source
-    field :dest, :any, required: true
-    field :vars, :map
+    field(:file, :any, group: :source)
+    field(:template, :string, group: :source, ui_type: {:code, :eex})
+    field(:fun, :any, group: :source)
+    field(:dest, :any, required: true)
+    field(:vars, :map)
 
-    group :source, required: true, exclusive: true
+    group(:source, required: true, exclusive: true)
   end
 
   @doc """
@@ -116,9 +116,6 @@ defmodule Runcom.Steps.EExTemplate do
   end
 
   @impl true
-  def name, do: "EExTemplate"
-
-  @impl true
   def run(rc, opts) do
     dest = opts.dest
     assigns = build_assigns(rc, opts)
@@ -126,7 +123,7 @@ defmodule Runcom.Steps.EExTemplate do
     with {:ok, content} <- render(opts, assigns),
          :ok <- File.mkdir_p(Path.dirname(dest)),
          :ok <- File.write(dest, content) do
-      {:ok, Result.ok(output: dest, changed: true)}
+      {:ok, Result.ok(output: dest)}
     else
       {:error, reason} when is_atom(reason) ->
         {:ok, Result.error(error: inspect(reason))}
@@ -190,5 +187,4 @@ defmodule Runcom.Steps.EExTemplate do
     extra = Map.get(opts, :vars, %{})
     Map.merge(base, extra)
   end
-
 end

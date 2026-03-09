@@ -60,10 +60,6 @@ config :phoenix, :json_library, Jason
 # Runcom Store
 config :runcom, store: {RuncomDemo.Store, repo: RuncomDemo.Repo}
 
-# Runcom Vault
-config :runcom, vault: {RuncomEcto.Vault, repo: RuncomDemo.Repo}
-config :runcom, vault_key: "runcom-demo-vault-key-32bytes!!"
-
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.
 import_config "#{config_env()}.exs"

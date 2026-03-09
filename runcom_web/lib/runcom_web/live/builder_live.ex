@@ -13,13 +13,21 @@ defmodule RuncomWeb.Live.BuilderLive do
   ```mermaid
   stateDiagram-v2
       [*] --> Mounted: mount/3
-      Mounted --> Index: handle_params(:index)
-      Mounted --> Edit: handle_params(:edit)
+      Mounted --> Index: handle_params(index)
+      Mounted --> Edit: handle_params(edit)
       Index --> Editing: user adds nodes
       Edit --> Editing: store loaded
       Editing --> Saved: save event
       Saved --> Editing: continue editing
   ```
+
+  ## Persistence
+
+  The `BuilderPersist` client hook saves graph state (nodes, edges, runbook
+  name) to localStorage on every change. When the builder mounts without a
+  URL-specified runbook, the hook pushes a `"restore_state"` event to
+  rehydrate the previous session. This lets users close the tab and return
+  without losing work.
 
   ## Events
 
@@ -32,6 +40,8 @@ defmodule RuncomWeb.Live.BuilderLive do
 
     * `"update_meta"` - Update runbook name or assigns
     * `"save"` - Assemble DSL source from graph and persist via store
+    * `"restore_state"` - Rehydrate graph from localStorage (via `BuilderPersist` hook)
+    * `"clear_builder"` - Reset graph and clear localStorage
   """
 
   use Phoenix.LiveView
@@ -441,12 +451,20 @@ defmodule RuncomWeb.Live.BuilderLive do
   end
 
   def handle_event("update_node_opts", %{"node_id" => node_id, "opts" => new_opts}, socket) do
-    new_opts =
-      new_opts
-      |> normalize_opts()
+    new_opts = normalize_opts(new_opts)
+
+    existing_opts =
+      case Enum.find(socket.assigns.nodes, &(&1["id"] == node_id)) do
+        %{"data" => %{"opts" => opts}} when is_map(opts) -> opts
+        _ -> %{}
+      end
+
+    merged_opts =
+      existing_opts
+      |> Map.merge(new_opts)
       |> Map.reject(fn {_k, v} -> v == "" end)
 
-    {:noreply, update_selected_node_opts(socket, node_id, new_opts)}
+    {:noreply, update_selected_node_opts(socket, node_id, merged_opts)}
   end
 
   def handle_event("update_node_opts", _params, socket) do
@@ -809,11 +827,8 @@ defmodule RuncomWeb.Live.BuilderLive do
 
     sections = [
       "defmodule #{module_name} do",
-      "  use Runcom.Runbook",
+      "  use Runcom.Runbook, name: #{inspect(runbook_name)}",
       if(requires != "", do: "\n#{requires}"),
-      "",
-      "  @impl true",
-      "  def name, do: #{inspect(runbook_name)}",
       "",
       "  @impl true",
       "  def build(params) do",

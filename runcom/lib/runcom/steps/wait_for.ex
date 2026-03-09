@@ -30,23 +30,20 @@ defmodule Runcom.Steps.WaitFor do
       |> WaitFor.add("port_ready", tcp_port: 4000, timeout: 30_000, interval: 1_000)
   """
 
-  use Runcom.Step, category: "Network"
+  use Runcom.Step, name: "WaitFor", category: "Network"
 
   schema do
-    field :tcp_port, :integer, group: :condition, label: "TCP Port"
-    field :host, :string, depends_on: :tcp_port, default: "localhost"
-    field :path, :string, group: :condition
-    field :timeout, :integer, label: "Timeout (ms)"
-    field :interval, :integer, label: "Interval (ms)"
+    field(:tcp_port, :integer, group: :condition, label: "TCP Port")
+    field(:host, :string, depends_on: :tcp_port, default: "localhost")
+    field(:path, :string, group: :condition)
+    field(:timeout, :integer, label: "Timeout (ms)")
+    field(:interval, :integer, label: "Interval (ms)")
 
-    group :condition, required: true, exclusive: true
+    group(:condition, required: true, exclusive: true)
   end
 
   @default_timeout 30_000
   @default_interval 500
-
-  @impl true
-  def name, do: "WaitFor"
 
   @impl true
   def run(_rc, opts) do

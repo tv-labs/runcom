@@ -53,7 +53,6 @@ defmodule RuncomEcto.Schema.StepResultTest do
         completed_at: ~U[2026-03-07 10:00:01.500000Z],
         output: "hello world",
         error: nil,
-        bytes: 52_428_800,
         changed: true,
         opts: %{"cmd" => "echo hello"},
         meta: %{"has_assert" => true}

@@ -124,16 +124,6 @@
     border-radius: 4px;
     margin-bottom: 5px;
   }
-  .step-summary {
-    font-size: 11px;
-    color: #5a5a72;
-    margin-top: 3px;
-    white-space: nowrap;
-    line-height: 1.4;
-  }
-  :global(.svelte-flow.dark) .step-summary {
-    color: #a8a8be;
-  }
   .step-detail {
     font-size: 11px;
     color: #7a7a90;

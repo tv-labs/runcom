@@ -53,7 +53,7 @@ defmodule RuncomDemo.Runbooks.KitchenSink do
     * `:deploy_key` - deploy key for auth_check step
   """
 
-  use Runcom.Runbook
+  use Runcom.Runbook, name: "kitchen_sink"
 
   import Bash.Sigil
 
@@ -72,9 +72,6 @@ defmodule RuncomDemo.Runbooks.KitchenSink do
     field :work_dir, :string, default: "/tmp/runcom-ks"
     field :fail_on_node, :string, default: ""
   end
-
-  @impl true
-  def name, do: "kitchen_sink"
 
   @impl true
   def build(params) do
@@ -199,7 +196,7 @@ defmodule RuncomDemo.Runbooks.KitchenSink do
       end
     )
     |> Debug.add("post_gate",
-      message: "Node gate passed, continuing"
+      message: "Node gate passed, continuing 2"
     )
     |> WaitFor.add("wait_marker",
       path: fn rc -> "#{rc.assigns.work_dir}/.marker" end,
@@ -207,7 +204,7 @@ defmodule RuncomDemo.Runbooks.KitchenSink do
       interval: 100
     )
     |> Pause.add("brief_pause",
-      duration: 200
+      duration: to_timeout(second: 5)
     )
     |> RCBash.add("cleanup",
       script: fn rc -> "rm -rf '#{rc.assigns.work_dir}' && echo 'cleaned up'" end

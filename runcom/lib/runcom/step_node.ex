@@ -33,8 +33,8 @@ defmodule Runcom.StepNode do
       Executed --> [*]
 
       state Executed {
-          [*] --> ok: status == :ok
-          [*] --> error: status == :error
+          [*] --> ok : status is ok
+          [*] --> error : status is error
       }
   ```
   """
@@ -86,7 +86,14 @@ defmodule Runcom.StepNode do
       StepNode.new("check", Runcom.Steps.Command, %{cmd: "true"})
   """
   @spec new(String.t(), module(), keyword() | map(), map(), MapSet.t(), MapSet.t()) :: t()
-  def new(name, module, opts, sources \\ %{}, assign_refs \\ MapSet.new(), secret_refs \\ MapSet.new())
+  def new(
+        name,
+        module,
+        opts,
+        sources \\ %{},
+        assign_refs \\ MapSet.new(),
+        secret_refs \\ MapSet.new()
+      )
 
   def new(name, module, opts, sources, assign_refs, secret_refs) when is_list(opts) do
     new(name, module, Map.new(opts), sources, assign_refs, secret_refs)

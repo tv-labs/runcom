@@ -5,10 +5,7 @@ defmodule RuncomTest do
 
   defmodule FailStep do
     @moduledoc false
-    use Runcom.Step
-
-    @impl true
-    def name, do: "Fail"
+    use Runcom.Step, name: "Fail"
 
     @impl true
     def validate(_opts), do: :ok
@@ -22,12 +19,9 @@ defmodule RuncomTest do
 
   defmodule SuccessStep do
     @moduledoc false
-    use Runcom.Step
+    use Runcom.Step, name: "Success"
 
     alias Runcom.Sink
-
-    @impl true
-    def name, do: "Success"
 
     @impl true
     def validate(_opts), do: :ok

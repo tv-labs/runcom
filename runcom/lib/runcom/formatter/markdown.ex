@@ -122,10 +122,11 @@ defmodule Runcom.Formatter.Markdown do
     meta =
       case get_timestamps(rc) do
         {started, completed} ->
-          meta ++ [
-            "**Started:** #{format_datetime(started)}",
-            "**Completed:** #{format_datetime(completed)}"
-          ]
+          meta ++
+            [
+              "**Started:** #{format_datetime(started)}",
+              "**Completed:** #{format_datetime(completed)}"
+            ]
 
         nil ->
           meta
@@ -304,8 +305,9 @@ defmodule Runcom.Formatter.Markdown do
         meta
       end
 
-    header = "\n## Step: #{step.name} (#{index}/#{total_steps}) #{status_icon}\n\n" <>
-      Enum.join(meta, "\\\n") <> "\n"
+    header =
+      "\n## Step: #{step.name} (#{index}/#{total_steps}) #{status_icon}\n\n" <>
+        Enum.join(meta, "\\\n") <> "\n"
 
     output = format_step_output(rc, step, result, secrets)
 

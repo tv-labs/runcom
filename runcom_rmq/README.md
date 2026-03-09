@@ -139,8 +139,7 @@ Send a runbook execution command to specific agent nodes:
 
 ```elixir
 RuncomRmq.Server.Dispatcher.dispatch("deploy", ["agent-east-1", "agent-west-1"],
-  params: %{version: "1.4.0"},
-  secrets: %{api_key: "sk-..."}
+  params: %{version: "1.4.0"}
 )
 # => [{"agent-east-1", :acked}, {"agent-west-1", :acked}]
 ```

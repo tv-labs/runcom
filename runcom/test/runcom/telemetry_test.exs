@@ -211,10 +211,7 @@ defmodule Runcom.TelemetryTest do
   describe "exception telemetry" do
     test "emits exception event when step raises", %{runbook_id: runbook_id} do
       defmodule RaisingStep do
-        use Runcom.Step
-
-        @impl true
-        def name, do: "Raising"
+        use Runcom.Step, name: "Raising"
 
         @impl true
         def validate(_opts), do: :ok

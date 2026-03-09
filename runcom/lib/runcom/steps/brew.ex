@@ -25,18 +25,15 @@ defmodule Runcom.Steps.Brew do
       |> Brew.add("install_tools", name: ["jq", "yq", "fzf"], state: :present)
   """
 
-  use Runcom.Step, category: "Packages"
+  use Runcom.Step, name: "Brew", category: "Packages"
 
   schema do
-    field :name, :any, required: true, label: "Package Name(s)"
-    field :state, :enum, required: true, values: [:present, :absent, :latest]
-    field :cask, :boolean
+    field(:name, :any, required: true, label: "Package Name(s)")
+    field(:state, :enum, required: true, values: [:present, :absent, :latest])
+    field(:cask, :boolean)
   end
 
   alias Runcom.CommandRunner
-
-  @impl true
-  def name, do: "Brew"
 
   @impl true
   def run(_rc, %{sink: sink} = opts) do

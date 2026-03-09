@@ -3,11 +3,10 @@ defmodule Runcom.CheckpointIntegrationTest.CountingStep do
   Test step that increments a counter Agent when run.
   Used to verify steps are executed the expected number of times.
   """
-  use Runcom.Step
+  use Runcom.Step, name: "Counter"
 
   alias Runcom.Step.Result
 
-  def name, do: "Counter"
   def validate(_), do: :ok
 
   def run(_rc, opts) do
@@ -21,11 +20,10 @@ defmodule Runcom.CheckpointIntegrationTest.HaltStep do
   @moduledoc """
   Test step that returns halt: true to stop runbook execution.
   """
-  use Runcom.Step
+  use Runcom.Step, name: "Halt"
 
   alias Runcom.Step.Result
 
-  def name, do: "Halt"
   def validate(_), do: :ok
 
   def run(_rc, _opts) do
@@ -37,11 +35,10 @@ defmodule Runcom.CheckpointIntegrationTest.FailingStep do
   @moduledoc """
   Test step that returns an error result.
   """
-  use Runcom.Step
+  use Runcom.Step, name: "Failing"
 
   alias Runcom.Step.Result
 
-  def name, do: "Failing"
   def validate(_), do: :ok
 
   def run(_rc, _opts) do

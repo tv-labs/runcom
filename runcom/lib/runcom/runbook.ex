@@ -2,8 +2,9 @@ defmodule Runcom.Runbook do
   @moduledoc ~S"""
   Behaviour for defining runbooks that can be registered and served remotely.
 
-  Runbook modules define a `name/0` callback for identification and a
-  `build/1` callback that accepts parameters and returns a `%Runcom{}` struct.
+  Runbook modules define a `build/1` callback that accepts parameters and
+  returns a `%Runcom{}` struct. The `:name` option on `use Runcom.Runbook`
+  sets the runbook's identity; it defaults to the last segment of the module name.
 
   ## Usage
 
@@ -29,9 +30,6 @@ defmodule Runcom.Runbook do
 
   """
 
-  @doc "Returns the runbook name for identification"
-  @callback name() :: String.t()
-
   @doc "Returns default parameters for building the runbook (used for introspection)."
   @callback params() :: map()
 
@@ -51,9 +49,7 @@ defmodule Runcom.Runbook do
         def module(_), do: @for
       end
 
-      @impl Runcom.Runbook
-      def name, do: unquote(name)
-      defoverridable name: 0
+      def __name__, do: unquote(name)
 
       @doc false
       def __runbook_hash__ do
@@ -103,7 +99,7 @@ defmodule Runcom.Runbook do
   @doc "Looks up a compiled runbook module by name."
   @spec get(String.t()) :: {:ok, module()} | {:error, :not_found}
   def get(name) when is_binary(name) do
-    case Enum.find(list(), fn mod -> mod.name() == name end) do
+    case Enum.find(list(), fn mod -> mod.__name__() == name end) do
       nil -> {:error, :not_found}
       mod -> {:ok, mod}
     end
@@ -113,7 +109,12 @@ defmodule Runcom.Runbook do
   @spec summaries() :: [map()]
   def summaries do
     Enum.map(list(), fn mod ->
-      base = %{id: mod.name(), name: mod.name(), hash: mod.__runbook_hash__(), type: :compiled}
+      base = %{
+        id: mod.__name__(),
+        name: mod.__name__(),
+        hash: mod.__runbook_hash__(),
+        type: :compiled
+      }
 
       if function_exported?(mod, :__schema__, 1) do
         fields =
@@ -150,7 +151,7 @@ defmodule Runcom.Runbook do
   defp capture_bytecodes(rc, source_mod) do
     # Collect bytecodes for the source module and all non-builtin step/closure modules.
     # This enables checkpoint resume after a BEAM restart (e.g. reboot step).
-    case Runcom.Bytecode.bundle(rc) do
+    case Runcom.CodeSync.bundle(rc) do
       {:ok, {_binary, step_bytecodes}} ->
         source_bytecode =
           case :code.get_object_code(source_mod) do
@@ -187,7 +188,7 @@ defmodule Runcom.Runbook do
         {:ok, refs} = get_references(rc)
         name in refs
       end)
-      |> Enum.map(& &1.name())
+      |> Enum.map(& &1.__name__())
 
     {:ok, dependents}
   end

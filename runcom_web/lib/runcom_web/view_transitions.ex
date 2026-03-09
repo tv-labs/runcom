@@ -1,18 +1,17 @@
 defmodule RuncomWeb.ViewTransitions do
-  @moduledoc """
-  Shared helpers for View Transitions API navigation.
-
-  Import this module in LiveViews to use `navigate_forward/3` and
-  `navigate_back/1` for animated page transitions.
-
-  ## Usage
-
-      import RuncomWeb.ViewTransitions
-
-      # In template:
-      phx-click={navigate_forward("result-detail", "#row-1", "/dashboard/result/1")}
-      phx-click={navigate_back("/dashboard")}
-  """
+  @moduledoc false
+  # Shared helpers for View Transitions API navigation.
+  #
+  # Import this module in LiveViews to use `navigate_forward/3` and
+  # `navigate_back/1` for animated page transitions.
+  #
+  # ## Usage
+  #
+  #     import RuncomWeb.ViewTransitions
+  #
+  #     # In template:
+  #     phx-click={navigate_forward("result-detail", "#row-1", "/dashboard/result/1")}
+  #     phx-click={navigate_back("/dashboard")}
 
   import Phoenix.LiveView.JS
 

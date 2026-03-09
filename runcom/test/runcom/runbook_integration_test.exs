@@ -436,5 +436,4 @@ defmodule Runcom.RunbookIntegrationTest do
       assert completed.step_status["never_runs"] == :skipped
     end
   end
-
 end

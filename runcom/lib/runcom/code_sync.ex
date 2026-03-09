@@ -1,37 +1,54 @@
-defmodule Runcom.Bytecode do
+defmodule Runcom.CodeSync do
   @moduledoc """
   Assembles bytecode bundles for distributing runbooks to remote agents.
 
   When a runbook uses custom step modules (anything not under `Runcom.Steps.*`),
   those modules must be shipped alongside the serialized runbook so the remote
-  VM can execute them. This module handles serialization, hashing, and bytecode
-  extraction for that workflow.
+  VM can execute them. This module handles serialization, hashing, bytecode
+  extraction, and dependency resolution for that workflow.
 
   ## Bundle Format
 
   A bundle is a tuple of `{struct_binary, [{module, bytecode}]}` where:
 
     * `struct_binary` - The `%Runcom{}` struct serialized via `:erlang.term_to_binary/1`
-    * `[{module, bytecode}]` - Object code for every custom (non-builtin) step module
+    * `[{module, bytecode}]` - Object code for every custom module reachable
+      from the runbook's steps, including their dependencies
+
+  ## Dependency Resolution
+
+  Step modules compiled with `Runcom.CodeSync.Tracer` expose a `__deps__/0`
+  function listing their exact compile-time dependencies. `bundle/1` walks
+  these manifests transitively to build the complete set of modules to ship.
+
+  The tracer must be enabled in `mix.exs`:
+
+      def project do
+        [
+          ...
+          elixirc_options: [tracers: [Runcom.CodeSync.Tracer]]
+        ]
+      end
 
   ## Example
 
-      {:ok, {payload, modules}} = Runcom.Bytecode.bundle(runbook)
+      {:ok, {payload, modules}} = Runcom.CodeSync.bundle(runbook)
       # Ship payload + modules to remote node...
 
       # On the remote side:
-      :ok = Runcom.Bytecode.load_bundle(modules)
+      :ok = Runcom.CodeSync.load_bundle(modules)
       runbook = :erlang.binary_to_term(payload)
   """
 
   @doc """
-  Serializes a runbook and extracts bytecode for all custom step modules.
+  Serializes a runbook and extracts bytecode for all reachable custom modules.
 
   Built-in steps (under `Runcom.Steps.*`) are assumed to already exist on the
-  remote VM. Only custom modules need their bytecode included.
+  remote VM. All other modules referenced by custom steps are bundled based
+  on the `__deps__/0` manifest provided by `Runcom.CodeSync.Tracer`.
 
   Returns `{:ok, {struct_binary, [{module, bytecode}]}}` on success, or
-  `{:error, {:bytecode_not_found, module}}` if a custom module's object code
+  `{:error, {:bytecode_not_found, module}}` if a module's object code
   cannot be loaded.
   """
   @spec bundle(Runcom.t()) :: {:ok, {binary(), [{module(), binary()}]}} | {:error, term()}
@@ -48,9 +65,14 @@ defmodule Runcom.Bytecode do
       |> Map.values()
       |> Enum.flat_map(&extract_closure_modules(&1.opts))
 
-    (step_modules ++ closure_modules)
-    |> Enum.uniq()
-    |> Enum.reject(&builtin?/1)
+    root_modules =
+      (step_modules ++ closure_modules)
+      |> Enum.uniq()
+      |> Enum.reject(&builtin?/1)
+
+    all_modules = resolve_deps(root_modules)
+
+    all_modules
     |> fetch_bytecodes([])
     |> case do
       {:ok, bytecodes} -> {:ok, {struct_binary, bytecodes}}
@@ -98,6 +120,37 @@ defmodule Runcom.Bytecode do
     end)
   end
 
+  @doc """
+  Resolves all dependencies for the given root modules.
+
+  Walks the `__deps__/0` manifests transitively to discover all modules
+  that need to be shipped to remote agents.
+  """
+  @spec resolve_deps([module()]) :: [module()]
+  def resolve_deps(root_modules) do
+    root_modules
+    |> Enum.reduce(MapSet.new(), &walk_deps/2)
+    |> MapSet.to_list()
+  end
+
+  defp walk_deps(module, seen) do
+    if MapSet.member?(seen, module) or builtin?(module) do
+      seen
+    else
+      seen = MapSet.put(seen, module)
+
+      Code.ensure_loaded(module)
+
+      if function_exported?(module, :__deps__, 0) do
+        module.__deps__()
+        |> Enum.reject(&builtin?/1)
+        |> Enum.reduce(seen, &walk_deps/2)
+      else
+        seen
+      end
+    end
+  end
+
   defp extract_closure_modules(opts) when is_map(opts) do
     opts
     |> Map.values()
@@ -115,11 +168,21 @@ defmodule Runcom.Bytecode do
 
   defp closure_module(_), do: []
 
-  defp builtin?(module) do
-    case Module.split(module) do
-      ["Runcom", "Steps" | _] -> true
-      _ -> false
-    end
+  @builtin_prefixes ~w(Elixir.Runcom.Steps. Elixir.Runcom.Step Elixir.Runcom.StepNode Elixir.Runcom.Result)
+
+  defp builtin?(module) when is_atom(module) do
+    not elixir_module?(module) or runcom_internal?(module)
+  end
+
+  defp elixir_module?(module) do
+    String.starts_with?(Atom.to_string(module), "Elixir.")
+  end
+
+  defp runcom_internal?(module) do
+    mod_str = Atom.to_string(module)
+
+    Enum.any?(@builtin_prefixes, &String.starts_with?(mod_str, &1)) or
+      mod_str == "Elixir.Runcom"
   end
 
   defp fetch_bytecodes([], acc), do: {:ok, Enum.reverse(acc)}

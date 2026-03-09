@@ -1,4 +1,4 @@
 defprotocol Runcom.Runbook.Compiled do
-  @moduledoc "Marker protocol for discovering compiled runbook modules."
+  @moduledoc false
   def module(runbook)
 end

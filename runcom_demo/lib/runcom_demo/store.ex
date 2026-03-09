@@ -25,13 +25,6 @@ defmodule RuncomDemo.Store do
   defdelegate status_rates(opts \\ []), to: RuncomEcto.Store
   defdelegate step_timing_stats(opts \\ []), to: RuncomEcto.Store
 
-  # ── Secrets (delegated to RuncomEcto.Store) ──
-
-  defdelegate list_secrets(opts \\ []), to: RuncomEcto.Store
-  defdelegate fetch_secret(name, opts \\ []), to: RuncomEcto.Store
-  defdelegate put_secret(name, value, opts \\ []), to: RuncomEcto.Store
-  defdelegate delete_secret(name, opts \\ []), to: RuncomEcto.Store
-
   # ── Dispatches (delegated to RuncomEcto.Store) ──
 
   defdelegate create_dispatch(attrs, opts \\ []), to: RuncomEcto.Store
@@ -56,7 +49,7 @@ defmodule RuncomDemo.Store do
     %Node{}
     |> Node.changeset(attrs)
     |> Repo.insert(
-      on_conflict: {:replace, [:tags, :last_seen_at, :status, :queue, :updated_at]},
+      on_conflict: {:replace, [:tags, :last_seen_at, :status, :updated_at]},
       conflict_target: :node_id,
       returning: true
     )

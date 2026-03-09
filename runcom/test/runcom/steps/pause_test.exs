@@ -3,9 +3,9 @@ defmodule Runcom.Steps.PauseTest do
 
   alias Runcom.Steps.Pause
 
-  describe "name/0" do
-    test "returns step name" do
-      assert Pause.name() == "Pause"
+  describe "__name__/0" do
+    test "returns step name via __name__" do
+      assert Pause.__name__() == "Pause"
     end
   end
 

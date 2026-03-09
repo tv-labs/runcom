@@ -145,109 +145,20 @@ each chunk to disk as it arrives, so output survives crashes and can be
 replayed after resume. But sinks are just a protocol implementation, so you can
 swap in any backend.
 
-Three sinks ship with Runcom:
+Five sinks ship with Runcom:
 
 | Sink | Purpose |
 |------|---------|
-| `Runcom.Sink.DETS` | Crash-durable local storage (default) |
-| `Runcom.Sink.File` | Simple file append |
-| `Runcom.Sink.Null` | Discard all output (testing) |
+| `Runcom.Sink.DETS`  | Crash-durable local storage (default) |
+| `Runcom.Sink.S3`    | Streamed multipart upload to S3-compatible storage |
+| `Runcom.Sink.Multi` | Fan-out to multiple sinks (e.g. DETS + S3 for local durability with remote archival) |
+| `Runcom.Sink.File`  | Simple file append |
+| `Runcom.Sink.Null`  | Discard all output (testing) |
 
 Sinks never accumulate output in memory. The DETS sink writes each chunk to
-disk immediately. The File sink appends to a file handle. This matters when
-steps produce large output — a multi-gigabyte download or a verbose build log
+disk immediately. The File sink appends to a file handle. S3 uploads parts in
+5mb buffers.This matters when steps produce large output — a verbose build log 
 streams through the sink without growing the process heap.
-
-### Writing a custom sink
-
-Implement the `Runcom.Sink` protocol for your struct. For example, an S3 sink
-that streams output directly to a bucket using
-[`ex_aws_s3`](https://hex.pm/packages/ex_aws_s3) multipart uploads. Each
-chunk is buffered only until it reaches the 5 MB part minimum, then uploaded
-immediately — the process never holds more than one part in memory regardless
-of total output size:
-
-```elixir
-defmodule MyApp.Sink.S3 do
-  @five_mb 5 * 1024 * 1024
-
-  defstruct [:bucket, :key, :upload_id, buffer: "", parts: [], part_number: 1]
-
-  def new(bucket, key), do: %__MODULE__{bucket: bucket, key: key}
-end
-
-defimpl Runcom.Sink, for: MyApp.Sink.S3 do
-  alias MyApp.Sink.S3
-
-  def open(%S3{bucket: bucket, key: key} = sink) do
-    {:ok, %{body: %{upload_id: upload_id}}} =
-      ExAws.S3.initiate_multipart_upload(bucket, key) |> ExAws.request()
-
-    %{sink | upload_id: upload_id}
-  end
-
-  def write(sink, {:stdout, data}), do: append(sink, data)
-  def write(sink, {:stderr, data}), do: append(sink, data)
-  def write(sink, data) when is_binary(data), do: append(sink, data)
-
-  defp append(%S3{} = sink, data) do
-    buffer = sink.buffer <> data
-
-    if byte_size(buffer) >= @five_mb do
-      flush_part(%{sink | buffer: buffer})
-    else
-      %{sink | buffer: buffer}
-    end
-  end
-
-  defp flush_part(%S3{bucket: b, key: k, upload_id: uid, part_number: n} = sink) do
-    {:ok, %{headers: headers}} =
-      ExAws.S3.upload_part(b, k, uid, n, body: sink.buffer) |> ExAws.request()
-
-    etag = :proplists.get_value("ETag", headers)
-    %{sink | buffer: "", parts: [{n, etag} | sink.parts], part_number: n + 1}
-  end
-
-  def close(%S3{buffer: buf} = sink) do
-    sink = if byte_size(buf) > 0, do: flush_part(sink), else: sink
-
-    ExAws.S3.complete_multipart_upload(
-      sink.bucket, sink.key, sink.upload_id, Enum.reverse(sink.parts)
-    ) |> ExAws.request()
-
-    %{sink | buffer: "", parts: []}
-  end
-
-  def read(%S3{bucket: b, key: k}) do
-    case ExAws.S3.get_object(b, k) |> ExAws.request() do
-      {:ok, %{body: body}} -> {:ok, body}
-      {:error, _} -> {:ok, ""}
-    end
-  end
-
-  def stdout(sink), do: read(sink)
-  def stderr(_sink), do: {:ok, ""}
-
-  def stream_chunks(%S3{bucket: b, key: k}) do
-    ExAws.S3.download_file(b, k, :memory)
-    |> ExAws.stream!()
-    |> Stream.map(&{:stdout, &1})
-  end
-end
-```
-
-Attach it to any step:
-
-```elixir
-sink = MyApp.Sink.S3.new("my-runcom-logs", "deploys/#{deploy_id}/download.log")
-
-Runcom.new("deploy-1.0")
-|> GetUrl.add("download",
-  url: "https://releases.example.com/app.tar.gz",
-  dest: "/tmp/app.tar.gz",
-  sink: sink
-)
-```
 
 ## Packages
 
@@ -300,14 +211,12 @@ defp deps do
 end
 ```
 
-Configure the store and vault:
+Configure the store:
 
 ```elixir
 # config/config.exs
 config :runcom,
-  store: {RuncomEcto.Store, repo: MyApp.Repo},
-  vault: {RuncomEcto.Vault, repo: MyApp.Repo},
-  vault_key: "must-be-exactly-32-bytes-long!!"
+  store: {RuncomEcto.Store, repo: MyApp.Repo}
 ```
 
 Create a migration for the runcom tables:

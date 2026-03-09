@@ -1,7 +1,7 @@
 defmodule Runcom.Umbrella.MixProject do
   use Mix.Project
 
-  @subprojects ~w(runcom runcom_ecto runcom_web runcom_rmq runcom_demo)
+  @subprojects ~w[runcom runcom_ecto runcom_web runcom_rmq runcom_demo]
 
   def project do
     [

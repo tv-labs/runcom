@@ -3,9 +3,9 @@ defmodule Runcom.Steps.DebugTest do
 
   alias Runcom.Steps.Debug
 
-  describe "name/0" do
-    test "returns step name" do
-      assert Debug.name() == "Debug"
+  describe "__name__/0" do
+    test "returns step name via __name__" do
+      assert Debug.__name__() == "Debug"
     end
   end
 
@@ -18,19 +18,10 @@ defmodule Runcom.Steps.DebugTest do
 
   describe "run/2" do
     test "returns message in output" do
-      {:ok, result} = Debug.run(nil, %{message: "debug info"})
+      {:ok, result} = Debug.run(nil, %{message: "debug info", sink: Runcom.Sink.Null.new()})
 
       assert result.status == :ok
       assert result.output == "debug info"
-    end
-
-    test "supports function for message" do
-      rc = %{assigns: %{version: "1.0"}}
-
-      {:ok, result} =
-        Debug.run(rc, %{message: fn rc -> "Version: #{rc.assigns.version}" end})
-
-      assert result.output == "Version: 1.0"
     end
   end
 

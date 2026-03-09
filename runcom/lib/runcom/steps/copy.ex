@@ -31,56 +31,32 @@ defmodule Runcom.Steps.Copy do
          )
   """
 
-  use Runcom.Step, category: "Files"
+  use Runcom.Step, name: "Copy", category: "Files"
 
   schema do
-    field :src, :string, group: :source
-    field :content, :string, group: :source, ui_type: :textarea
-    field :dest, :string, required: true
+    field(:src, :string, group: :source)
+    field(:content, :string, group: :source, ui_type: :textarea)
+    field(:dest, :string, required: true)
 
-    group :source, required: true, exclusive: true
+    group(:source, required: true, exclusive: true)
   end
 
   @impl true
-  def name, do: "Copy"
-
-  @impl true
-  def validate(opts) do
-    cond do
-      not Map.has_key?(opts, :dest) ->
-        {:error, "dest is required"}
-
-      not Map.has_key?(opts, :src) and not Map.has_key?(opts, :content) ->
-        {:error, "either src or content is required"}
-
-      Map.has_key?(opts, :src) and Map.has_key?(opts, :content) ->
-        {:error, "src and content are mutually exclusive"}
-
-      true ->
-        :ok
-    end
-  end
-
-  @impl true
-  def run(rc, opts) do
-    dest = resolve_path(rc, opts.dest)
-
+  def run(_rc, opts) do
     if Map.has_key?(opts, :content) do
-      write_content(dest, opts.content)
+      write_content(opts.dest, opts.content)
     else
-      copy_path(resolve_path(rc, opts.src), dest)
+      copy_path(opts.src, opts.dest)
     end
   end
 
   @impl true
-  def dryrun(rc, opts) do
-    dest = resolve_path(rc, opts.dest)
-
+  def dryrun(_rc, opts) do
     message =
       if Map.has_key?(opts, :content) do
-        "Would write content to: #{dest}"
+        "Would write content to: #{opts.dest}"
       else
-        "Would copy #{resolve_path(rc, opts.src)} to #{dest}"
+        "Would copy #{opts.src} to #{opts.dest}"
       end
 
     {:ok, Result.ok(output: message)}
@@ -96,11 +72,11 @@ defmodule Runcom.Steps.Copy do
       end
 
     if existing_hash == content_hash do
-      {:ok, Result.ok(changed: false, output: "Content unchanged")}
+      {:ok, Result.ok(output: "Content unchanged")}
     else
       with :ok <- File.mkdir_p(Path.dirname(dest)),
            :ok <- File.write(dest, content) do
-        {:ok, Result.ok(changed: true, output: "Wrote content")}
+        {:ok, Result.ok(output: "Wrote #{byte_size(content)} content")}
       else
         {:error, reason} ->
           {:ok, Result.error(error: reason)}
@@ -142,7 +118,7 @@ defmodule Runcom.Steps.Copy do
       if File.dir?(src) do
         case File.cp_r(src, dest) do
           {:ok, _} ->
-            {:ok, Result.ok(changed: true, output: "Copied directory")}
+            {:ok, Result.ok(output: "Copied directory")}
 
           {:error, reason, _} ->
             {:ok, Result.error(error: reason)}
@@ -150,7 +126,7 @@ defmodule Runcom.Steps.Copy do
       else
         case File.cp(src, dest) do
           :ok ->
-            {:ok, Result.ok(changed: true, output: "Copied file")}
+            {:ok, Result.ok(output: "Copied file")}
 
           {:error, reason} ->
             {:ok, Result.error(error: reason)}
@@ -161,7 +137,4 @@ defmodule Runcom.Steps.Copy do
         {:ok, Result.error(error: reason)}
     end
   end
-
-  defp resolve_path(rc, path) when is_function(path, 1), do: path.(rc)
-  defp resolve_path(_rc, path) when is_binary(path), do: path
 end

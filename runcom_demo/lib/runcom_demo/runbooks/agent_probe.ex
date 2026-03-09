@@ -34,7 +34,7 @@ defmodule RuncomDemo.Runbooks.AgentProbe do
     * `:check_url` - URL to probe for connectivity (default: `"https://httpbin.org/get"`)
   """
 
-  use Runcom.Runbook
+  use Runcom.Runbook, name: "agent_probe"
 
   import Bash.Sigil
 
@@ -46,9 +46,6 @@ defmodule RuncomDemo.Runbooks.AgentProbe do
     field :report_dir, :string, default: "/data/runcom"
     field :check_url, :string, default: "https://httpbin.org/get"
   end
-
-  @impl true
-  def name, do: "agent_probe"
 
   @impl true
   def build(params) do

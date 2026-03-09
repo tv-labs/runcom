@@ -46,8 +46,7 @@ defmodule RuncomEcto.MixProject do
       deps: deps(),
       package: package(),
       name: "RuncomEcto",
-      description:
-        "Ecto/Postgres persistence for Runcom — results, dispatches, secrets, and analytics",
+      description: "Ecto/Postgres persistence for Runcom — results, dispatches, and analytics",
       source_url: @source_url,
       homepage_url: @source_url,
       docs: docs()
@@ -69,7 +68,6 @@ defmodule RuncomEcto.MixProject do
       {:ecto_sql, "~> 3.12"},
       {:postgrex, "~> 0.19"},
       {:jason, "~> 1.4"},
-      {:plug_crypto, "~> 2.0"},
       {:ex_doc, "~> 0.35", only: :dev, runtime: false}
     ]
   end

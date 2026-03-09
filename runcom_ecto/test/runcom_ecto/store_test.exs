@@ -138,7 +138,6 @@ defmodule RuncomEcto.StoreTest do
             exit_code: 0,
             duration_ms: 1000,
             output: "downloaded 50MB",
-            bytes: 52_428_800,
             changed: true,
             opts: %{"url" => "https://example.com/app.tar.gz"},
             meta: %{"has_assert" => false}
@@ -182,8 +181,6 @@ defmodule RuncomEcto.StoreTest do
       # insert_all bypasses the schema load, so reload via Repo.get to trigger decompression
       download_reloaded = @opts[:repo].get!(StepResult, download.id)
       assert download_reloaded.output == "downloaded 50MB"
-      assert download.bytes == 52_428_800
-
       assert extract.name == "extract"
       assert extract.status == "ok"
 

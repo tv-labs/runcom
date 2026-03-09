@@ -3,9 +3,9 @@ defmodule Runcom.Steps.UnarchiveTest do
 
   alias Runcom.Steps.Unarchive
 
-  describe "name/0" do
-    test "returns step name" do
-      assert Unarchive.name() == "Unarchive"
+  describe "__name__/0" do
+    test "returns step name via __name__" do
+      assert Unarchive.__name__() == "Unarchive"
     end
   end
 
@@ -36,7 +36,7 @@ defmodule Runcom.Steps.UnarchiveTest do
       {:ok, result} = Unarchive.run(nil, %{src: archive_path, dest: dest_path})
 
       assert result.status == :ok
-      assert result.changed == true
+
       assert result.output =~ "Extracted to"
       assert File.read!(Path.join(dest_path, content_file)) == content
     end
@@ -53,7 +53,7 @@ defmodule Runcom.Steps.UnarchiveTest do
       {:ok, result} = Unarchive.run(nil, %{src: archive_path, dest: dest_path})
 
       assert result.status == :ok
-      assert result.changed == true
+
       assert File.read!(Path.join(dest_path, content_file)) == content
     end
   end
@@ -71,7 +71,7 @@ defmodule Runcom.Steps.UnarchiveTest do
       {:ok, result} = Unarchive.run(nil, %{src: archive_path, dest: dest_path})
 
       assert result.status == :ok
-      assert result.changed == true
+
       assert File.read!(Path.join(dest_path, content_file)) == content
     end
   end
@@ -89,7 +89,57 @@ defmodule Runcom.Steps.UnarchiveTest do
       {:ok, result} = Unarchive.run(nil, %{src: archive_path, dest: dest_path})
 
       assert result.status == :ok
-      assert result.changed == true
+
+      assert File.read!(Path.join(dest_path, content_file)) == content
+    end
+  end
+
+  describe "run/2 with tar.zst" do
+    @tag :tmp_dir
+    test "extracts zst-compressed tar archive", %{tmp_dir: tmp_dir} do
+      archive_path = Path.join(tmp_dir, "test.tar.zst")
+      dest_path = Path.join(tmp_dir, "extracted")
+      content_file = "hello.txt"
+      content = "Hello from zstd!"
+
+      create_tar_zst(archive_path, [{content_file, content}])
+
+      {:ok, result} = Unarchive.run(nil, %{src: archive_path, dest: dest_path})
+
+      assert result.status == :ok
+      assert result.output =~ "Extracted to"
+      assert File.read!(Path.join(dest_path, content_file)) == content
+    end
+
+    @tag :tmp_dir
+    test "extracts zstd-compressed tar archive", %{tmp_dir: tmp_dir} do
+      archive_path = Path.join(tmp_dir, "test.tar.zstd")
+      dest_path = Path.join(tmp_dir, "extracted")
+      content_file = "data.txt"
+      content = "Test data"
+
+      create_tar_zst(archive_path, [{content_file, content}])
+
+      {:ok, result} = Unarchive.run(nil, %{src: archive_path, dest: dest_path})
+
+      assert result.status == :ok
+      assert File.read!(Path.join(dest_path, content_file)) == content
+    end
+  end
+
+  describe "run/2 with nested compression" do
+    @tag :tmp_dir
+    test "extracts tar.gz.zst (zstd wrapping gzipped tar)", %{tmp_dir: tmp_dir} do
+      archive_path = Path.join(tmp_dir, "test.tar.gz.zst")
+      dest_path = Path.join(tmp_dir, "extracted")
+      content_file = "nested.txt"
+      content = "Doubly compressed!"
+
+      create_tar_gz_zst(archive_path, [{content_file, content}])
+
+      {:ok, result} = Unarchive.run(nil, %{src: archive_path, dest: dest_path})
+
+      assert result.status == :ok
       assert File.read!(Path.join(dest_path, content_file)) == content
     end
   end
@@ -182,5 +232,25 @@ defmodule Runcom.Steps.UnarchiveTest do
   defp create_zip(path, files) do
     entries = Enum.map(files, fn {name, content} -> {String.to_charlist(name), content} end)
     {:ok, _} = :zip.create(String.to_charlist(path), entries)
+  end
+
+  defp create_tar_zst(path, files) do
+    tar_path = String.trim_trailing(path, ".zstd") |> String.trim_trailing(".zst")
+    tar_path = tar_path <> "_tmp.tar"
+    create_tar(tar_path, files)
+    tar_data = File.read!(tar_path)
+    File.rm!(tar_path)
+    compressed = IO.iodata_to_binary(:zstd.compress(tar_data))
+    File.write!(path, compressed)
+  end
+
+  defp create_tar_gz_zst(path, files) do
+    gz_path = String.trim_trailing(path, ".zst")
+    gz_path = gz_path <> "_tmp.tar.gz"
+    create_tar_gz(gz_path, files)
+    gz_data = File.read!(gz_path)
+    File.rm!(gz_path)
+    compressed = IO.iodata_to_binary(:zstd.compress(gz_data))
+    File.write!(path, compressed)
   end
 end

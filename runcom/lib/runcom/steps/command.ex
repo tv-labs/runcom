@@ -23,23 +23,17 @@ defmodule Runcom.Steps.Command do
       |> Command.add("greet", cmd: fn rc -> "echo \#{rc.assigns.name}" end)
   """
 
-  use Runcom.Step, category: "Commands"
+  use Runcom.Step, name: "Command", category: "Commands"
 
   schema do
-    field :cmd, :string, required: true, ui_type: {:code, :bash}
-    field :args, {:array, :string}, default: []
-    field :cd, :string
-    field :stdin, :any
-    field :timeout, :integer
+    field(:cmd, :string, required: true, ui_type: {:code, :bash})
+    field(:args, {:array, :string}, default: [])
+    field(:cd, :string)
+    field(:stdin, :any)
+    field(:timeout, :integer)
   end
 
   alias Runcom.CommandRunner
-
-  @doc false
-  def __bash_step__, do: true
-
-  @impl true
-  def name, do: "Command"
 
   @impl true
   def run(rc, %{sink: sink} = opts) do

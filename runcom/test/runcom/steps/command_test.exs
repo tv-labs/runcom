@@ -5,9 +5,9 @@ defmodule Runcom.Steps.CommandTest do
 
   @moduletag :tmp_dir
 
-  describe "name/0" do
-    test "returns step name" do
-      assert Command.name() == "Command"
+  describe "__name__/0" do
+    test "returns step name via __name__" do
+      assert Command.__name__() == "Command"
     end
   end
 

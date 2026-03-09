@@ -24,26 +24,21 @@ defmodule Runcom.Steps.Bash do
     * `:sink` - Sink for capturing stdout/stderr (provided by run_sync)
   """
 
-  use Runcom.Step, category: "Commands"
+  use Runcom.Step, name: "Bash", category: "Commands"
 
   schema do
-    field :script, :string, group: :content, ui_type: {:code, :bash}
-    field :file, :string, group: :content
-    field :args, {:array, :string}, default: []
-    field :env, :map
-    field :env_include, {:array, :string}
-    field :env_exclude, {:array, :string}
+    field(:script, :string, group: :content, ui_type: {:code, :bash})
+    field(:file, :string, group: :content)
+    field(:args, {:array, :string}, default: [])
+    field(:env, :map)
+    field(:env_include, {:array, :string}, group: :runtime_env)
+    field(:env_exclude, {:array, :string}, group: :runtime_env)
 
-    group :content, required: true, exclusive: true
+    group(:content, required: true, exclusive: true)
+    group(:runtime_env, exclusive: true)
   end
 
   alias Runcom.CommandRunner
-
-  @doc false
-  def __bash_step__, do: true
-
-  @impl true
-  def name, do: "Bash"
 
   @impl true
   def run(_rc, %{file: file, sink: sink} = opts) do
@@ -73,17 +68,14 @@ defmodule Runcom.Steps.Bash do
           if stderr != "", do: Runcom.Sink.write(sink, {:stderr, stderr})
         end
 
-        lines = String.split(stdout, "\n", trim: true)
-
         if exit_code == 0 do
-          {:ok, Result.ok(output: String.trim(stdout), exit_code: 0, lines: lines)}
+          {:ok, Result.ok(output: String.trim(stdout), exit_code: 0)}
         else
           {:ok,
            Result.error(
              output: String.trim(stdout),
              error: String.trim(stderr),
-             exit_code: exit_code,
-             lines: lines
+             exit_code: exit_code
            )}
         end
     end

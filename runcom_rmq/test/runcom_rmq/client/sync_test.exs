@@ -71,9 +71,9 @@ defmodule RuncomRmq.Client.SyncTest do
 
       # Simulate what Sync.do_sync would do with an :update response
       Enum.each(decoded.updates, fn {id, {sb, bcs}} ->
-        :ok = Runcom.Bytecode.load_bundle(bcs)
+        :ok = Runcom.CodeSync.load_bundle(bcs)
         runbook = :erlang.binary_to_term(sb, [:safe])
-        {:ok, hash} = Runcom.Bytecode.hash(runbook)
+        {:ok, hash} = Runcom.CodeSync.hash(runbook)
         RunbookCache.put(cache, id, hash, nil, runbook, bcs)
       end)
 
@@ -89,7 +89,7 @@ defmodule RuncomRmq.Client.SyncTest do
 
     test "handles deletes", %{cache: cache} do
       rb = Runcom.new("to-delete", name: "Delete Me")
-      {:ok, hash} = Runcom.Bytecode.hash(rb)
+      {:ok, hash} = Runcom.CodeSync.hash(rb)
       RunbookCache.put(cache, "to-delete", hash, nil, rb)
 
       # Simulate delete

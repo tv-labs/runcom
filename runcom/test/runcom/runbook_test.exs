@@ -2,10 +2,7 @@ defmodule Runcom.RunbookTest do
   use ExUnit.Case, async: true
 
   defmodule TestRunbook do
-    use Runcom.Runbook
-
-    @impl true
-    def name, do: "test_runbook"
+    use Runcom.Runbook, name: "test_runbook"
 
     @impl true
     def build(params) do
@@ -18,8 +15,8 @@ defmodule Runcom.RunbookTest do
     use Runcom.Runbook
 
     schema do
-      field :version, :string, required: true, doc: "Release version"
-      field :env, :string, default: "production"
+      field(:version, :string, required: true, doc: "Release version")
+      field(:env, :string, default: "production")
     end
 
     @impl true
@@ -30,8 +27,8 @@ defmodule Runcom.RunbookTest do
   end
 
   describe "use Runcom.Runbook" do
-    test "name/0 returns the runbook name" do
-      assert TestRunbook.name() == "test_runbook"
+    test "__name__/0 returns the runbook name" do
+      assert TestRunbook.__name__() == "test_runbook"
     end
 
     test "defines __runbook_hash__/0 returning hex string" do

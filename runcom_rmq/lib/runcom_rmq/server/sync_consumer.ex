@@ -11,7 +11,7 @@ defmodule RuncomRmq.Server.SyncConsumer do
       needs to apply updates and remove deleted runbooks
 
   Each update entry is a `{runbook_id, bundle}` tuple where `bundle` is
-  produced by `Runcom.Bytecode.bundle/1`.
+  produced by `Runcom.CodeSync.bundle/1`.
 
   ```mermaid
   sequenceDiagram
@@ -99,7 +99,7 @@ defmodule RuncomRmq.Server.SyncConsumer do
       {:ok, mod} ->
         runbook = Runcom.Runbook.build(mod)
 
-        case Runcom.Bytecode.bundle(runbook) do
+        case Runcom.CodeSync.bundle(runbook) do
           {:ok, {struct_binary, bytecodes}} ->
             bytecodes = include_source_module(mod, bytecodes)
 
@@ -114,7 +114,7 @@ defmodule RuncomRmq.Server.SyncConsumer do
 
   defp build_sync_response(%{manifest: client_manifest}, _store_mod, _store_opts) do
     server_manifest =
-      Map.new(Runcom.Runbook.list(), fn mod -> {mod.name(), mod.__runbook_hash__()} end)
+      Map.new(Runcom.Runbook.list(), fn mod -> {mod.__name__(), mod.__runbook_hash__()} end)
 
     server_ids = Map.keys(server_manifest)
     client_ids = Map.keys(client_manifest)
@@ -143,7 +143,7 @@ defmodule RuncomRmq.Server.SyncConsumer do
     Enum.reduce_while(ids, {:ok, []}, fn id, {:ok, acc} ->
       with {:ok, mod} <- Runcom.Runbook.get(id),
            runbook = Runcom.Runbook.build(mod),
-           {:ok, {struct_binary, bytecodes}} <- Runcom.Bytecode.bundle(runbook) do
+           {:ok, {struct_binary, bytecodes}} <- Runcom.CodeSync.bundle(runbook) do
         bytecodes = include_source_module(mod, bytecodes)
         {:cont, {:ok, [{id, {struct_binary, bytecodes}} | acc]}}
       else

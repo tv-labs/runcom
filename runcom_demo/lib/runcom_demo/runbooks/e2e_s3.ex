@@ -14,7 +14,7 @@ defmodule RuncomDemo.Runbooks.E2ES3 do
   `Sink.S3` (to verify sink upload to MinIO on close).
   """
 
-  use Runcom.Runbook
+  use Runcom.Runbook, name: "e2e_s3"
 
   import Bash.Sigil
 
@@ -26,9 +26,6 @@ defmodule RuncomDemo.Runbooks.E2ES3 do
     field :run_id, :string, default: "e2e-s3"
     field :minio_endpoint, :string, default: "http://minio:9000"
   end
-
-  @impl true
-  def name, do: "e2e_s3"
 
   @impl true
   def build(params) do

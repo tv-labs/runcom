@@ -1,15 +1,14 @@
 defmodule Runcom.S3 do
-  @moduledoc """
-  Shared utilities for S3 operations via Req's aws_sigv4.
-
-  ## S3 Options
-
-    * `:access_key_id` - AWS access key (or `{:secret, :name}`)
-    * `:secret_access_key` - AWS secret key (or `{:secret, :name}`)
-    * `:region` - AWS region (default: "us-east-1")
-    * `:service` - AWS service (default: :s3)
-    * `:token` - Session token for temporary credentials (optional)
-  """
+  @moduledoc false
+  # Shared utilities for S3 operations via Req's aws_sigv4.
+  #
+  # ## S3 Options
+  #
+  #   * `:access_key_id` - AWS access key (or `{:secret, :name}`)
+  #   * `:secret_access_key` - AWS secret key (or `{:secret, :name}`)
+  #   * `:region` - AWS region (default: "us-east-1")
+  #   * `:service` - AWS service (default: :s3)
+  #   * `:token` - Session token for temporary credentials (optional)
 
   @doc """
   Builds Req options with `aws_sigv4` from the given S3 options.
@@ -43,13 +42,21 @@ defmodule Runcom.S3 do
   """
   @spec url(String.t(), String.t(), String.t(), keyword()) :: String.t()
   def url(bucket, region, key, opts \\ []) do
+    encoded_key = encode_key(key)
+
     case Keyword.get(opts, :endpoint_url) do
       nil ->
-        "https://#{bucket}.s3.#{region}.amazonaws.com/#{key}"
+        "https://#{bucket}.s3.#{region}.amazonaws.com/#{encoded_key}"
 
       endpoint ->
         endpoint = String.trim_trailing(endpoint, "/")
-        "#{endpoint}/#{bucket}/#{key}"
+        "#{endpoint}/#{bucket}/#{encoded_key}"
     end
+  end
+
+  defp encode_key(key) do
+    key
+    |> String.split("/")
+    |> Enum.map_join("/", &URI.encode/1)
   end
 end

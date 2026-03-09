@@ -263,7 +263,6 @@ defmodule RuncomWeb.Live.DispatchLive do
       store_mod: store_mod,
       store_opts: store_opts,
       assign_values: runbook_assigns,
-      runbook_secrets: runbook_secrets,
       dispatcher: dispatcher
     } =
       socket.assigns
@@ -273,7 +272,6 @@ defmodule RuncomWeb.Live.DispatchLive do
         String.starts_with?(k, "_unused_") or v in ["", nil]
       end)
 
-    runbook_secrets = resolve_vault_secrets(runbook_secrets)
     now = DateTime.utc_now()
 
     {:ok, dispatch} =
@@ -281,8 +279,7 @@ defmodule RuncomWeb.Live.DispatchLive do
         %{
           runbook_id: runbook_id,
           started_at: now,
-          assigns: runbook_assigns,
-          secret_names: runbook_secrets |> Map.keys() |> Enum.sort()
+          assigns: runbook_assigns
         },
         store_opts
       )
@@ -295,7 +292,6 @@ defmodule RuncomWeb.Live.DispatchLive do
     dispatch_opts =
       [dispatch_id: dispatch.id]
       |> maybe_add_opt(:assigns, runbook_assigns)
-      |> maybe_add_opt(:secrets, runbook_secrets)
 
     dispatch_async(dispatcher, runbook_id, selected_nodes, dispatch_opts, store_mod, store_opts)
 
@@ -352,11 +348,14 @@ defmodule RuncomWeb.Live.DispatchLive do
 
     defaults =
       for field <- fields, field.default != nil, into: %{} do
-        {field.key, to_string(field.default)}
+        {field.key, default_to_string(field.default)}
       end
 
     {fields, defaults}
   end
+
+  defp default_to_string(val) when is_list(val), do: inspect(val)
+  defp default_to_string(val), do: to_string(val)
 
   defp dispatch_ready?(assigns) do
     assigns.selected_runbook != nil and
@@ -402,19 +401,6 @@ defmodule RuncomWeb.Live.DispatchLive do
 
         {:error, reason} ->
           Logger.error("Dispatch #{dispatch_id} failed: #{inspect(reason)}")
-      end
-    end)
-  end
-
-  defp resolve_vault_secrets([]), do: %{}
-
-  defp resolve_vault_secrets(names) do
-    {store_mod, store_opts} = Runcom.Store.impl()
-
-    Enum.reduce(names, %{}, fn name, acc ->
-      case apply(store_mod, :fetch_secret, [name, store_opts]) do
-        {:ok, value} -> Map.put(acc, name, value)
-        {:error, _} -> acc
       end
     end)
   end

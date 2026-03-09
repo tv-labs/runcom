@@ -1,4 +1,4 @@
 defprotocol Runcom.Step.Compiled do
-  @moduledoc "Marker protocol for discovering compiled step modules."
+  @moduledoc false
   def module(step)
 end

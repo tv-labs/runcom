@@ -23,7 +23,7 @@ defmodule RuncomDemo.Runbooks.HostHealth do
     * `:disk_crit` - custom disk critical threshold (optional)
   """
 
-  use Runcom.Runbook
+  use Runcom.Runbook, name: "host_health"
 
   require Runcom.Steps.Command, as: Command
   require Runcom.Steps.Debug, as: Debug
@@ -36,9 +36,6 @@ defmodule RuncomDemo.Runbooks.HostHealth do
     field :disk_warn, :integer
     field :disk_crit, :integer
   end
-
-  @impl true
-  def name, do: "host_health"
 
   @impl true
   def build(params) do

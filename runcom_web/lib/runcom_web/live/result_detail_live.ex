@@ -11,7 +11,7 @@ defmodule RuncomWeb.Live.ResultDetailLive do
   ```mermaid
   stateDiagram-v2
       [*] --> Mounted: mount/3
-      Mounted --> Loaded: handle_params with :id
+      Mounted --> Loaded: handle_params with id
       Loaded --> NodeSelected: node_selected event
       NodeSelected --> Loaded: click different node
       Loaded --> NotFound: result missing
@@ -50,8 +50,6 @@ defmodule RuncomWeb.Live.ResultDetailLive do
     :started_at,
     :completed_at,
     :error,
-    :bytes,
-    :changed,
     :opts,
     :meta
   ]
@@ -274,11 +272,11 @@ defmodule RuncomWeb.Live.ResultDetailLive do
                         <div class="text-xs font-semibold text-error mb-1">Error</div>
                         <pre class="text-xs text-error bg-error/10 p-2 rounded whitespace-pre-wrap">{node["data"]["error"]}</pre>
                       </div>
-                      <div :if={node["data"]["output"]}>
+                      <div :if={node["data"]["output"] not in [nil, ""]}>
                         <div class="text-xs font-semibold text-base-content/60 mb-1">Output</div>
                         <pre class="text-xs bg-base-300 p-2 rounded whitespace-pre-wrap font-mono max-h-64 overflow-y-auto">{format_output(node["data"]["output"])}</pre>
                       </div>
-                      <p :if={!node["data"]["output"] && !node["data"]["error"]} class="text-xs text-base-content/40">
+                      <p :if={node["data"]["output"] in [nil, ""] && !node["data"]["error"]} class="text-xs text-base-content/40">
                         No output captured for this step.
                       </p>
                     </div>
@@ -303,7 +301,10 @@ defmodule RuncomWeb.Live.ResultDetailLive do
                       <path d="M593.8 59.1l-547.6 0C20.7 59.1 0 79.8 0 105.2L0 406.7c0 25.5 20.7 46.2 46.2 46.2l547.7 0c25.5 0 46.2-20.7 46.1-46.1l0-301.6c0-25.4-20.7-46.1-46.2-46.1zM338.5 360.6l-61.5 0 0-120-61.5 76.9-61.5-76.9 0 120-61.7 0 0-209.2 61.5 0 61.5 76.9 61.5-76.9 61.5 0 0 209.2 .2 0zm135.3 3.1l-92.3-107.7 61.5 0 0-104.6 61.5 0 0 104.6 61.5 0-92.2 107.7z" />
                     </svg>
                   </button>
-                  <div class="prose prose-sm max-w-none p-4 rounded">
+                  <div
+                    class="prose prose-sm max-w-none p-4 rounded [&_pre]:!bg-base-300"
+                    style="--tw-prose-pre-code: var(--color-base-content)"
+                  >
                     {Phoenix.HTML.raw(@markdown_html)}
                   </div>
                   <div id="markdown-source" class="hidden">{@markdown_output}</div>
@@ -393,7 +394,8 @@ defmodule RuncomWeb.Live.ResultDetailLive do
       {:ok, result} ->
         result = preload_step_results(result, opts)
         {nodes, edges} = result_to_graph(result)
-        rc = build_runcom_from_result(result)
+        full_step_results = load_full_step_results(result, opts)
+        rc = build_runcom_from_result(result, full_step_results)
         markdown = format_markdown(rc)
         markdown_html = render_markdown(markdown)
         asciicast = format_asciicast(rc)
@@ -419,6 +421,13 @@ defmodule RuncomWeb.Live.ResultDetailLive do
     repo = RuncomEcto.repo!(normalize_store_args_flat(store_opts), Runcom.Store)
     step_results_query = from(sr in StepResult, order_by: sr.order, select: ^@step_result_fields)
     repo.preload(result, step_results: step_results_query)
+  end
+
+  defp load_full_step_results(result, store_opts) do
+    repo = RuncomEcto.repo!(normalize_store_args_flat(store_opts), Runcom.Store)
+
+    from(sr in StepResult, where: sr.result_id == ^result.id, order_by: sr.order)
+    |> repo.all()
   end
 
   defp maybe_fetch_step_output(socket, step_name) do
@@ -714,10 +723,11 @@ defmodule RuncomWeb.Live.ResultDetailLive do
   def step_status_color("pending"), do: "#9ca3af"
   def step_status_color(_), do: "#9ca3af"
 
-  defp build_runcom_from_result(result) do
+  defp build_runcom_from_result(result, full_step_results) do
     runbook_id = result_field(result, :runbook_id) || "unknown"
     step_results = result.step_results || []
     stored_edges = result_field(result, :edges) || []
+    output_by_name = Map.new(full_step_results, &{&1.name, &1.output})
 
     {steps, step_status} =
       Enum.reduce(step_results, {%{}, %{}}, fn sr, {steps_acc, status_acc} ->
@@ -727,7 +737,7 @@ defmodule RuncomWeb.Live.ResultDetailLive do
           status: status_atom,
           duration_ms: sr.duration_ms,
           exit_code: sr.exit_code,
-          stdout: nil,
+          stdout: output_by_name[sr.name],
           error: sr.error
         }
 
@@ -748,7 +758,12 @@ defmodule RuncomWeb.Live.ResultDetailLive do
     edges = reconstruct_edges(stored_edges)
 
     overall_status =
-      if Enum.any?(step_status, fn {_, s} -> s == :error end), do: :failed, else: :completed
+      case result_field(result, :status) do
+        "failed" -> :failed
+        "halted" -> :halted
+        "error" -> :failed
+        _ -> :completed
+      end
 
     %Runcom{
       id: runbook_id,
@@ -782,7 +797,9 @@ defmodule RuncomWeb.Live.ResultDetailLive do
   defp parse_step_status("error"), do: :error
   defp parse_step_status("failed"), do: :error
   defp parse_step_status("skipped"), do: :skipped
-  defp parse_step_status(_), do: :ok
+  defp parse_step_status("pending"), do: :pending
+  defp parse_step_status("halted"), do: :halted
+  defp parse_step_status(_), do: :pending
 
   defp format_markdown(rc) do
     Runcom.Formatter.Markdown.format(rc)

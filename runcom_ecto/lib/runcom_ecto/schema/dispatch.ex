@@ -14,7 +14,6 @@ defmodule RuncomEcto.Schema.Dispatch do
     field :completed_at, :utc_datetime_usec
     field :duration_ms, :integer
     field :assigns, :map, default: %{}
-    field :secret_names, {:array, :string}, default: []
 
     has_many :dispatch_nodes, RuncomEcto.Schema.DispatchNode, foreign_key: :dispatch_id
 
@@ -34,8 +33,7 @@ defmodule RuncomEcto.Schema.Dispatch do
       :started_at,
       :completed_at,
       :duration_ms,
-      :assigns,
-      :secret_names
+      :assigns
     ])
     |> validate_required([:runbook_id])
   end

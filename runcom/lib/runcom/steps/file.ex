@@ -36,34 +36,12 @@ defmodule Runcom.Steps.File do
          )
   """
 
-  use Runcom.Step, category: "Files"
+  use Runcom.Step, name: "File", category: "Files"
 
   schema do
-    field :path, :any, required: true
-    field :state, :enum, required: true, values: [:directory, :absent, :touch, :file]
-    field :mode, :integer
-  end
-
-  @valid_states [:directory, :absent, :touch, :file]
-
-  @impl true
-  def name, do: "File"
-
-  @impl true
-  def validate(opts) do
-    cond do
-      not Map.has_key?(opts, :path) ->
-        {:error, "path is required"}
-
-      not Map.has_key?(opts, :state) ->
-        {:error, "state is required"}
-
-      opts.state not in @valid_states ->
-        {:error, "state must be one of: #{inspect(@valid_states)}"}
-
-      true ->
-        :ok
-    end
+    field(:path, :any, required: true)
+    field(:state, :enum, required: true, values: [:directory, :absent, :touch, :file])
+    field(:mode, :integer)
   end
 
   @impl true
@@ -95,11 +73,11 @@ defmodule Runcom.Steps.File do
 
   defp ensure_directory(path) do
     if File.dir?(path) do
-      {:ok, Result.ok(changed: false, output: "Directory already exists")}
+      {:ok, Result.ok(output: "Directory already exists")}
     else
       case File.mkdir_p(path) do
         :ok ->
-          {:ok, Result.ok(changed: true, output: "Created directory")}
+          {:ok, Result.ok(output: "Created directory")}
 
         {:error, reason} ->
           {:ok, Result.error(error: reason)}
@@ -117,24 +95,24 @@ defmodule Runcom.Steps.File do
         end
 
       case result do
-        {:ok, _} -> {:ok, Result.ok(changed: true, output: "Removed")}
-        :ok -> {:ok, Result.ok(changed: true, output: "Removed")}
+        {:ok, _} -> {:ok, Result.ok(output: "Removed")}
+        :ok -> {:ok, Result.ok(output: "Removed")}
         {:error, reason} -> {:ok, Result.error(error: reason)}
       end
     else
-      {:ok, Result.ok(changed: false, output: "Already absent")}
+      {:ok, Result.ok(output: "Already absent")}
     end
   end
 
   defp ensure_touch(path) do
     if File.exists?(path) do
       case File.touch(path) do
-        :ok -> {:ok, Result.ok(changed: false, output: "Updated timestamp")}
+        :ok -> {:ok, Result.ok(output: "Updated timestamp")}
         {:error, reason} -> {:ok, Result.error(error: reason)}
       end
     else
       case File.write(path, "") do
-        :ok -> {:ok, Result.ok(changed: true, output: "Created file")}
+        :ok -> {:ok, Result.ok(output: "Created file")}
         {:error, reason} -> {:ok, Result.error(error: reason)}
       end
     end

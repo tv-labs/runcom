@@ -152,9 +152,7 @@ defmodule RuncomRmq.Client.EventPublisher do
       steps_completed: metadata[:steps_completed],
       steps_failed: metadata[:steps_failed],
       steps_skipped: metadata[:steps_skipped],
-      duration: measurements[:duration],
-      duration_ms:
-        div(System.convert_time_unit(measurements[:duration] || 0, :native, :millisecond), 1),
+      duration_ms: measurements[:duration] || 0,
       timestamp: DateTime.utc_now()
     }
 
@@ -254,6 +252,12 @@ defmodule RuncomRmq.Client.EventPublisher do
   defp truncate_step_outputs(step_results, max_bytes) when is_map(step_results) do
     Map.new(step_results, fn {name, result} ->
       {name, Map.update(result, :output, nil, &truncate_output(&1, max_bytes))}
+    end)
+  end
+
+  defp truncate_step_outputs(step_results, max_bytes) when is_list(step_results) do
+    Enum.map(step_results, fn result ->
+      Map.update(result, :output, nil, &truncate_output(&1, max_bytes))
     end)
   end
 

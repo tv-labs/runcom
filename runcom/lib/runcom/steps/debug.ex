@@ -19,29 +19,19 @@ defmodule Runcom.Steps.Debug do
       |> Debug.add("version", message: fn rc -> "Version: \#{rc.assigns.version}" end)
   """
 
-  use Runcom.Step, category: "Utility"
+  use Runcom.Step, name: "Debug", category: "Utility"
 
   schema do
-    field :message, :any, required: true
+    field(:message, :any, required: true)
   end
 
   @impl true
-  def name, do: "Debug"
-
-  @impl true
-  def run(rc, opts) do
-    message = resolve_message(rc, opts.message)
-
-    {:ok, Result.ok(output: message)}
+  def run(_rc, opts) do
+    {:ok, Result.ok(output: opts.message)}
   end
 
   @impl true
-  def dryrun(rc, opts) do
-    message = resolve_message(rc, opts.message)
-
-    {:ok, Result.ok(output: "Would log: #{message}")}
+  def dryrun(_rc, opts) do
+    {:ok, Result.ok(output: "Would log: #{opts.message}")}
   end
-
-  defp resolve_message(rc, message) when is_function(message, 1), do: message.(rc)
-  defp resolve_message(_rc, message) when is_binary(message), do: message
 end

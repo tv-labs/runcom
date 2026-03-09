@@ -243,20 +243,22 @@ defmodule Runcom.Checkpoint.DETS do
 
       case source do
         {mod, params, bytecodes} ->
-          {:ok, rebuild_from_source(mod, params, bytecodes, meta, assigns, steps, step_status, errors)}
+          {:ok,
+           rebuild_from_source(mod, params, bytecodes, meta, assigns, steps, step_status, errors)}
 
         nil ->
-          {:ok, %Runcom{
-            id: meta.id,
-            name: meta.name,
-            status: meta.status,
-            assigns: assigns,
-            steps: steps,
-            edges: edges,
-            entry: entry,
-            step_status: step_status,
-            errors: errors
-          }}
+          {:ok,
+           %Runcom{
+             id: meta.id,
+             name: meta.name,
+             status: meta.status,
+             assigns: assigns,
+             steps: steps,
+             edges: edges,
+             entry: entry,
+             step_status: step_status,
+             errors: errors
+           }}
       end
     else
       [] -> {:error, :corrupt_checkpoint}
@@ -272,7 +274,16 @@ defmodule Runcom.Checkpoint.DETS do
     end
   end
 
-  defp rebuild_from_source(mod, params, bytecodes, meta, assigns, checkpointed_steps, step_status, errors) do
+  defp rebuild_from_source(
+         mod,
+         params,
+         bytecodes,
+         meta,
+         assigns,
+         checkpointed_steps,
+         step_status,
+         errors
+       ) do
     fresh = Runcom.Runbook.build(mod, params, bytecodes)
 
     merged_steps =
@@ -280,12 +291,13 @@ defmodule Runcom.Checkpoint.DETS do
         if cp_step.result, do: %{fresh_step | result: cp_step.result}, else: fresh_step
       end)
 
-    %{fresh |
-      status: meta.status,
-      assigns: assigns,
-      steps: merged_steps,
-      step_status: step_status,
-      errors: errors
+    %{
+      fresh
+      | status: meta.status,
+        assigns: assigns,
+        steps: merged_steps,
+        step_status: step_status,
+        errors: errors
     }
   end
 
@@ -295,7 +307,7 @@ defmodule Runcom.Checkpoint.DETS do
   defp reload_bytecodes(table) do
     case :dets.lookup(table, :bytecodes) do
       [{:bytecodes, bytecodes}] when is_list(bytecodes) ->
-        Runcom.Bytecode.load_bundle(bytecodes)
+        Runcom.CodeSync.load_bundle(bytecodes)
 
       _ ->
         :ok

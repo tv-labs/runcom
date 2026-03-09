@@ -3,9 +3,9 @@ defmodule Runcom.Steps.SystemdTest do
 
   alias Runcom.Steps.Systemd
 
-  describe "name/0" do
-    test "returns step name" do
-      assert Systemd.name() == "Systemd"
+  describe "__name__/0" do
+    test "returns step name via __name__" do
+      assert Systemd.__name__() == "Systemd"
     end
   end
 

@@ -43,7 +43,7 @@ defmodule RuncomDemo.Runbooks.DeployApp do
     * `:artifact_url` - base URL for artifacts (default: `"https://artifacts.example.com/app"`)
   """
 
-  use Runcom.Runbook
+  use Runcom.Runbook, name: "deploy_app"
 
   require Runcom.Steps.Command, as: Command
   require Runcom.Steps.Debug, as: Debug
@@ -54,9 +54,6 @@ defmodule RuncomDemo.Runbooks.DeployApp do
     field :version, :string, required: true, default: "0.0.0"
     field :artifact_url, :string, default: "https://artifacts.example.com/app"
   end
-
-  @impl true
-  def name, do: "deploy_app"
 
   @impl true
   def build(params) do

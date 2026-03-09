@@ -46,7 +46,7 @@ defmodule Runcom do
           errors: %{String.t() => term()},
           status: status(),
           sink: term() | nil,
-          secret_store: Runcom.Store.Memory.t() | nil,
+          secret_store: :ets.table() | nil,
           source: {module(), map(), [{module(), binary()}]} | nil
         }
 
@@ -249,11 +249,13 @@ defmodule Runcom do
 
   @doc false
   @spec add(t(), String.t(), module(), keyword() | map(), map(), MapSet.t(), MapSet.t()) :: t()
-  def add(%__MODULE__{} = rc, name, module, opts, sources, assign_refs, secret_refs) when is_map(opts) do
+  def add(%__MODULE__{} = rc, name, module, opts, sources, assign_refs, secret_refs)
+      when is_map(opts) do
     add(rc, name, module, Map.to_list(opts), sources, assign_refs, secret_refs)
   end
 
-  def add(%__MODULE__{} = rc, name, module, opts, sources, assign_refs, secret_refs) when is_list(opts) do
+  def add(%__MODULE__{} = rc, name, module, opts, sources, assign_refs, secret_refs)
+      when is_list(opts) do
     do_add(rc, name, module, opts, sources, assign_refs, secret_refs)
   end
 
@@ -400,8 +402,12 @@ defmodule Runcom do
 
   def graft(%__MODULE__{} = rc, prefix, runbook_id, opts) when is_binary(runbook_id) do
     case Runcom.Runbook.get(runbook_id) do
-      {:ok, mod} -> graft(rc, prefix, mod.build(%{}), opts)
-      {:error, reason} -> raise ArgumentError, "could not resolve runbook #{inspect(runbook_id)}: #{inspect(reason)}"
+      {:ok, mod} ->
+        graft(rc, prefix, mod.build(%{}), opts)
+
+      {:error, reason} ->
+        raise ArgumentError,
+              "could not resolve runbook #{inspect(runbook_id)}: #{inspect(reason)}"
     end
   end
 
@@ -1040,7 +1046,8 @@ defmodule Runcom do
     end)
   end
 
-  defp apply_assert(%Runcom.Step.Result{status: :ok} = res, assert_fn) when is_function(assert_fn) do
+  defp apply_assert(%Runcom.Step.Result{status: :ok} = res, assert_fn)
+       when is_function(assert_fn) do
     if assert_fn.(res) do
       res
     else
@@ -1053,7 +1060,7 @@ defmodule Runcom do
   defp apply_assert(res, _assert_fn), do: res
 
   defp apply_post(%Runcom.Step.Result{status: :ok} = res, post_fn) when is_function(post_fn) do
-    %{res | output_raw: res.output, output: post_fn.(res.output)}
+    %{res | output: post_fn.(res.output)}
   rescue
     e -> %{res | status: :error, error: "post callback raised: #{Exception.message(e)}"}
   end

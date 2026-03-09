@@ -31,6 +31,23 @@ mix format
 cd runcom_demo && docker compose up
 ```
 
+## Code Sync
+
+When custom step modules are used in runbooks, their bytecode and dependencies must be shipped to remote agents. `Runcom.CodeSync` handles this automatically using a compilation tracer.
+
+**Required**: Apps that define custom steps must enable the tracer in `mix.exs`:
+
+```elixir
+def project do
+  [
+    ...
+    elixirc_options: [tracers: [Runcom.CodeSync.Tracer]]
+  ]
+end
+```
+
+The tracer records compile-time dependencies for each `use Runcom.Step` module and stores them as `__deps__/0`. `Runcom.CodeSync.bundle/1` walks these manifests to build precise bytecode bundles — no heuristics, no over-bundling.
+
 ## Package Dependencies
 
 ```

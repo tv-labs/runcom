@@ -318,10 +318,6 @@ defmodule RuncomWeb.Live.DashboardLive do
     """
   end
 
-  # ------------------------------------------------------------------
-  # Event handlers
-  # ------------------------------------------------------------------
-
   @impl true
   def handle_event("toggle_sidebar", _params, socket) do
     {:noreply, assign(socket, :sidebar_collapsed, not socket.assigns.sidebar_collapsed)}
@@ -353,10 +349,6 @@ defmodule RuncomWeb.Live.DashboardLive do
       "node" -> {:noreply, load_more_results(socket)}
     end
   end
-
-  # ------------------------------------------------------------------
-  # PubSub handlers
-  # ------------------------------------------------------------------
 
   @impl true
   def handle_info({:result, result}, socket) do
@@ -412,10 +404,6 @@ defmodule RuncomWeb.Live.DashboardLive do
     end
   end
 
-  # ------------------------------------------------------------------
-  # URL path builder
-  # ------------------------------------------------------------------
-
   defp build_path(socket, overrides) do
     current = %{
       view: socket.assigns.view_mode,
@@ -462,10 +450,6 @@ defmodule RuncomWeb.Live.DashboardLive do
       _ -> socket.assigns.base_path <> "?" <> URI.encode_query(params)
     end
   end
-
-  # ------------------------------------------------------------------
-  # Data loading
-  # ------------------------------------------------------------------
 
   defp load_data(socket) do
     mod = socket.assigns.store_mod
@@ -552,10 +536,6 @@ defmodule RuncomWeb.Live.DashboardLive do
     |> assign(:has_more, length(results) >= @per_page)
   end
 
-  # ------------------------------------------------------------------
-  # Cursor helpers
-  # ------------------------------------------------------------------
-
   defp cursor_from_results([]), do: nil
 
   defp cursor_from_results(results) do
@@ -571,10 +551,6 @@ defmodule RuncomWeb.Live.DashboardLive do
     ts = last.completed_at || last.started_at
     {ts, last.id}
   end
-
-  # ------------------------------------------------------------------
-  # Store opts / filter builders
-  # ------------------------------------------------------------------
 
   defp base_store_opts(socket) do
     normalize_store_args(socket.assigns.store_opts) |> List.first()
@@ -603,14 +579,6 @@ defmodule RuncomWeb.Live.DashboardLive do
   defp maybe_put_filter(opts, _key, nil), do: opts
   defp maybe_put_filter(opts, _key, ""), do: opts
   defp maybe_put_filter(opts, key, value), do: Keyword.put(opts, key, value)
-
-  # ------------------------------------------------------------------
-  # Progress bar component
-  # ------------------------------------------------------------------
-
-  # ------------------------------------------------------------------
-  # Shared helpers
-  # ------------------------------------------------------------------
 
   defp result_matches_filters?(result, assigns) do
     status_ok =

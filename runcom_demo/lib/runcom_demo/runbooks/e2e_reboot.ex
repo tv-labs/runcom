@@ -7,7 +7,7 @@ defmodule RuncomDemo.Runbooks.E2EReboot do
   from the halted checkpoint after the container restarts.
   """
 
-  use Runcom.Runbook
+  use Runcom.Runbook, name: "e2e_reboot"
 
   import Bash.Sigil
 
@@ -19,9 +19,6 @@ defmodule RuncomDemo.Runbooks.E2EReboot do
   schema do
     field :run_id, :string, default: "e2e"
   end
-
-  @impl true
-  def name, do: "e2e_reboot"
 
   @impl true
   def build(params) do
