@@ -65,8 +65,10 @@ defmodule Runcom.Steps.Blockinfile do
         :absent ->
           ensure_absent(opts.path, lines, opts.marker_begin, opts.marker_end)
       end
-    else
-      {:error, reason} -> {:ok, Result.error(error: reason)}
+    end
+    |> case do
+      {:error, reason} -> {:ok, Result.error(error: to_string(reason))}
+      other -> other
     end
   end
 
@@ -144,18 +146,16 @@ defmodule Runcom.Steps.Blockinfile do
               managed_block ++
               Enum.slice(lines, (end_idx + 1)..-1//1)
 
-          case write_content(path, new_lines) do
-            :ok -> {:ok, Result.ok(output: "Block updated")}
-            {:error, reason} -> {:ok, Result.error(error: reason)}
+          with :ok <- write_content(path, new_lines) do
+            {:ok, Result.ok(output: "Block updated")}
           end
         end
 
       :not_found ->
         new_lines = insert_block(lines, managed_block, compiled_opts)
 
-        case write_content(path, new_lines) do
-          :ok -> {:ok, Result.ok(output: "Block inserted")}
-          {:error, reason} -> {:ok, Result.error(error: reason)}
+        with :ok <- write_content(path, new_lines) do
+          {:ok, Result.ok(output: "Block inserted")}
         end
     end
   end
@@ -167,9 +167,8 @@ defmodule Runcom.Steps.Blockinfile do
           Enum.slice(lines, 0..(begin_idx - 1)) ++
             Enum.slice(lines, (end_idx + 1)..-1//1)
 
-        case write_content(path, new_lines) do
-          :ok -> {:ok, Result.ok(output: "Block removed")}
-          {:error, reason} -> {:ok, Result.error(error: reason)}
+        with :ok <- write_content(path, new_lines) do
+          {:ok, Result.ok(output: "Block removed")}
         end
 
       :not_found ->

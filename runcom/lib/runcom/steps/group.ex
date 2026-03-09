@@ -38,8 +38,8 @@ defmodule Runcom.Steps.Group do
   alias Runcom.CommandRunner
 
   @impl true
-  def run(_rc, %{sink: sink} = opts) do
-    family = Runcom.Facts.gather().distro_family
+  def run(rc, %{sink: sink} = opts) do
+    family = rc.facts.distro_family
     {cmd, args} = build_command(opts, family)
 
     CommandRunner.run(

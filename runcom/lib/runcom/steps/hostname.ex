@@ -31,8 +31,8 @@ defmodule Runcom.Steps.Hostname do
   alias Runcom.CommandRunner
 
   @impl true
-  def run(_rc, %{sink: sink} = opts) do
-    family = Runcom.Facts.gather().distro_family
+  def run(rc, %{sink: sink} = opts) do
+    family = rc.facts.distro_family
     commands = build_commands(opts, family)
 
     Enum.reduce_while(commands, nil, fn {cmd, args}, _acc ->

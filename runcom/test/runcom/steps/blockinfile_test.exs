@@ -169,12 +169,13 @@ defmodule Runcom.Steps.BlockinfileTest do
       assert result.error =~ "insertafter"
     end
 
-    test "returns error for missing file without create: true" do
+    @tag :tmp_dir
+    test "returns error for missing file without create: true", %{tmp_dir: tmp_dir} do
       {:ok, result} =
         Blockinfile.run(
           nil,
           opts(
-            path: "/tmp/definitely_does_not_exist_#{System.unique_integer([:positive])}",
+            path: Path.join(tmp_dir, "nonexistent"),
             block: "content"
           )
         )

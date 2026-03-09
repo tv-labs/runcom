@@ -94,11 +94,11 @@ defmodule Runcom.Steps.AptRepository do
 
       _ ->
         with :ok <- File.mkdir_p(Path.dirname(path)),
-             :ok <- File.write(path, content) do
-          maybe_update_cache(opts)
+             :ok <- File.write(path, content),
+             :ok <- maybe_update_cache(opts) do
           {:ok, Result.ok(output: "Repository added")}
         else
-          {:error, reason} -> {:ok, Result.error(error: reason)}
+          {:error, reason} -> {:ok, Result.error(error: to_string(reason))}
         end
     end
   end
@@ -115,7 +115,11 @@ defmodule Runcom.Steps.AptRepository do
   end
 
   defp maybe_update_cache(%{update_cache: true, sink: sink}) do
-    CommandRunner.run(cmd: "apt-get", args: ["update"], stdout_sink: sink, stderr_sink: sink)
+    case CommandRunner.run(cmd: "apt-get", args: ["update"], stdout_sink: sink, stderr_sink: sink) do
+      {:ok, %{status: :ok}} -> :ok
+      {:ok, %{status: :error} = result} -> {:error, result.error || "apt-get update failed"}
+      {:error, reason} -> {:error, reason}
+    end
   end
 
   defp maybe_update_cache(_opts), do: :ok

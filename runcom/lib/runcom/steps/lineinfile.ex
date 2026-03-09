@@ -45,8 +45,10 @@ defmodule Runcom.Steps.Lineinfile do
         :present -> ensure_present(opts.path, lines, compiled_opts)
         :absent -> ensure_absent(opts.path, lines, compiled_opts)
       end
-    else
-      {:error, reason} -> {:ok, Result.error(error: reason)}
+    end
+    |> case do
+      {:error, reason} -> {:ok, Result.error(error: to_string(reason))}
+      other -> other
     end
   end
 
@@ -222,8 +224,6 @@ defmodule Runcom.Steps.Lineinfile do
     with :ok <- File.mkdir_p(Path.dirname(path)),
          :ok <- File.write(path, content) do
       :ok
-    else
-      {:error, reason} -> {:ok, Result.error(error: reason)}
     end
   end
 end
