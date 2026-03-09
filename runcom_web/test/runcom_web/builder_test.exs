@@ -48,13 +48,13 @@ defmodule RuncomWeb.Live.BuilderLiveTest do
 
       source = BuilderLive.graph_to_source(nodes, [], "Deploy")
 
-      # require comes after use Runcom.Runbook, before @impl name
+      # require comes after use Runcom.Runbook, before def build
       use_pos = :binary.match(source, "use Runcom.Runbook") |> elem(0)
       require_pos = :binary.match(source, "require Runcom.Steps.Command") |> elem(0)
-      name_pos = :binary.match(source, "def name") |> elem(0)
+      build_pos = :binary.match(source, "def build") |> elem(0)
 
       assert use_pos < require_pos
-      assert require_pos < name_pos
+      assert require_pos < build_pos
     end
 
     test "multiple nodes with edges produce await dependencies" do
