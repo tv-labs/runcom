@@ -26,4 +26,16 @@ defprotocol Runcom.Sink do
 
   @doc "Close the sink"
   def close(sink)
+
+  @doc "Resolve {:secret, name} tuples using the provided resolver function"
+  def resolve_secrets(sink, resolver)
+
+  @doc "Derive a step-scoped sink from a runbook sink template"
+  def for_step(sink, step_name)
+
+  @doc "Returns a serializable reference to reconstruct this sink: `{module, opts}` or `nil`"
+  def ref(sink)
+
+  @doc "Whether this sink is remotely accessible (e.g. S3). Local sinks (DETS, File) return false."
+  def remote?(sink)
 end

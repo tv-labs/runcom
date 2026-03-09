@@ -63,6 +63,7 @@ defmodule RuncomEcto.Migrations.V1 do
       add :started_at, :utc_datetime_usec
       add :completed_at, :utc_datetime_usec
       add :output, :binary
+      add :output_ref, :jsonb
       add :error, :text
       add :bytes, :bigint
       add :changed, :boolean

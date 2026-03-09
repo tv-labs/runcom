@@ -100,8 +100,11 @@ defmodule RuncomRmq.Server.SyncConsumer do
         runbook = Runcom.Runbook.build(mod)
 
         case Runcom.Bytecode.bundle(runbook) do
-          {:ok, bundle} ->
-            {:ok, %{status: :update, updates: [{runbook_id, bundle}], deletes: []}}
+          {:ok, {struct_binary, bytecodes}} ->
+            bytecodes = include_source_module(mod, bytecodes)
+
+            {:ok,
+             %{status: :update, updates: [{runbook_id, {struct_binary, bytecodes}}], deletes: []}}
 
           {:error, reason} ->
             {:error, {:bundle_failed, runbook_id, reason}}
@@ -110,7 +113,9 @@ defmodule RuncomRmq.Server.SyncConsumer do
   end
 
   defp build_sync_response(%{manifest: client_manifest}, _store_mod, _store_opts) do
-    server_manifest = Map.new(Runcom.Runbook.list(), fn mod -> {mod.name(), mod.__runbook_hash__()} end)
+    server_manifest =
+      Map.new(Runcom.Runbook.list(), fn mod -> {mod.name(), mod.__runbook_hash__()} end)
+
     server_ids = Map.keys(server_manifest)
     client_ids = Map.keys(client_manifest)
 
@@ -138,14 +143,26 @@ defmodule RuncomRmq.Server.SyncConsumer do
     Enum.reduce_while(ids, {:ok, []}, fn id, {:ok, acc} ->
       with {:ok, mod} <- Runcom.Runbook.get(id),
            runbook = Runcom.Runbook.build(mod),
-           {:ok, bundle} <- Runcom.Bytecode.bundle(runbook) do
-        {:cont, {:ok, [{id, bundle} | acc]}}
+           {:ok, {struct_binary, bytecodes}} <- Runcom.Bytecode.bundle(runbook) do
+        bytecodes = include_source_module(mod, bytecodes)
+        {:cont, {:ok, [{id, {struct_binary, bytecodes}} | acc]}}
       else
         {:error, reason} ->
           Logger.error("SyncConsumer failed to bundle runbook #{id}: #{inspect(reason)}")
           {:halt, {:error, {:bundle_failed, id, reason}}}
       end
     end)
+  end
+
+  defp include_source_module(mod, bytecodes) do
+    if Enum.any?(bytecodes, fn {m, _} -> m == mod end) do
+      bytecodes
+    else
+      case :code.get_object_code(mod) do
+        {^mod, bytes, _} -> [{mod, bytes} | bytecodes]
+        :error -> bytecodes
+      end
+    end
   end
 
   defp publish_reply(metadata, payload) do

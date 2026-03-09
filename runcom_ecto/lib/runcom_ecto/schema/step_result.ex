@@ -27,6 +27,7 @@ defmodule RuncomEcto.Schema.StepResult do
     field :started_at, :utc_datetime_usec
     field :completed_at, :utc_datetime_usec
     field :output, CompressedBinary
+    field :output_ref, :map
     field :error, :string
     field :bytes, :integer
     field :changed, :boolean
@@ -52,6 +53,7 @@ defmodule RuncomEcto.Schema.StepResult do
       :started_at,
       :completed_at,
       :output,
+      :output_ref,
       :error,
       :bytes,
       :changed,

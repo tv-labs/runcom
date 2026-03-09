@@ -28,6 +28,7 @@ defmodule RuncomRmq.Client do
     * `:sync_queue` -- server sync queue name (required)
     * `:event_queue` -- server event queue name (required)
     * `:dispatch_queue` -- the node's named queue for dispatch commands
+    * `:output_truncate_bytes` -- max bytes of step output per message (default: 65,536)
     * `:dispatch_handler` -- `{module, function}` callback for dispatch
     * `:name` -- supervisor registration name
       (default: `RuncomRmq.Client`)
@@ -75,7 +76,11 @@ defmodule RuncomRmq.Client do
       [
         {RunbookCache, name: cache_name},
         {Sync, connection: connection, cache: cache_name, sync_queue: sync_queue},
-        {EventPublisher, connection: connection, node_id: node_id, event_queue: event_queue}
+        {EventPublisher,
+         connection: connection,
+         node_id: node_id,
+         event_queue: event_queue,
+         output_truncate_bytes: Keyword.get(opts, :output_truncate_bytes, 65_536)}
       ] ++
         if dispatch_handler && dispatch_queue do
           [

@@ -59,4 +59,16 @@ defimpl Runcom.Sink, for: Runcom.Sink.File do
   end
 
   def close(sink), do: sink
+  def resolve_secrets(sink, _resolver), do: sink
+
+  def ref(sink), do: {Runcom.Sink.File, [path: sink.path]}
+  def remote?(_sink), do: false
+
+  def for_step(sink, step_name) do
+    dir = Path.dirname(sink.path)
+    ext = Path.extname(sink.path)
+    base = Path.basename(sink.path, ext)
+    sanitized = Runcom.Sink.Helpers.sanitize_step_name(step_name)
+    %{sink | path: Path.join(dir, "#{base}_#{sanitized}#{ext}"), io_device: nil}
+  end
 end

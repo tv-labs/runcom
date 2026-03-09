@@ -31,18 +31,43 @@ defmodule RuncomDemo.IntegrationCase do
     end
   end
 
+  @event_queue "runcom.events"
+
   setup do
-    # Integration tests bypass the sandbox — external agents write directly to the DB
-    Ecto.Adapters.SQL.Sandbox.mode(Repo, :auto)
+    assert_no_competing_consumers!()
+
+    # Shared mode lets EventConsumer (Broadway) processes see test-created
+    # Dispatch/DispatchNode records and lets the test see their updates.
+    :ok = Ecto.Adapters.SQL.Sandbox.checkout(Repo, ownership_timeout: :infinity)
+    Ecto.Adapters.SQL.Sandbox.mode(Repo, {:shared, self()})
 
     Enum.each(@tables, fn table ->
       Repo.query!("TRUNCATE #{table} CASCADE")
     end)
 
-    on_exit(fn ->
-      Ecto.Adapters.SQL.Sandbox.mode(Repo, :manual)
-    end)
-
     :ok
+  end
+
+  defp assert_no_competing_consumers! do
+    rmq_connection = Application.get_env(:runcom_demo, :rmq_connection)
+
+    with {:ok, conn} <- AMQP.Connection.open(rmq_connection),
+         {:ok, chan} <- AMQP.Channel.open(conn),
+         {:ok, %{consumer_count: count}} <-
+           AMQP.Queue.declare(chan, @event_queue, durable: true, passive: true) do
+      AMQP.Channel.close(chan)
+      AMQP.Connection.close(conn)
+
+      if count > 1 do
+        raise """
+        Found #{count} consumers on the #{@event_queue} queue.
+        Another process (e.g. mix phx.server) is competing for events.
+        Stop it before running integration tests.
+        """
+      end
+    else
+      {:error, reason} ->
+        raise "Cannot check #{@event_queue} queue consumers: #{inspect(reason)}"
+    end
   end
 end

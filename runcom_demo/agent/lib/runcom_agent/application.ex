@@ -18,6 +18,8 @@ defmodule RuncomAgent.Application do
     event_queue = System.get_env("EVENT_QUEUE", "runcom.events")
     dispatch_queue = System.get_env("DISPATCH_QUEUE", "runcom_demo.agent.#{node_id}")
 
+    truncate_bytes = parse_truncate_bytes()
+
     children = [
       {Bandit, plug: RuncomAgent.HealthPlug, port: 4001},
       {RuncomRmq.Client,
@@ -26,11 +28,19 @@ defmodule RuncomAgent.Application do
        sync_queue: sync_queue,
        event_queue: event_queue,
        dispatch_queue: dispatch_queue,
-       dispatch_handler: {RuncomAgent.Executor, :dispatch}},
+       dispatch_handler: {RuncomAgent.Executor, :dispatch},
+       output_truncate_bytes: truncate_bytes},
       {RuncomAgent.Executor, node_id: node_id}
     ]
 
     Supervisor.start_link(children, strategy: :one_for_one, name: RuncomAgent.Supervisor)
+  end
+
+  defp parse_truncate_bytes do
+    case System.get_env("OUTPUT_TRUNCATE_BYTES") do
+      nil -> 65_536
+      val -> String.to_integer(val)
+    end
   end
 
   defp configure_artifact_dir do

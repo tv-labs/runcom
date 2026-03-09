@@ -169,12 +169,18 @@ defmodule Runcom.Step do
     for {name, %{result: result, module: module, opts: opts} = step} <- runbook.steps,
         result != nil,
         into: %{} do
+      output = result.output || result.stdout
+      output_ref = if step.sink, do: serialize_ref(Runcom.Sink.ref(step.sink))
+      output_remote = if step.sink, do: Runcom.Sink.remote?(step.sink), else: false
+
       {name,
        %{
          status: to_string(result.status),
          exit_code: result.exit_code,
          duration_ms: result.duration_ms,
-         output: result.output || result.stdout,
+         output: output,
+         output_ref: output_ref,
+         output_remote: output_remote,
          error: result.error,
          module: inspect(module),
          opts: sanitize_for_json(opts),
@@ -193,6 +199,8 @@ defmodule Runcom.Step do
   def serialize_all(runbook) do
     for {name, %{module: module, opts: opts} = step} <- runbook.steps do
       result = step.result
+      output_ref = if step.sink, do: serialize_ref(Runcom.Sink.ref(step.sink))
+      output_remote = if step.sink, do: Runcom.Sink.remote?(step.sink), else: false
 
       %{
         name: name,
@@ -205,6 +213,8 @@ defmodule Runcom.Step do
         started_at: result && result.started_at,
         completed_at: result && result.completed_at,
         output: result && (result.output || result.stdout),
+        output_ref: output_ref,
+        output_remote: output_remote,
         error: result && format_error(result.error),
         bytes: result && result.bytes,
         changed: result && result.changed,
@@ -217,6 +227,14 @@ defmodule Runcom.Step do
       }
     end
   end
+
+  defp serialize_ref(nil), do: nil
+
+  defp serialize_ref({module, opts}) when is_atom(module) do
+    %{"module" => inspect(module), "opts" => sanitize_for_json(opts)}
+  end
+
+  defp serialize_ref(refs) when is_list(refs), do: Enum.map(refs, &serialize_ref/1)
 
   defp step_status(nil, %{status: status}) when status in [:failed, :completed], do: "skipped"
   defp step_status(nil, _runbook), do: "pending"

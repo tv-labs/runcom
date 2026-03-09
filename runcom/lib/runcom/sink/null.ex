@@ -32,4 +32,8 @@ defimpl Runcom.Sink, for: Runcom.Sink.Null do
   def stderr(_sink), do: {:ok, ""}
   def stream_chunks(_sink), do: Stream.map([], & &1)
   def close(sink), do: sink
+  def resolve_secrets(sink, _resolver), do: sink
+  def ref(_sink), do: nil
+  def remote?(_sink), do: false
+  def for_step(sink, _step_name), do: sink
 end

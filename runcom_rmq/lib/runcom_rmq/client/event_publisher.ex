@@ -29,6 +29,7 @@ defmodule RuncomRmq.Client.EventPublisher do
     * `:connection` -- AMQP URI or keyword opts (required)
     * `:node_id` -- this agent's identifier (required)
     * `:event_queue` -- server event queue name (required)
+    * `:output_truncate_bytes` -- max bytes of step output to include in messages (default: 65,536)
     * `:name` -- GenServer name (default: `__MODULE__`)
   """
 
@@ -46,7 +47,15 @@ defmodule RuncomRmq.Client.EventPublisher do
     [:runcom, :step, :exception]
   ]
 
-  defstruct [:connection, :node_id, :event_queue, :channel, :channel_ref, :handler_id]
+  defstruct [
+    :connection,
+    :node_id,
+    :event_queue,
+    :channel,
+    :channel_ref,
+    :handler_id,
+    output_truncate_bytes: 65_536
+  ]
 
   @spec start_link(keyword()) :: GenServer.on_start()
   def start_link(opts) do
@@ -76,7 +85,8 @@ defmodule RuncomRmq.Client.EventPublisher do
       connection: connection,
       node_id: node_id,
       event_queue: event_queue,
-      handler_id: handler_id
+      handler_id: handler_id,
+      output_truncate_bytes: Keyword.get(opts, :output_truncate_bytes, 65_536)
     }
 
     {:ok, state}
@@ -90,7 +100,10 @@ defmodule RuncomRmq.Client.EventPublisher do
   @impl GenServer
   def handle_cast({:telemetry_event, event, measurements, metadata}, state) do
     Logger.debug("EventPublisher: received telemetry #{inspect(event)}")
-    message = format_event(event, measurements, metadata, state.node_id)
+
+    message =
+      format_event(event, measurements, metadata, state.node_id, state.output_truncate_bytes)
+
     state = ensure_channel(state)
 
     case publish(state, message) do
@@ -126,7 +139,7 @@ defmodule RuncomRmq.Client.EventPublisher do
     _ -> :ok
   end
 
-  defp format_event([:runcom, :run, :stop], measurements, metadata, node_id) do
+  defp format_event([:runcom, :run, :stop], measurements, metadata, node_id, truncate_bytes) do
     base = %{
       type: :result,
       node_id: node_id,
@@ -152,7 +165,12 @@ defmodule RuncomRmq.Client.EventPublisher do
 
     base =
       if metadata[:step_results],
-        do: Map.put(base, :step_results, metadata[:step_results]),
+        do:
+          Map.put(
+            base,
+            :step_results,
+            truncate_step_outputs(metadata[:step_results], truncate_bytes)
+          ),
         else: base
 
     base =
@@ -168,7 +186,13 @@ defmodule RuncomRmq.Client.EventPublisher do
       else: base
   end
 
-  defp format_event([:runcom, :step, event_type], measurements, metadata, node_id)
+  defp format_event(
+         [:runcom, :step, event_type],
+         measurements,
+         metadata,
+         node_id,
+         _truncate_bytes
+       )
        when event_type in [:start, :stop, :exception] do
     base = %{
       type: :step_event,
@@ -226,4 +250,23 @@ defmodule RuncomRmq.Client.EventPublisher do
   rescue
     _ -> %{state | channel: nil, channel_ref: nil}
   end
+
+  defp truncate_step_outputs(step_results, max_bytes) when is_map(step_results) do
+    Map.new(step_results, fn {name, result} ->
+      {name, Map.update(result, :output, nil, &truncate_output(&1, max_bytes))}
+    end)
+  end
+
+  defp truncate_step_outputs(step_results, _max_bytes), do: step_results
+
+  defp truncate_output(nil, _max_bytes), do: nil
+
+  defp truncate_output(output, max_bytes)
+       when is_binary(output) and byte_size(output) <= max_bytes, do: output
+
+  defp truncate_output(output, max_bytes) when is_binary(output) do
+    binary_part(output, 0, max_bytes) <> "\n... [truncated, see output_ref]"
+  end
+
+  defp truncate_output(output, _max_bytes), do: output
 end

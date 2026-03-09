@@ -360,6 +360,7 @@ defmodule Runcom.Orchestrator do
     step_context = %{
       runbook_id: state.runbook.id,
       runbook_assigns: state.runbook.assigns,
+      runbook_sink: state.runbook.sink,
       mode: state.mode,
       step_order: state.current_step_index + 1,
       secret_store: state.secret_store
@@ -375,7 +376,16 @@ defmodule Runcom.Orchestrator do
   end
 
   defp do_execute_step(ctx, %StepNode{name: name, module: module, opts: opts, sink: step_sink} = step) do
-    sink = step_sink || create_step_sink(ctx.runbook_id, name)
+    sink = step_sink || derive_step_sink(ctx, name)
+
+    resolver = fn secret_name ->
+      case Store.Memory.fetch_secret(to_string(secret_name), store: ctx.secret_store) do
+        {:ok, value} -> value
+        {:error, :not_found} -> raise "Secret #{inspect(secret_name)} not found"
+      end
+    end
+
+    sink = Sink.resolve_secrets(sink, resolver)
     sink = Sink.open(sink)
 
     # Build a minimal rc for deferred value resolution
@@ -478,6 +488,8 @@ defmodule Runcom.Orchestrator do
   defp update_step_result(state, step_name, {status, result, sink}) do
     secrets = collect_secret_values(state.secret_store)
     result = redact_result(result, secrets)
+
+    sink = safe_close_sink(sink)
 
     step = state.runbook.steps[step_name]
     updated_step = %{step | sink: sink, result: result}
@@ -804,9 +816,23 @@ defmodule Runcom.Orchestrator do
     }
   end
 
-  defp create_step_sink(runbook_id, step_name) do
-    sanitized_id = String.replace(runbook_id || "runbook", ~r/[^\w\-]/, "_")
-    sanitized_step = String.replace(step_name, ~r/[^\w\-]/, "_")
+  defp safe_close_sink(nil), do: nil
+
+  defp safe_close_sink(sink) do
+    Sink.close(sink)
+  rescue
+    e ->
+      Logger.warning("[Orchestrator] sink close failed: #{Exception.message(e)}")
+      sink
+  end
+
+  defp derive_step_sink(%{runbook_sink: sink}, step_name) when not is_nil(sink) do
+    Sink.for_step(sink, step_name)
+  end
+
+  defp derive_step_sink(%{runbook_id: runbook_id}, step_name) do
+    sanitized_id = Runcom.Sink.Helpers.sanitize_step_name(runbook_id || "runbook")
+    sanitized_step = Runcom.Sink.Helpers.sanitize_step_name(step_name)
     timestamp = System.system_time(:millisecond)
     artifact_dir = Runcom.artifact_dir()
     File.mkdir_p!(artifact_dir)

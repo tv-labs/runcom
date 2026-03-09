@@ -141,16 +141,30 @@ defmodule RuncomRmq.Client.Sync do
     Enum.reduce_while(updates, :ok, fn {id, {struct_binary, bytecodes}}, _acc ->
       case Runcom.Bytecode.load_bundle(bytecodes) do
         :ok ->
-          runbook = :erlang.binary_to_term(struct_binary, [:safe])
+          runbook = :erlang.binary_to_term(struct_binary)
           {:ok, hash} = Runcom.Bytecode.hash(runbook)
-          RunbookCache.put(cache, id, hash, nil, runbook, bytecodes)
-          {:cont, {:ok, {nil, runbook}}}
+          mod = resolve_runbook_module(id, runbook)
+          RunbookCache.put(cache, id, hash, mod, runbook, bytecodes)
+          {:cont, {:ok, {mod, runbook}}}
 
         {:error, reason} ->
           Logger.warning("Sync: failed to load bytecode for #{id}: #{inspect(reason)}")
           {:halt, {:error, {:bytecode_load_failed, id, reason}}}
       end
     end)
+  end
+
+  defp resolve_runbook_module(id, runbook) do
+    case runbook.source do
+      {mod, _params, _bytecodes} when is_atom(mod) and mod != nil ->
+        mod
+
+      _ ->
+        case Runcom.Runbook.get(id) do
+          {:ok, mod} -> mod
+          _ -> nil
+        end
+    end
   end
 
   defp safe_close_channel(chan) do

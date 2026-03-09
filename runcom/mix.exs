@@ -41,6 +41,7 @@ defmodule Runcom.MixProject do
       {:ex_doc, "~> 0.35", only: :dev, runtime: false, warn_if_outdated: true},
       {:tidewave, "~> 0.5", only: :dev, warn_if_outdated: true},
       {:exsync, "~> 0.4", only: :dev},
+      {:plug, "~> 1.0", only: [:dev, :test], runtime: false},
       {:bandit, "~> 1.10", only: :dev}
     ]
   end

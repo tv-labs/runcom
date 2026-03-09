@@ -31,6 +31,37 @@ services:
       timeout: 5s
       retries: 5
 
+  minio:
+    image: minio/minio:latest
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: minioadmin
+      MINIO_ROOT_PASSWORD: minioadmin
+    ports:
+      - "9000:9000"
+      - "9001:9001"
+    volumes:
+      - miniodata:/data
+    healthcheck:
+      test: ["CMD", "mc", "ready", "local"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  minio-init:
+    image: minio/mc:latest
+    depends_on:
+      minio:
+        condition: service_healthy
+    entrypoint: >
+      sh -c "
+      mc alias set local http://minio:9000 minioadmin minioadmin &&
+      mc mb --ignore-existing local/runcom-test &&
+      mc anonymous set download local/runcom-test &&
+      echo 'hello-from-minio' | mc pipe local/runcom-test/seed.txt &&
+      echo 'minio-init: bucket ready with seed file'
+      "
+
   agent-nyc-001:
     build:
       context: ..
@@ -41,10 +72,16 @@ services:
       AMQP_URL: amqp://guest:guest@rabbitmq:5672
       NODE_ID: agent-nyc-001
       RUNCOM_ARTIFACT_DIR: /data/runcom
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
+      OUTPUT_TRUNCATE_BYTES: "256"
     volumes:
       - agent-nyc-001-data:/data/runcom
     depends_on:
       rabbitmq:
+        condition: service_healthy
+      minio:
         condition: service_healthy
 
   agent-nyc-002:
@@ -57,10 +94,15 @@ services:
       AMQP_URL: amqp://guest:guest@rabbitmq:5672
       NODE_ID: agent-nyc-002
       RUNCOM_ARTIFACT_DIR: /data/runcom
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
     volumes:
       - agent-nyc-002-data:/data/runcom
     depends_on:
       rabbitmq:
+        condition: service_healthy
+      minio:
         condition: service_healthy
 
   agent-lax-001:
@@ -73,10 +115,15 @@ services:
       AMQP_URL: amqp://guest:guest@rabbitmq:5672
       NODE_ID: agent-lax-001
       RUNCOM_ARTIFACT_DIR: /data/runcom
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
     volumes:
       - agent-lax-001-data:/data/runcom
     depends_on:
       rabbitmq:
+        condition: service_healthy
+      minio:
         condition: service_healthy
 
   agent-lax-002:
@@ -89,10 +136,15 @@ services:
       AMQP_URL: amqp://guest:guest@rabbitmq:5672
       NODE_ID: agent-lax-002
       RUNCOM_ARTIFACT_DIR: /data/runcom
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
     volumes:
       - agent-lax-002-data:/data/runcom
     depends_on:
       rabbitmq:
+        condition: service_healthy
+      minio:
         condition: service_healthy
 
   agent-ams-001:
@@ -105,15 +157,21 @@ services:
       AMQP_URL: amqp://guest:guest@rabbitmq:5672
       NODE_ID: agent-ams-001
       RUNCOM_ARTIFACT_DIR: /data/runcom
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_ACCESS_KEY: minioadmin
+      MINIO_SECRET_KEY: minioadmin
     volumes:
       - agent-ams-001-data:/data/runcom
     depends_on:
       rabbitmq:
         condition: service_healthy
+      minio:
+        condition: service_healthy
 
 volumes:
   pgdata:
   rmqdata:
+  miniodata:
   agent-nyc-001-data:
   agent-nyc-002-data:
   agent-lax-001-data:

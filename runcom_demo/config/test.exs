@@ -37,3 +37,10 @@ config :phoenix,
 # Runcom RMQ — same broker as dev, test uses its own database
 config :runcom_demo,
   rmq_connection: "amqp://guest:guest@localhost:5673"
+
+# MinIO — S3-compatible object store for integration tests
+config :runcom_demo,
+  minio_endpoint: "http://localhost:9000",
+  minio_access_key: "minioadmin",
+  minio_secret_key: "minioadmin",
+  minio_bucket: "runcom-test"

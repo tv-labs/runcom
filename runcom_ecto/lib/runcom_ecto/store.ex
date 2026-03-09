@@ -662,7 +662,7 @@ defmodule RuncomEcto.Store do
   end
 
   @step_result_fields ~w(name order status module exit_code duration_ms attempts
-    started_at completed_at output error bytes changed opts meta)a
+    started_at completed_at output output_ref error bytes changed opts meta)a
 
   # Normalize step_results from map format %{name => result} to list of maps with :name key
   defp normalize_step_results(attrs) when is_map(attrs) do

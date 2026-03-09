@@ -12,6 +12,7 @@ defmodule Runcom.Steps.GetUrl do
     * `:dest` - Destination path (required). Can be string or function.
     * `:checksum` - Expected checksum in format "algo:hash" (e.g., "sha256:abc123...")
     * `:headers` - Additional HTTP headers as a list of tuples
+    * `:s3` - S3 credential options for authenticated downloads (see `Runcom.S3`)
 
   ## Examples
 
@@ -36,6 +37,20 @@ defmodule Runcom.Steps.GetUrl do
            dest: "/tmp/app.tar.gz",
            checksum: "sha256:e3b0c44298fc1c149afbf4c8996fb924..."
          )
+
+      # Downloading from S3
+      Runcom.new("example")
+      |> Runcom.secret(:aws_access_key_id, fn -> System.get_env("AWS_ACCESS_KEY_ID") end)
+      |> Runcom.secret(:aws_secret_access_key, fn -> System.get_env("AWS_SECRET_ACCESS_KEY") end)
+      |> GetUrl.add("download",
+           url: "https://my-bucket.s3.us-east-1.amazonaws.com/artifact.tar.gz",
+           dest: "/tmp/artifact.tar.gz",
+           s3: [
+             access_key_id: {:secret, :aws_access_key_id},
+             secret_access_key: {:secret, :aws_secret_access_key},
+             region: "us-east-1"
+           ]
+         )
   """
 
   use Runcom.Step, category: "Network"
@@ -44,6 +59,7 @@ defmodule Runcom.Steps.GetUrl do
     field :url, :string, required: true
     field :dest, :string, required: true
     field :checksum, :string, placeholder: "sha256:abc123..."
+    field :s3, :map
   end
 
   @impl true
@@ -56,7 +72,29 @@ defmodule Runcom.Steps.GetUrl do
     headers = Map.get(opts, :headers, [])
     started_at = DateTime.utc_now()
 
-    case Req.get(url, headers: headers, into: File.stream!(dest)) do
+    req_opts = [headers: headers, into: File.stream!(dest)]
+
+    req_opts =
+      case Map.get(opts, :s3) do
+        nil ->
+          req_opts
+
+        s3_opts ->
+          resolver = fn name ->
+            case Map.fetch(opts, :resolved_secrets) do
+              {:ok, secrets} -> Map.fetch!(secrets, name)
+              :error -> raise "Secret #{inspect(name)} not found for GetUrl S3"
+            end
+          end
+
+          s3_opts
+          |> Enum.to_list()
+          |> Runcom.S3.resolve_secrets(resolver)
+          |> Runcom.S3.req_options()
+          |> Keyword.merge(req_opts)
+      end
+
+    case Req.get(url, req_opts) do
       {:ok, %{status: status}} when status in 200..299 ->
         completed_at = DateTime.utc_now()
         bytes = File.stat!(dest).size

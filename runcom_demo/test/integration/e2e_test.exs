@@ -15,16 +15,22 @@ defmodule RuncomDemo.Integration.E2ETest do
   # Reboot steps: pre_reboot, write_marker, reboot, verify_marker, cleanup_marker, post_reboot
   @e2e_reboot_steps_count 6
 
+  # S3 steps: start, setup, s3_download, verify_download, large_output, cleanup, done
+  @e2e_s3_steps_count 7
+
   # Max time to wait for builtin steps (apt can be slow)
   @steps_timeout_ms 180_000
 
   # Max time to wait for reboot (container restart + 15s checkpoint poll + execution)
   @reboot_timeout_ms 180_000
 
+  # Max time for S3 test
+  @s3_timeout_ms 120_000
+
   @poll_interval_ms 2_000
 
   @tag timeout: :infinity
-  test "full E2E: builtin steps then reboot with checkpoint resume" do
+  test "full E2E: builtin steps, reboot with checkpoint resume, and S3 sink" do
     run_id = "#{System.system_time(:millisecond)}"
     repo_opts = [repo: RuncomDemo.Repo]
 
@@ -32,7 +38,6 @@ defmodule RuncomDemo.Integration.E2ETest do
 
     steps_dispatch_id = dispatch_runbook("e2e_steps", run_id, repo_opts)
 
-    # Poll until completed or timeout
     assert {:ok, dispatch} =
              poll_dispatch(steps_dispatch_id, @steps_timeout_ms, repo_opts),
            "Builtin steps dispatch did not complete within timeout"
@@ -43,21 +48,18 @@ defmodule RuncomDemo.Integration.E2ETest do
     assert dispatch.nodes_completed == 1
     assert dispatch.nodes_failed == 0
 
-    # Assert DispatchNode
     {:ok, [dn]} = RuncomEcto.Store.list_dispatch_nodes(steps_dispatch_id, repo_opts)
     assert dn.node_id == "agent-nyc-001"
     assert dn.status == "completed"
     assert dn.steps_completed == @e2e_steps_count
     assert dn.steps_failed == 0
 
-    # Assert Result
     assert dn.result_id != nil
     {:ok, result} = RuncomEcto.Store.get_result(dn.result_id, repo_opts)
     assert result.status == "completed"
     assert result.node_id == "agent-nyc-001"
     assert result.dispatch_id == steps_dispatch_id
 
-    # Assert StepResults
     step_results =
       Repo.all(
         from(sr in StepResult,
@@ -105,7 +107,6 @@ defmodule RuncomDemo.Integration.E2ETest do
     assert reboot_dispatch.nodes_completed == 1
     assert reboot_dispatch.nodes_failed == 0
 
-    # Assert DispatchNode
     {:ok, [reboot_dn]} =
       RuncomEcto.Store.list_dispatch_nodes(reboot_dispatch_id, repo_opts)
 
@@ -114,13 +115,11 @@ defmodule RuncomDemo.Integration.E2ETest do
     assert reboot_dn.steps_completed == @e2e_reboot_steps_count
     assert reboot_dn.steps_failed == 0
 
-    # Assert Result
     assert reboot_dn.result_id != nil
     {:ok, reboot_result} = RuncomEcto.Store.get_result(reboot_dn.result_id, repo_opts)
     assert reboot_result.status == "completed"
     assert reboot_result.dispatch_id == reboot_dispatch_id
 
-    # Assert StepResults — all should be ok including post-reboot steps
     reboot_step_results =
       Repo.all(
         from(sr in StepResult,
@@ -143,6 +142,101 @@ defmodule RuncomDemo.Integration.E2ETest do
     assert "verify_marker" in reboot_step_names
     assert "cleanup_marker" in reboot_step_names
     assert "post_reboot" in reboot_step_names
+
+    # ── Phase 3: S3 Sink + GetUrl S3 Download via MinIO ──
+
+    s3_dispatch_id = dispatch_runbook("e2e_s3", run_id, repo_opts)
+
+    assert {:ok, s3_dispatch} =
+             poll_dispatch(s3_dispatch_id, @s3_timeout_ms, repo_opts),
+           "S3 dispatch did not complete within timeout"
+
+    assert s3_dispatch.status == "completed",
+           "Expected S3 dispatch completed, got: #{s3_dispatch.status}"
+
+    assert s3_dispatch.nodes_completed == 1
+    assert s3_dispatch.nodes_failed == 0
+
+    {:ok, [s3_dn]} = RuncomEcto.Store.list_dispatch_nodes(s3_dispatch_id, repo_opts)
+    assert s3_dn.node_id == "agent-nyc-001"
+    assert s3_dn.status == "completed"
+    assert s3_dn.steps_completed == @e2e_s3_steps_count
+    assert s3_dn.steps_failed == 0
+
+    assert s3_dn.result_id != nil
+    {:ok, s3_result} = RuncomEcto.Store.get_result(s3_dn.result_id, repo_opts)
+    assert s3_result.status == "completed"
+    assert s3_result.node_id == "agent-nyc-001"
+    assert s3_result.dispatch_id == s3_dispatch_id
+
+    s3_step_results =
+      Repo.all(
+        from(sr in StepResult,
+          where: sr.result_id == ^s3_result.id,
+          order_by: [asc: sr.order]
+        )
+      )
+
+    assert length(s3_step_results) == @e2e_s3_steps_count
+
+    for sr <- s3_step_results do
+      assert sr.status == "ok",
+             "S3 step #{sr.name} failed with status #{sr.status}: #{sr.error}"
+    end
+
+    s3_step_names = Enum.map(s3_step_results, & &1.name)
+    assert "start" in s3_step_names
+    assert "setup" in s3_step_names
+    assert "s3_download" in s3_step_names
+    assert "verify_download" in s3_step_names
+    assert "large_output" in s3_step_names
+    assert "cleanup" in s3_step_names
+    assert "done" in s3_step_names
+
+    # Verify output_ref is persisted on step results
+    for sr <- s3_step_results do
+      assert sr.output_ref != nil,
+             "Step #{sr.name} should have output_ref persisted"
+    end
+
+    # Verify per-step S3 sink uploads to MinIO
+    minio_endpoint = Application.get_env(:runcom_demo, :minio_endpoint)
+    bucket = Application.get_env(:runcom_demo, :minio_bucket)
+
+    s3_step_names_all =
+      ["start", "setup", "s3_download", "verify_download", "large_output", "cleanup", "done"]
+
+    for step_name <- s3_step_names_all do
+      sink_url = "#{minio_endpoint}/#{bucket}/runs/#{run_id}/#{step_name}.log"
+
+      case Req.get(sink_url) do
+        {:ok, %{status: 200, body: body}} ->
+          assert byte_size(body) > 0,
+                 "S3 sink output for step #{step_name} should not be empty"
+
+        {:ok, %{status: status}} ->
+          flunk("S3 sink output for step #{step_name} not found at #{sink_url}: HTTP #{status}")
+
+        {:error, reason} ->
+          flunk("Failed to fetch S3 sink output for step #{step_name}: #{inspect(reason)}")
+      end
+    end
+
+    # ── Verify RMQ truncation ──
+    # Agent is configured with OUTPUT_TRUNCATE_BYTES=256.
+    # The large_output step generates >256 bytes, so Postgres should have
+    # truncated output while S3 has the full version.
+
+    large_sr = Enum.find(s3_step_results, &(&1.name == "large_output"))
+    assert large_sr != nil
+
+    s3_url = "#{minio_endpoint}/#{bucket}/runs/#{run_id}/large_output.log"
+    {:ok, %{status: 200, body: s3_body}} = Req.get(s3_url)
+
+    db_output = large_sr.output
+    assert byte_size(s3_body) > 256, "S3 should have full output (>256 bytes)"
+    assert byte_size(db_output) < byte_size(s3_body), "DB output should be truncated vs S3"
+    assert db_output =~ "[truncated, see output_ref]", "Truncated output should contain marker"
   end
 
   # ── Helpers ──

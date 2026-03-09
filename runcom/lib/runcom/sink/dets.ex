@@ -130,6 +130,18 @@ defimpl Runcom.Sink, for: Runcom.Sink.DETS do
     %{sink | table: nil}
   end
 
+  def resolve_secrets(sink, _resolver), do: sink
+
+  def ref(%DETS{path: path}), do: {Runcom.Sink.DETS, [path: path]}
+  def remote?(_sink), do: false
+
+  def for_step(%DETS{path: path} = sink, step_name) do
+    dir = Path.dirname(path)
+    base = Path.basename(path, ".dets")
+    sanitized = Runcom.Sink.Helpers.sanitize_step_name(step_name)
+    %{sink | path: Path.join(dir, "#{base}_#{sanitized}.dets"), table: nil}
+  end
+
   defp update_counter(table) do
     case :dets.lookup(table, :counter) do
       [{:counter, n}] ->
