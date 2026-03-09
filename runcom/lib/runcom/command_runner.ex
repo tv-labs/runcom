@@ -78,6 +78,15 @@ defmodule Runcom.CommandRunner do
       # Build the shell command that redirects stderr to our temp file
       shell_cmd = build_shell_command(cmd, args, stderr_file)
 
+      shell_cmd =
+        if Keyword.get(opts, :become, false) do
+          method = Keyword.get(opts, :become_method, :sudo)
+          user = Keyword.get(opts, :become_user)
+          build_become_command(shell_cmd, method, user)
+        else
+          shell_cmd
+        end
+
       ex_cmd_opts =
         [stderr: :disable]
         |> maybe_add(:cd, cd)
@@ -131,6 +140,40 @@ defmodule Runcom.CommandRunner do
   rescue
     e ->
       {:error, Exception.message(e)}
+  end
+
+  @doc """
+  Wrap a shell command string with privilege escalation.
+
+  ## Examples
+
+      iex> build_become_command("echo hello", :sudo, nil)
+      "sudo sh -c 'echo hello'"
+
+      iex> build_become_command("echo hello", :sudo, "deploy")
+      "sudo -u 'deploy' sh -c 'echo hello'"
+
+      iex> build_become_command("echo hello", :su, "deploy")
+      "su - 'deploy' -c 'echo hello'"
+
+      iex> build_become_command("echo hello", :su, nil)
+      "su - 'root' -c 'echo hello'"
+  """
+  @spec build_become_command(String.t(), :sudo | :su, String.t() | nil) :: String.t()
+  def build_become_command(shell_cmd, :sudo, nil) do
+    "sudo sh -c #{escape_shell_arg(shell_cmd)}"
+  end
+
+  def build_become_command(shell_cmd, :sudo, user) do
+    "sudo -u #{escape_shell_arg(user)} sh -c #{escape_shell_arg(shell_cmd)}"
+  end
+
+  def build_become_command(shell_cmd, :su, nil) do
+    build_become_command(shell_cmd, :su, "root")
+  end
+
+  def build_become_command(shell_cmd, :su, user) do
+    "su - #{escape_shell_arg(user)} -c #{escape_shell_arg(shell_cmd)}"
   end
 
   defp create_temp_file do
