@@ -168,8 +168,8 @@ defmodule Runcom.Runbook do
 
   @doc "Returns direct graft references from a runbook struct."
   @spec get_references(Runcom.t()) :: {:ok, [String.t()]}
-  def get_references(%Runcom{} = rc) do
-    {:ok, extract_graft_refs(rc)}
+  def get_references(%Runcom{steps: steps}) do
+    {:ok, extract_graft_refs(steps)}
   end
 
   @doc "Returns the full transitive dependency tree from a runbook struct."
@@ -185,7 +185,7 @@ defmodule Runcom.Runbook do
       list()
       |> Enum.filter(fn mod ->
         rc = build(mod)
-        {:ok, refs} = get_references(rc)
+        refs = extract_graft_refs(rc.steps)
         name in refs
       end)
       |> Enum.map(& &1.__name__())
@@ -193,7 +193,7 @@ defmodule Runcom.Runbook do
     {:ok, dependents}
   end
 
-  defp extract_graft_refs(%Runcom{steps: steps}) do
+  defp extract_graft_refs(steps) when is_map(steps) do
     steps
     |> Map.keys()
     |> Enum.filter(&String.contains?(&1, "."))
@@ -201,8 +201,8 @@ defmodule Runcom.Runbook do
     |> Enum.uniq()
   end
 
-  defp walk_deps(%Runcom{} = rc, depth, visited) do
-    refs = extract_graft_refs(rc)
+  defp walk_deps(%Runcom{steps: steps}, depth, visited) do
+    refs = extract_graft_refs(steps)
 
     Enum.flat_map(refs, fn ref_name ->
       if ref_name in visited do

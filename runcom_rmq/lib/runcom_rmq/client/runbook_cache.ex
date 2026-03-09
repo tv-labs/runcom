@@ -76,7 +76,7 @@ defmodule RuncomRmq.Client.RunbookCache do
   Stores a runbook in the cache with its ID, hash, module, and bytecodes.
   """
   @spec put(GenServer.server(), id(), hash(), module(), Runcom.t(), [{module(), binary()}]) :: :ok
-  def put(cache \\ __MODULE__, id, hash, mod, %Runcom{} = runbook, bytecodes \\ []) do
+  def put(cache \\ __MODULE__, id, hash, mod, runbook, bytecodes \\ []) do
     GenServer.call(cache, {:put, id, hash, mod, runbook, bytecodes})
   end
 

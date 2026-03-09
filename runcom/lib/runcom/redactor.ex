@@ -63,8 +63,8 @@ defmodule Runcom.Redactor do
   Evaluates any lazy loaders to get actual values.
   """
   @spec extract_secrets(Runcom.t()) :: [String.t()]
-  def extract_secrets(%Runcom{} = rc) do
-    rc.assigns
+  def extract_secrets(%Runcom{assigns: assigns}) do
+    assigns
     |> Map.get(:__secrets__, %{})
     |> Enum.flat_map(fn {_name, value_or_loader} ->
       value = if is_function(value_or_loader, 0), do: value_or_loader.(), else: value_or_loader
