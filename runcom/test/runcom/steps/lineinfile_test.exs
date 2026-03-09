@@ -192,6 +192,77 @@ defmodule Runcom.Steps.LineinfileTest do
     end
   end
 
+  describe "run/2 blank line preservation" do
+    @tag :tmp_dir
+    test "preserves internal blank lines", %{tmp_dir: tmp_dir} do
+      path = Path.join(tmp_dir, "config.txt")
+      File.write!(path, "line1\n\nline2\n")
+
+      {:ok, result} = Lineinfile.run(nil, %{path: path, line: "line3", state: :present})
+
+      assert result.status == :ok
+      assert File.read!(path) == "line1\n\nline2\nline3\n"
+    end
+
+    @tag :tmp_dir
+    test "preserves multiple consecutive blank lines", %{tmp_dir: tmp_dir} do
+      path = Path.join(tmp_dir, "config.txt")
+      File.write!(path, "line1\n\n\nline2\n")
+
+      {:ok, result} = Lineinfile.run(nil, %{path: path, line: "line1", state: :present})
+
+      assert result.status == :ok
+      assert result.output =~ "present"
+      assert File.read!(path) == "line1\n\n\nline2\n"
+    end
+  end
+
+  describe "run/2 with invalid regex" do
+    @tag :tmp_dir
+    test "returns error for invalid regexp", %{tmp_dir: tmp_dir} do
+      path = Path.join(tmp_dir, "config.txt")
+      File.write!(path, "line1\n")
+
+      {:ok, result} =
+        Lineinfile.run(nil, %{path: path, line: "x", regexp: "[invalid", state: :present})
+
+      assert result.status == :error
+    end
+
+    @tag :tmp_dir
+    test "returns error for invalid insertafter pattern", %{tmp_dir: tmp_dir} do
+      path = Path.join(tmp_dir, "config.txt")
+      File.write!(path, "line1\n")
+
+      {:ok, result} =
+        Lineinfile.run(nil, %{path: path, line: "x", insertafter: "(unclosed", state: :present})
+
+      assert result.status == :error
+    end
+  end
+
+  describe "run/2 regexp no match but exact line exists" do
+    @tag :tmp_dir
+    test "is idempotent when regexp has no match but exact line already exists", %{
+      tmp_dir: tmp_dir
+    } do
+      path = Path.join(tmp_dir, "config.txt")
+      File.write!(path, "host=localhost\nport=9090\n")
+
+      {:ok, result} =
+        Lineinfile.run(nil, %{
+          path: path,
+          line: "port=9090",
+          regexp: "^nonexistent=",
+          state: :present
+        })
+
+      assert result.status == :ok
+      assert result.output =~ "present"
+      assert File.read!(path) == "host=localhost\nport=9090\n"
+    end
+  end
+
   describe "dryrun/2" do
     test "describes present action" do
       {:ok, result} =

@@ -39,15 +39,14 @@ defmodule Runcom.Steps.Lineinfile do
 
   @impl true
   def run(_rc, opts) do
-    case read_lines(opts.path, opts) do
-      {:ok, lines} ->
-        case Map.get(opts, :state, :present) do
-          :present -> ensure_present(opts.path, lines, opts)
-          :absent -> ensure_absent(opts.path, lines, opts)
-        end
-
-      {:error, reason} ->
-        {:ok, Result.error(error: reason)}
+    with {:ok, compiled_opts} <- compile_patterns(opts),
+         {:ok, lines} <- read_lines(opts.path, opts) do
+      case Map.get(opts, :state, :present) do
+        :present -> ensure_present(opts.path, lines, compiled_opts)
+        :absent -> ensure_absent(opts.path, lines, compiled_opts)
+      end
+    else
+      {:error, reason} -> {:ok, Result.error(error: reason)}
     end
   end
 
@@ -55,6 +54,32 @@ defmodule Runcom.Steps.Lineinfile do
   def dryrun(_rc, opts) do
     verb = if Map.get(opts, :state, :present) == :present, do: "present in", else: "absent from"
     {:ok, Result.ok(output: "Would ensure line #{verb}: #{opts.path}")}
+  end
+
+  defp compile_patterns(opts) do
+    with {:ok, regexp} <- maybe_compile(opts[:regexp], "regexp"),
+         {:ok, insertafter} <- maybe_compile(opts[:insertafter], "insertafter"),
+         {:ok, insertbefore} <- maybe_compile(opts[:insertbefore], "insertbefore") do
+      compiled =
+        opts
+        |> Map.put(:regexp, regexp)
+        |> Map.put(:insertafter, insertafter)
+        |> Map.put(:insertbefore, insertbefore)
+
+      {:ok, compiled}
+    end
+  end
+
+  defp maybe_compile(nil, _label), do: {:ok, nil}
+
+  defp maybe_compile(pattern, label) when is_binary(pattern) do
+    case Regex.compile(pattern) do
+      {:ok, compiled} ->
+        {:ok, compiled}
+
+      {:error, {reason, _pos}} ->
+        {:error, "Invalid #{label} pattern: #{reason}"}
+    end
   end
 
   defp read_lines(path, %{create: true}) do
@@ -72,24 +97,38 @@ defmodule Runcom.Steps.Lineinfile do
     end
   end
 
-  defp split_lines(content), do: String.split(content, "\n", trim: true)
+  defp split_lines(content) do
+    content |> String.split("\n") |> drop_trailing_empty()
+  end
 
-  defp ensure_present(path, lines, %{regexp: regexp} = opts) when is_binary(regexp) do
-    compiled = Regex.compile!(regexp)
+  defp drop_trailing_empty(lines) do
+    case List.last(lines) do
+      "" -> List.delete_at(lines, -1)
+      _ -> lines
+    end
+  end
 
-    if has_match?(lines, compiled) do
-      new_lines = replace_last_match(lines, compiled, opts.line)
+  defp ensure_present(path, lines, %{regexp: %Regex{} = regexp} = opts) do
+    if has_match?(lines, regexp) do
+      new_lines = replace_last_match(lines, regexp, opts.line)
 
       if new_lines == lines do
         {:ok, Result.ok(output: "Line already present")}
       else
-        write_lines(path, new_lines)
-        {:ok, Result.ok(output: "Line replaced")}
+        with :ok <- write_lines(path, new_lines) do
+          {:ok, Result.ok(output: "Line replaced")}
+        end
       end
     else
-      new_lines = insert_line(lines, opts.line, opts)
-      write_lines(path, new_lines)
-      {:ok, Result.ok(output: "Line added")}
+      if Enum.member?(lines, opts.line) do
+        {:ok, Result.ok(output: "Line already present")}
+      else
+        new_lines = insert_line(lines, opts.line, opts)
+
+        with :ok <- write_lines(path, new_lines) do
+          {:ok, Result.ok(output: "Line added")}
+        end
+      end
     end
   end
 
@@ -98,21 +137,24 @@ defmodule Runcom.Steps.Lineinfile do
       {:ok, Result.ok(output: "Line already present")}
     else
       new_lines = insert_line(lines, opts.line, opts)
-      write_lines(path, new_lines)
-      {:ok, Result.ok(output: "Line added")}
+
+      with :ok <- write_lines(path, new_lines) do
+        {:ok, Result.ok(output: "Line added")}
+      end
     end
   end
 
-  defp ensure_absent(path, lines, %{regexp: regexp}) when is_binary(regexp) do
-    compiled = Regex.compile!(regexp)
-    new_lines = Enum.reject(lines, &Regex.match?(compiled, &1))
+  defp ensure_absent(path, lines, %{regexp: %Regex{} = regexp}) do
+    new_lines = Enum.reject(lines, &Regex.match?(regexp, &1))
 
     if new_lines == lines do
       {:ok, Result.ok(output: "Line already absent")}
     else
-      write_lines(path, new_lines)
       removed = length(lines) - length(new_lines)
-      {:ok, Result.ok(output: "Line removed (#{removed} occurrence(s))")}
+
+      with :ok <- write_lines(path, new_lines) do
+        {:ok, Result.ok(output: "Line removed (#{removed} occurrence(s))")}
+      end
     end
   end
 
@@ -122,9 +164,11 @@ defmodule Runcom.Steps.Lineinfile do
     if new_lines == lines do
       {:ok, Result.ok(output: "Line already absent")}
     else
-      write_lines(path, new_lines)
       removed = length(lines) - length(new_lines)
-      {:ok, Result.ok(output: "Line removed (#{removed} occurrence(s))")}
+
+      with :ok <- write_lines(path, new_lines) do
+        {:ok, Result.ok(output: "Line removed (#{removed} occurrence(s))")}
+      end
     end
   end
 
@@ -141,18 +185,14 @@ defmodule Runcom.Steps.Lineinfile do
     List.replace_at(lines, last_idx, replacement)
   end
 
-  defp insert_line(lines, line, %{insertafter: pattern}) when is_binary(pattern) do
-    compiled = Regex.compile!(pattern)
-
+  defp insert_line(lines, line, %{insertafter: %Regex{} = compiled}) do
     case last_match_index(lines, compiled) do
       nil -> lines ++ [line]
       idx -> List.insert_at(lines, idx + 1, line)
     end
   end
 
-  defp insert_line(lines, line, %{insertbefore: pattern}) when is_binary(pattern) do
-    compiled = Regex.compile!(pattern)
-
+  defp insert_line(lines, line, %{insertbefore: %Regex{} = compiled}) do
     case first_match_index(lines, compiled) do
       nil -> lines ++ [line]
       idx -> List.insert_at(lines, idx, line)
@@ -178,7 +218,12 @@ defmodule Runcom.Steps.Lineinfile do
 
   defp write_lines(path, lines) do
     content = Enum.join(lines, "\n") <> "\n"
-    File.mkdir_p!(Path.dirname(path))
-    File.write!(path, content)
+
+    with :ok <- File.mkdir_p(Path.dirname(path)),
+         :ok <- File.write(path, content) do
+      :ok
+    else
+      {:error, reason} -> {:ok, Result.error(error: reason)}
+    end
   end
 end

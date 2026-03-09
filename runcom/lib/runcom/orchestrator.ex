@@ -148,6 +148,9 @@ defmodule Runcom.Orchestrator do
     resume = Keyword.get(opts, :resume, false)
     artifact_dir = Keyword.get(opts, :artifact_dir)
 
+    # Gather system facts once at init (static for this machine)
+    runbook = %{runbook | facts: Runcom.Facts.gather()}
+
     secret_store = :ets.new(:runcom_secrets, [:set, :protected])
 
     # Initialize secrets from runbook
@@ -375,6 +378,7 @@ defmodule Runcom.Orchestrator do
     step_context = %{
       runbook_id: state.runbook.id,
       runbook_assigns: state.runbook.assigns,
+      runbook_facts: state.runbook.facts,
       runbook_sink: state.runbook.sink,
       mode: state.mode,
       step_order: state.current_step_index + 1,
@@ -407,7 +411,7 @@ defmodule Runcom.Orchestrator do
     sink = Sink.open(sink)
 
     # Build a minimal rc for deferred value resolution
-    rc_for_deferred = %Runcom{id: ctx.runbook_id, assigns: ctx.runbook_assigns}
+    rc_for_deferred = %Runcom{id: ctx.runbook_id, assigns: ctx.runbook_assigns, facts: ctx.runbook_facts}
 
     # Resolve deferred values, apply schema defaults, and resolve secrets
     resolved_opts = resolve_deferred_values(rc_for_deferred, opts)

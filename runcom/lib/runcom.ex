@@ -45,6 +45,7 @@ defmodule Runcom do
           step_status: %{String.t() => step_result()},
           errors: %{String.t() => term()},
           status: status(),
+          facts: Runcom.Facts.t() | nil,
           sink: term() | nil,
           secret_store: :ets.table() | nil,
           source: {module(), map(), [{module(), binary()}]} | nil
@@ -60,6 +61,7 @@ defmodule Runcom do
             step_status: %{},
             errors: %{},
             status: :pending,
+            facts: nil,
             sink: nil,
             secret_store: nil,
             source: nil
@@ -621,7 +623,7 @@ defmodule Runcom do
         start_time = System.monotonic_time()
         :telemetry.execute([:runcom, :run, :start], %{system_time: System.system_time()}, meta)
 
-        rc = %{rc | status: :running}
+        rc = %{rc | status: :running, facts: rc.facts || Runcom.Facts.gather()}
 
         try do
           result = execute_in_order(rc, g, order, mode, 1)

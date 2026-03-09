@@ -180,6 +180,35 @@ defmodule Runcom.RunbookIntegrationTest do
     end
   end
 
+  describe "system facts" do
+    test "facts are available to steps via rc.facts", %{test: test_name} do
+      rc =
+        Runcom.new(to_string(test_name))
+        |> RC.Debug.add("os", message: &to_string(&1.facts.os))
+        |> RC.Debug.add("arch", message: &to_string(&1.facts.arch))
+        |> RC.Command.add("echo_arch",
+          cmd: "echo",
+          args: [&to_string(&1.facts.arch)]
+        )
+
+      {:ok, completed} = Runcom.run_sync(rc)
+
+      assert completed.status == :completed
+      assert completed.facts != nil
+      assert completed.facts.os in [:linux, :darwin, :freebsd, :windows]
+      assert completed.facts.arch in [:x86_64, :aarch64, :arm, :riscv64]
+
+      os_result = Runcom.result(completed, "os")
+      assert os_result.output == to_string(completed.facts.os)
+
+      arch_result = Runcom.result(completed, "arch")
+      assert arch_result.output == to_string(completed.facts.arch)
+
+      {:ok, stdout} = Runcom.read_stdout(completed, "echo_arch")
+      assert stdout =~ to_string(completed.facts.arch)
+    end
+  end
+
   describe "runbook with deferred values" do
     test "resolves deferred values at execution time", %{tmp_dir: tmp_dir, test: test_name} do
       output_file = Path.join(tmp_dir, "output.txt")
