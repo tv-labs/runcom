@@ -56,7 +56,7 @@ defmodule Runcom.Steps.User do
 
   @impl true
   def run(_rc, %{sink: sink} = opts) do
-    family = Runcom.OS.detect()
+    family = Runcom.Facts.gather().distro_family
     commands = build_commands(opts, family)
 
     Enum.reduce_while(commands, nil, fn {cmd, args}, _acc ->
@@ -70,7 +70,7 @@ defmodule Runcom.Steps.User do
 
   @impl true
   def dryrun(_rc, opts) do
-    family = Runcom.OS.detect()
+    family = Runcom.Facts.gather().distro_family
     commands = build_commands(opts, family)
 
     description =

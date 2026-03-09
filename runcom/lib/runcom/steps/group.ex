@@ -39,7 +39,7 @@ defmodule Runcom.Steps.Group do
 
   @impl true
   def run(_rc, %{sink: sink} = opts) do
-    family = Runcom.OS.detect()
+    family = Runcom.Facts.gather().distro_family
     {cmd, args} = build_command(opts, family)
 
     CommandRunner.run(
@@ -52,7 +52,7 @@ defmodule Runcom.Steps.Group do
 
   @impl true
   def dryrun(_rc, opts) do
-    family = Runcom.OS.detect()
+    family = Runcom.Facts.gather().distro_family
     {cmd, args} = build_command(opts, family)
     full_cmd = Enum.join([cmd | args], " ")
     {:ok, Result.ok(output: "Would execute: #{full_cmd}")}

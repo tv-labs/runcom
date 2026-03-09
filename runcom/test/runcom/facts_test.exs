@@ -42,5 +42,45 @@ defmodule Runcom.FactsTest do
       assert is_binary(facts.os_version)
       assert facts.os_version != ""
     end
+
+    test "distro_family is a known atom" do
+      facts = Facts.gather()
+      assert facts.distro_family in [:debian, :alpine, :redhat, :macos, :unknown]
+    end
+  end
+
+  describe "parse_os_release/1" do
+    test "detects debian from os-release content" do
+      content = "PRETTY_NAME=\"Debian GNU/Linux 12 (bookworm)\"\nID=debian\nID_LIKE=\n"
+      assert Facts.parse_os_release(content) == :debian
+    end
+
+    test "detects ubuntu as debian family" do
+      content = "ID=ubuntu\nID_LIKE=debian\n"
+      assert Facts.parse_os_release(content) == :debian
+    end
+
+    test "detects alpine" do
+      content = "ID=alpine\nVERSION_ID=3.19.0\n"
+      assert Facts.parse_os_release(content) == :alpine
+    end
+
+    test "detects redhat family (centos)" do
+      content = "ID=\"centos\"\nID_LIKE=\"rhel fedora\"\n"
+      assert Facts.parse_os_release(content) == :redhat
+    end
+
+    test "detects redhat family (fedora)" do
+      content = "ID=fedora\nVERSION_ID=39\n"
+      assert Facts.parse_os_release(content) == :redhat
+    end
+
+    test "returns unknown for unrecognized" do
+      assert Facts.parse_os_release("ID=gentoo\n") == :unknown
+    end
+
+    test "returns unknown for empty content" do
+      assert Facts.parse_os_release("") == :unknown
+    end
   end
 end
