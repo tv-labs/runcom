@@ -191,6 +191,7 @@ defmodule Runcom.Step do
           meta: %{
             has_assert: step.assert_fn != nil,
             has_post: step.post_fn != nil,
+            halt: result != nil and result.halt == true,
             retry: sanitize_for_json(step.retry_opts)
           }
         }

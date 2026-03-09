@@ -254,6 +254,9 @@ defmodule RuncomWeb.Live.ResultDetailLive do
                         <span :if={node["data"]["duration_ms"]} class="text-xs text-base-content/50 font-mono">
                           {format_duration(node["data"]["duration_ms"])}
                         </span>
+                        <span :if={node["data"]["halt"]} class="text-xs text-warning font-mono">
+                          halted{if node["data"]["wait_ms"], do: " · resumed after #{format_duration(node["data"]["wait_ms"])}"}
+                        </span>
                       </div>
                       <span class={["badge badge-sm", status_badge_class(node["data"]["status"])]}>
                         {node["data"]["status"]}
@@ -545,6 +548,7 @@ defmodule RuncomWeb.Live.ResultDetailLive do
           |> maybe_put("has_assert", meta["has_assert"])
           |> maybe_put("retry", meta["retry"])
           |> maybe_put("has_post", meta["has_post"])
+          |> maybe_put("halt", meta["halt"])
 
         %{
           "id" => step_name,
@@ -554,6 +558,8 @@ defmodule RuncomWeb.Live.ResultDetailLive do
         }
       end)
 
+    nodes = annotate_halt_wait(nodes, sr_by_name, stored_edges, ordered_names)
+
     edges =
       if stored_edges != [] do
         build_edges_from_stored(stored_edges)
@@ -562,6 +568,44 @@ defmodule RuncomWeb.Live.ResultDetailLive do
       end
 
     {nodes, edges}
+  end
+
+  defp annotate_halt_wait(nodes, sr_by_name, stored_edges, ordered_names) do
+    successors = build_successor_map(stored_edges, ordered_names)
+
+    Enum.map(nodes, fn node ->
+      if node["data"]["halt"] do
+        wait_ms = compute_halt_wait(node["id"], successors, sr_by_name)
+        put_in(node, ["data", "wait_ms"], wait_ms)
+      else
+        node
+      end
+    end)
+  end
+
+  defp build_successor_map(stored_edges, ordered_names) when stored_edges in [[], nil] do
+    ordered_names
+    |> Enum.chunk_every(2, 1, :discard)
+    |> Map.new(fn [a, b] -> {a, [b]} end)
+  end
+
+  defp build_successor_map(stored_edges, _ordered_names) do
+    Enum.group_by(stored_edges, & &1["source"], & &1["target"])
+  end
+
+  defp compute_halt_wait(halt_name, successor_map, sr_by_name) do
+    successors = Map.get(successor_map, halt_name, [])
+    halt_sr = sr_by_name[halt_name]
+
+    with %{completed_at: %DateTime{} = completed} <- halt_sr do
+      successors
+      |> Enum.map(&sr_by_name[&1])
+      |> Enum.filter(&match?(%{started_at: %DateTime{}}, &1))
+      |> Enum.map(&DateTime.diff(&1.started_at, completed, :millisecond))
+      |> Enum.min(fn -> nil end)
+    else
+      _ -> nil
+    end
   end
 
   defp topsort_from_edges(names, []), do: names
