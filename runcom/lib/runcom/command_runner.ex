@@ -122,12 +122,16 @@ defmodule Runcom.CommandRunner do
       completed_at = DateTime.utc_now()
       duration_ms = DateTime.diff(completed_at, started_at, :millisecond)
 
+      status = if(exit_code == 0, do: :ok, else: :error)
+
       result =
         Result.new(
-          status: if(exit_code == 0, do: :ok, else: :error),
+          status: status,
           exit_code: exit_code,
           stdout: stdout,
           stderr: stderr,
+          output: if(stdout != "", do: String.trim(stdout)),
+          error: if(status == :error and stderr != "", do: String.trim(stderr)),
           started_at: started_at,
           completed_at: completed_at,
           duration_ms: duration_ms

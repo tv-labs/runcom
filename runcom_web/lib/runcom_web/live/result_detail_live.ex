@@ -73,7 +73,7 @@ defmodule RuncomWeb.Live.ResultDetailLive do
       |> assign(:result_id, nil)
       |> assign(:nodes, [])
       |> assign(:edges, [])
-      |> assign(:selected_step, nil)
+      |> assign(:expanded_steps, MapSet.new())
       |> assign(:base_path, "")
       |> assign(:dispatch_id, nil)
       |> assign(:output_tab, "steps")
@@ -245,7 +245,7 @@ defmodule RuncomWeb.Live.ResultDetailLive do
                       <div class="flex items-center gap-3">
                         <span class={[
                           "text-xs",
-                          @selected_step == node["id"] && "rotate-90",
+                          MapSet.member?(@expanded_steps, node["id"]) && "rotate-90",
                           "inline-block transition-transform"
                         ]}>
                           &#9654;
@@ -262,7 +262,7 @@ defmodule RuncomWeb.Live.ResultDetailLive do
                         {node["data"]["status"]}
                       </span>
                     </button>
-                    <div :if={@selected_step == node["id"]} class="border-t border-base-300 bg-base-200/30 p-3 space-y-2">
+                    <div :if={MapSet.member?(@expanded_steps, node["id"])} class="border-t border-base-300 bg-base-200/30 p-3 space-y-2">
                       <%!-- Rendered step details --%>
                       <div :if={node["data"]["details_html"]}>
                         {Phoenix.HTML.raw(node["data"]["details_html"])}
@@ -365,24 +365,37 @@ defmodule RuncomWeb.Live.ResultDetailLive do
 
   @impl true
   def handle_event("toggle_step", %{"step-id" => id}, socket) do
-    selected = if socket.assigns.selected_step == id, do: nil, else: id
+    expanded = socket.assigns.expanded_steps
 
     socket =
-      if selected do
-        socket |> assign(:selected_step, selected) |> maybe_fetch_step_output(selected)
+      if MapSet.member?(expanded, id) do
+        assign(socket, :expanded_steps, MapSet.delete(expanded, id))
       else
-        assign(socket, :selected_step, nil)
+        socket
+        |> assign(:expanded_steps, MapSet.put(expanded, id))
+        |> maybe_fetch_step_output(id)
       end
 
     {:noreply, socket}
   end
 
   def handle_event("node_selected", %{"id" => id}, socket) do
-    {:noreply, assign(socket, :selected_step, id)}
+    expanded = socket.assigns.expanded_steps
+
+    socket =
+      if MapSet.member?(expanded, id) do
+        socket
+      else
+        socket
+        |> assign(:expanded_steps, MapSet.put(expanded, id))
+        |> maybe_fetch_step_output(id)
+      end
+
+    {:noreply, socket}
   end
 
   def handle_event("deselect", _params, socket) do
-    {:noreply, assign(socket, :selected_step, nil)}
+    {:noreply, assign(socket, :expanded_steps, MapSet.new())}
   end
 
   def handle_event("set_output_tab", %{"tab" => tab}, socket) do
@@ -403,15 +416,22 @@ defmodule RuncomWeb.Live.ResultDetailLive do
         markdown_html = render_markdown(markdown)
         asciicast = format_asciicast(rc)
 
+        failed_steps =
+          nodes
+          |> Enum.filter(fn n -> n["data"]["status"] in ~w(error failed) end)
+          |> MapSet.new(fn n -> n["id"] end)
+
         socket
         |> assign(:result, result)
         |> assign(:nodes, nodes)
         |> assign(:edges, edges)
+        |> assign(:expanded_steps, failed_steps)
         |> assign(:dispatch_id, result_field(result, :dispatch_id))
         |> assign(:markdown_output, markdown)
         |> assign(:markdown_html, markdown_html)
         |> assign(:asciicast_data, asciicast)
         |> assign(:page_title, "Result: #{result_field(result, :runbook_id)}")
+        |> fetch_outputs_for_steps(failed_steps)
 
       {:error, :not_found} ->
         socket
@@ -431,6 +451,10 @@ defmodule RuncomWeb.Live.ResultDetailLive do
 
     from(sr in StepResult, where: sr.result_id == ^result.id, order_by: sr.order)
     |> repo.all()
+  end
+
+  defp fetch_outputs_for_steps(socket, step_names) do
+    Enum.reduce(step_names, socket, &maybe_fetch_step_output(&2, &1))
   end
 
   defp maybe_fetch_step_output(socket, step_name) do

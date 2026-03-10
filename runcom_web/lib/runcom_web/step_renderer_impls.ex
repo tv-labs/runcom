@@ -1118,7 +1118,10 @@ defimpl RuncomWeb.StepRenderer, for: Runcom.Steps.Lineinfile do
   defp to_str(_), do: nil
 
   defp put_prop(acc, _label, nil), do: acc
-  defp put_prop(acc, label, value) when is_binary(value), do: acc ++ [%{label: label, value: value}]
+
+  defp put_prop(acc, label, value) when is_binary(value),
+    do: acc ++ [%{label: label, value: value}]
+
   defp put_prop(acc, _, _), do: acc
 
   defp put_bool(acc, label, true), do: acc ++ [%{label: label, value: "yes"}]
@@ -1196,7 +1199,10 @@ defimpl RuncomWeb.StepRenderer, for: Runcom.Steps.Blockinfile do
   defp to_str(_), do: nil
 
   defp put_prop(acc, _label, nil), do: acc
-  defp put_prop(acc, label, value) when is_binary(value), do: acc ++ [%{label: label, value: value}]
+
+  defp put_prop(acc, label, value) when is_binary(value),
+    do: acc ++ [%{label: label, value: value}]
+
   defp put_prop(acc, _, _), do: acc
 
   defp put_bool(acc, label, true), do: acc ++ [%{label: label, value: "yes"}]
@@ -1279,7 +1285,10 @@ defimpl RuncomWeb.StepRenderer, for: Runcom.Steps.User do
   defp to_str(_), do: nil
 
   defp put_prop(acc, _label, nil), do: acc
-  defp put_prop(acc, label, value) when is_binary(value), do: acc ++ [%{label: label, value: value}]
+
+  defp put_prop(acc, label, value) when is_binary(value),
+    do: acc ++ [%{label: label, value: value}]
+
   defp put_prop(acc, _, _), do: acc
 
   defp put_groups(acc, groups) when is_list(groups) and groups != [],
@@ -1362,7 +1371,10 @@ defimpl RuncomWeb.StepRenderer, for: Runcom.Steps.Group do
   defp to_str(_), do: nil
 
   defp put_prop(acc, _label, nil), do: acc
-  defp put_prop(acc, label, value) when is_binary(value), do: acc ++ [%{label: label, value: value}]
+
+  defp put_prop(acc, label, value) when is_binary(value),
+    do: acc ++ [%{label: label, value: value}]
+
   defp put_prop(acc, _, _), do: acc
 
   defp put_bool(acc, label, true), do: acc ++ [%{label: label, value: "yes"}]
@@ -1433,7 +1445,10 @@ defimpl RuncomWeb.StepRenderer, for: Runcom.Steps.AptRepository do
   defp to_str(_), do: nil
 
   defp put_prop(acc, _label, nil), do: acc
-  defp put_prop(acc, label, value) when is_binary(value), do: acc ++ [%{label: label, value: value}]
+
+  defp put_prop(acc, label, value) when is_binary(value),
+    do: acc ++ [%{label: label, value: value}]
+
   defp put_prop(acc, _, _), do: acc
 
   defp put_bool(acc, label, true), do: acc ++ [%{label: label, value: "yes"}]
@@ -1563,7 +1578,10 @@ defimpl RuncomWeb.StepRenderer, for: Runcom.Steps.Http do
   end
 
   defp put_prop(acc, _label, nil), do: acc
-  defp put_prop(acc, label, value) when is_binary(value), do: acc ++ [%{label: label, value: value}]
+
+  defp put_prop(acc, label, value) when is_binary(value),
+    do: acc ++ [%{label: label, value: value}]
+
   defp put_prop(acc, _, _), do: acc
 
   defp put_body(acc, body) when is_binary(body) and body != "",
@@ -1578,8 +1596,12 @@ defimpl RuncomWeb.StepRenderer, for: Runcom.Steps.Http do
 
   defp put_headers(acc, _), do: acc
 
-  defp put_status(acc, code) when is_integer(code), do: acc ++ [%{label: "expected status", value: to_string(code)}]
-  defp put_status(acc, codes) when is_list(codes), do: acc ++ [%{label: "expected status", value: Enum.map_join(codes, ", ", &to_string/1)}]
+  defp put_status(acc, code) when is_integer(code),
+    do: acc ++ [%{label: "expected status", value: to_string(code)}]
+
+  defp put_status(acc, codes) when is_list(codes),
+    do: acc ++ [%{label: "expected status", value: Enum.map_join(codes, ", ", &to_string/1)}]
+
   defp put_status(acc, _), do: acc
 
   defp format_ms(val) when is_integer(val), do: "#{val}ms"

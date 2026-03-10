@@ -99,20 +99,86 @@ defmodule RuncomWeb.Live.ResultDetailLiveIntegrationTest do
       assert html =~ "fetched 10MB" or html =~ "Output" or html =~ "No output"
     end
 
-    test "toggling a different step switches selection", %{conn: conn, result: result} do
+    test "multiple steps can be expanded independently", %{conn: conn, result: result} do
       {:ok, view, _html} = live(conn, "/dashboard/result/#{result.id}")
 
+      # Expand download
       view
       |> element(~s{button[phx-value-step-id="download"]})
       |> render_click()
 
+      # Expand install — download should remain expanded
       html =
         view
         |> element(~s{button[phx-value-step-id="install"]})
         |> render_click()
 
-      # Install step should now be expanded (rotate class on its arrow)
-      assert html =~ ~s(phx-value-step-id="install")
+      # Both chevrons should be rotated
+      assert html =~ "rotate-90"
+      # Count rotated chevrons — expect 2
+      assert length(Regex.scan(~r/rotate-90/, html)) == 2
+    end
+
+    test "toggling an expanded step collapses only that step", %{conn: conn, result: result} do
+      {:ok, view, _html} = live(conn, "/dashboard/result/#{result.id}")
+
+      # Expand both
+      view |> element(~s{button[phx-value-step-id="download"]}) |> render_click()
+      view |> element(~s{button[phx-value-step-id="install"]}) |> render_click()
+
+      # Collapse download
+      html =
+        view
+        |> element(~s{button[phx-value-step-id="download"]})
+        |> render_click()
+
+      # Only install should remain expanded
+      assert length(Regex.scan(~r/rotate-90/, html)) == 1
+    end
+  end
+
+  describe "auto-expand failed steps" do
+    test "failed steps are expanded on initial load", %{conn: conn} do
+      now = DateTime.utc_now() |> DateTime.truncate(:second)
+
+      {:ok, result} =
+        Store.save_result(
+          %{
+            runbook_id: "failing-run",
+            node_id: "node-1",
+            status: "failed",
+            started_at: now,
+            step_results: [
+              %{
+                name: "setup",
+                order: 1,
+                status: "ok",
+                module: "Runcom.Steps.Command",
+                duration_ms: 100,
+                opts: %{},
+                meta: %{}
+              },
+              %{
+                name: "deploy",
+                order: 2,
+                status: "error",
+                module: "Runcom.Steps.Command",
+                duration_ms: 500,
+                error: "exit code 1",
+                opts: %{},
+                meta: %{}
+              }
+            ]
+          },
+          @store_opts
+        )
+
+      {:ok, _view, html} = live(conn, "/dashboard/result/#{result.id}")
+
+      # The failed step's chevron should be rotated on load
+      assert html =~ "rotate-90"
+      # The error content should be visible
+      assert html =~ "exit code 1"
     end
   end
 

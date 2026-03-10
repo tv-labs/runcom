@@ -349,5 +349,63 @@ defmodule Runcom.OrchestratorTest do
       # step2 should have been started (first incomplete step)
       assert_received {:started, "step2"}
     end
+
+    test "skips completed steps that appear after resume index in topsort order",
+         %{test: test_name, artifact_dir: artifact_dir} do
+      parent = self()
+
+      # Simulate a DAG with parallel branches where topsort order may change:
+      #   setup → branch_a (completed)
+      #   setup → branch_b (pending)
+      #   branch_a → halt_step (completed, was the halting step)
+      #   branch_b → final (pending)
+      #   halt_step → final (pending)
+      #
+      # On resume, topsort might order: [setup, branch_b, branch_a, halt_step, final]
+      # The orchestrator must skip branch_a and halt_step, not re-execute them.
+      runbook =
+        Runcom.new("#{test_name}")
+        |> OkStep.add("setup", %{})
+        |> OkStep.add("branch_a", await: ["setup"])
+        |> OkStep.add("branch_b", await: ["setup"])
+        |> HaltStep.add("halt_step", await: ["branch_a"])
+        |> OkStep.add("final", await: ["halt_step", "branch_b"])
+
+      # Mark setup, branch_a, and halt_step as completed (simulating post-halt checkpoint)
+      runbook = %{
+        runbook
+        | step_status: %{
+            "setup" => :ok,
+            "branch_a" => :ok,
+            "halt_step" => :ok
+          },
+          status: :halted
+      }
+
+      :ok = Checkpoint.write(runbook, artifact_dir: artifact_dir)
+
+      {:ok, pid} =
+        Orchestrator.start_link(
+          runbook: runbook,
+          mode: :run,
+          resume: true,
+          artifact_dir: artifact_dir,
+          on_step_start: fn _rc, name -> send(parent, {:started, name}) end
+        )
+
+      Orchestrator.execute(pid)
+      {:ok, result} = Orchestrator.await(pid)
+
+      assert result.status == :completed
+
+      # Already-completed steps must not re-execute
+      refute_received {:started, "setup"}
+      refute_received {:started, "branch_a"}
+      refute_received {:started, "halt_step"}
+
+      # Pending steps should execute
+      assert_received {:started, "branch_b"}
+      assert_received {:started, "final"}
+    end
   end
 end

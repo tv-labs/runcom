@@ -347,24 +347,35 @@ defmodule Runcom.Orchestrator do
   defp execute_next_step(state) do
     step_name = Enum.at(state.execution_order, state.current_step_index)
     Logger.info("[Orchestrator] executing step #{state.current_step_index}: #{step_name}")
-    {^step_name, step} = :digraph.vertex(state.digraph, step_name)
 
-    predecessors = :digraph.in_neighbours(state.digraph, step_name)
-
-    any_failed? =
-      Enum.any?(predecessors, fn pred ->
-        state.runbook.step_status[pred] in [:error, :skipped]
-      end)
-
-    if any_failed? do
-      # Skip this step
-      rc = %{state.runbook | step_status: Map.put(state.runbook.step_status, step_name, :skipped)}
-      state = %{state | runbook: rc, current_step_index: state.current_step_index + 1}
+    # Skip already-completed steps — critical for resume where topsort order
+    # may differ from the original run (independent DAG branches can interleave
+    # differently across :digraph rebuilds).
+    if state.runbook.step_status[step_name] in [:ok, :skipped] do
+      state = %{state | current_step_index: state.current_step_index + 1}
       execute_next_step(state)
     else
-      # Execute the step asynchronously
-      execute_step_async(state, step)
-      {:noreply, state}
+      {^step_name, step} = :digraph.vertex(state.digraph, step_name)
+
+      predecessors = :digraph.in_neighbours(state.digraph, step_name)
+
+      any_failed? =
+        Enum.any?(predecessors, fn pred ->
+          state.runbook.step_status[pred] in [:error, :skipped]
+        end)
+
+      if any_failed? do
+        rc = %{
+          state.runbook
+          | step_status: Map.put(state.runbook.step_status, step_name, :skipped)
+        }
+
+        state = %{state | runbook: rc, current_step_index: state.current_step_index + 1}
+        execute_next_step(state)
+      else
+        execute_step_async(state, step)
+        {:noreply, state}
+      end
     end
   end
 
