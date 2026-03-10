@@ -209,16 +209,23 @@ end
 | `Runcom.Steps.Bash` | Execute bash scripts via built-in interpreter |
 | `Runcom.Steps.Command` | Execute shell command |
 | `Runcom.Steps.GetUrl` | Download file |
+| `Runcom.Steps.Http` | HTTP request with status assertion |
 | `Runcom.Steps.Unarchive` | Extract archive |
 | `Runcom.Steps.File` | Manage files/directories |
 | `Runcom.Steps.Copy` | Copy or write files |
+| `Runcom.Steps.Lineinfile` | Manage individual lines in text files |
+| `Runcom.Steps.Blockinfile` | Manage marked text blocks in files |
+| `Runcom.Steps.EExTemplate` | EEx template evaluation |
 | `Runcom.Steps.Systemd` | Manage systemd services |
 | `Runcom.Steps.WaitFor` | Wait for port/file/condition |
+| `Runcom.Steps.User` | Manage user accounts |
+| `Runcom.Steps.Group` | Manage system groups |
+| `Runcom.Steps.Hostname` | Manage system hostname |
 | `Runcom.Steps.Debug` | Log message |
 | `Runcom.Steps.Pause` | Pause execution |
-| `Runcom.Steps.EExTemplate` | EEx template evaluation |
 | `Runcom.Steps.Reboot` | Reboot the machine |
 | `Runcom.Steps.Apt` | Manage APT packages |
+| `Runcom.Steps.AptRepository` | Manage APT repository sources |
 | `Runcom.Steps.Brew` | Manage Homebrew packages |
 
 ## Custom Steps

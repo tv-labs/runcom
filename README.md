@@ -128,10 +128,11 @@ unmatched quote fails the build, not the deploy.
 | Category | Steps |
 |----------|-------|
 | Commands | `Command`, `Bash` |
-| Files | `File`, `Copy`, `EExTemplate`, `Unarchive` |
-| Network | `GetUrl`, `WaitFor` |
+| Files | `File`, `Copy`, `EExTemplate`, `Unarchive`, `Lineinfile`, `Blockinfile` |
+| Network | `GetUrl`, `Http`, `WaitFor` |
 | Services | `Systemd`, `Reboot` |
-| Packages | `Apt`, `Brew` |
+| System | `User`, `Group`, `Hostname` |
+| Packages | `Apt`, `AptRepository`, `Brew` |
 | Utility | `Debug`, `Pause` |
 | Meta | `Runbook` (nest runbooks as steps) |
 
