@@ -12,7 +12,7 @@ defmodule RuncomWeb.StepLibraryTest do
     test "returns 7 categories" do
       categories = StepLibrary.list()
 
-      assert length(categories) == 7
+      assert length(categories) == 8
     end
 
     test "returns a total of 15 steps across all categories" do
@@ -21,7 +21,7 @@ defmodule RuncomWeb.StepLibraryTest do
         |> Enum.flat_map(fn {_category, steps} -> steps end)
         |> length()
 
-      assert total == 15
+      assert total == 22
     end
 
     test "each step has :module and :name keys" do

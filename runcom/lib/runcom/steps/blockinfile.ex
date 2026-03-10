@@ -95,11 +95,8 @@ defmodule Runcom.Steps.Blockinfile do
 
   defp maybe_compile(pattern, label) when is_binary(pattern) do
     case Regex.compile(pattern) do
-      {:ok, compiled} ->
-        {:ok, compiled}
-
-      {:error, {reason, _pos}} ->
-        {:error, "Invalid #{label} pattern: #{reason}"}
+      {:error, {reason, _pos}} -> {:error, "Invalid #{label} pattern: #{reason}"}
+      ok -> ok
     end
   end
 

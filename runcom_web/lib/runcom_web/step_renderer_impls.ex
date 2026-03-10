@@ -1047,3 +1047,541 @@ defimpl RuncomWeb.StepRenderer, for: Runcom.Steps.WaitFor do
   defp format_ms(val) when is_integer(val), do: "#{val}ms"
   defp format_ms(_), do: nil
 end
+
+defimpl RuncomWeb.StepRenderer, for: Runcom.Steps.Lineinfile do
+  use Phoenix.Component
+
+  import RuncomWeb.Helpers, only: [truncate: 1]
+  import RuncomWeb.StepRendererComponents
+
+  def render(step, assigns) do
+    assigns = Map.put(assigns, :step, step)
+
+    case assigns.view_mode do
+      :node -> render_node(assigns)
+      :details -> render_details(assigns)
+      :builder -> render_builder(assigns)
+    end
+  end
+
+  defp render_node(assigns) do
+    summary =
+      case assigns.step do
+        %{path: path} when is_binary(path) -> truncate(path)
+        %{path: path} when is_function(path) -> "fn/1"
+        _ -> nil
+      end
+
+    assigns = Map.put(assigns, :summary, summary)
+
+    ~H"""
+    <span :if={@summary} class="step-summary">{@summary}</span>
+    """
+  end
+
+  defp render_details(assigns) do
+    props =
+      []
+      |> put_prop("path", assigns.step.path)
+      |> put_prop("line", assigns.step.line)
+      |> put_prop("state", to_str(assigns.step.state))
+      |> put_prop("regexp", assigns.step.regexp)
+      |> put_prop("insertafter", assigns.step.insertafter)
+      |> put_prop("insertbefore", assigns.step.insertbefore)
+      |> put_bool("create", assigns.step.create)
+
+    assigns = Map.put(assigns, :props, props)
+
+    ~H"""
+    <.detail_props props={@props} />
+    <.framework_details framework_opts={@framework_opts} />
+    """
+  end
+
+  defp render_builder(assigns) do
+    fields = field_infos(assigns.step)
+    active = Map.get(assigns, :active_group_fields, %{})
+
+    assigns =
+      assigns
+      |> Map.put(:fields, fields)
+      |> Map.put(:active_group_fields, active)
+
+    ~H"""
+    <.builder_fields fields={@fields} step={@step} active_group_fields={@active_group_fields} />
+    <.framework_details framework_opts={@framework_opts} />
+    """
+  end
+
+  defp to_str(val) when is_atom(val) and not is_nil(val), do: to_string(val)
+  defp to_str(val) when is_binary(val), do: val
+  defp to_str(_), do: nil
+
+  defp put_prop(acc, _label, nil), do: acc
+  defp put_prop(acc, label, value) when is_binary(value), do: acc ++ [%{label: label, value: value}]
+  defp put_prop(acc, _, _), do: acc
+
+  defp put_bool(acc, label, true), do: acc ++ [%{label: label, value: "yes"}]
+  defp put_bool(acc, _, _), do: acc
+end
+
+defimpl RuncomWeb.StepRenderer, for: Runcom.Steps.Blockinfile do
+  use Phoenix.Component
+
+  import RuncomWeb.Helpers, only: [truncate: 1]
+  import RuncomWeb.StepRendererComponents
+
+  def render(step, assigns) do
+    assigns = Map.put(assigns, :step, step)
+
+    case assigns.view_mode do
+      :node -> render_node(assigns)
+      :details -> render_details(assigns)
+      :builder -> render_builder(assigns)
+    end
+  end
+
+  defp render_node(assigns) do
+    summary =
+      case assigns.step do
+        %{path: path} when is_binary(path) -> truncate(path)
+        %{path: path} when is_function(path) -> "fn/1"
+        _ -> nil
+      end
+
+    assigns = Map.put(assigns, :summary, summary)
+
+    ~H"""
+    <span :if={@summary} class="step-summary">{@summary}</span>
+    """
+  end
+
+  defp render_details(assigns) do
+    props =
+      []
+      |> put_prop("path", assigns.step.path)
+      |> put_prop("block", assigns.step.block)
+      |> put_prop("state", to_str(assigns.step.state))
+      |> put_prop("marker begin", assigns.step.marker_begin)
+      |> put_prop("marker end", assigns.step.marker_end)
+      |> put_prop("insertafter", assigns.step.insertafter)
+      |> put_prop("insertbefore", assigns.step.insertbefore)
+      |> put_bool("create", assigns.step.create)
+
+    assigns = Map.put(assigns, :props, props)
+
+    ~H"""
+    <.detail_props props={@props} />
+    <.framework_details framework_opts={@framework_opts} />
+    """
+  end
+
+  defp render_builder(assigns) do
+    fields = field_infos(assigns.step)
+    active = Map.get(assigns, :active_group_fields, %{})
+
+    assigns =
+      assigns
+      |> Map.put(:fields, fields)
+      |> Map.put(:active_group_fields, active)
+
+    ~H"""
+    <.builder_fields fields={@fields} step={@step} active_group_fields={@active_group_fields} />
+    <.framework_details framework_opts={@framework_opts} />
+    """
+  end
+
+  defp to_str(val) when is_atom(val) and not is_nil(val), do: to_string(val)
+  defp to_str(val) when is_binary(val), do: val
+  defp to_str(_), do: nil
+
+  defp put_prop(acc, _label, nil), do: acc
+  defp put_prop(acc, label, value) when is_binary(value), do: acc ++ [%{label: label, value: value}]
+  defp put_prop(acc, _, _), do: acc
+
+  defp put_bool(acc, label, true), do: acc ++ [%{label: label, value: "yes"}]
+  defp put_bool(acc, _, _), do: acc
+end
+
+defimpl RuncomWeb.StepRenderer, for: Runcom.Steps.User do
+  use Phoenix.Component
+
+  import RuncomWeb.StepRendererComponents
+
+  def render(step, assigns) do
+    assigns = Map.put(assigns, :step, step)
+
+    case assigns.view_mode do
+      :node -> render_node(assigns)
+      :details -> render_details(assigns)
+      :builder -> render_builder(assigns)
+    end
+  end
+
+  defp render_node(assigns) do
+    summary =
+      case assigns.step do
+        %{name: name, state: state} when is_binary(name) and is_atom(state) ->
+          name <> " " <> to_string(state)
+
+        %{name: name} when is_binary(name) ->
+          name
+
+        _ ->
+          nil
+      end
+
+    assigns = Map.put(assigns, :summary, summary)
+
+    ~H"""
+    <span :if={@summary} class="step-summary">{@summary}</span>
+    """
+  end
+
+  defp render_details(assigns) do
+    props =
+      []
+      |> put_prop("user", assigns.step.name)
+      |> put_prop("state", to_str(assigns.step.state))
+      |> put_prop("shell", assigns.step.shell)
+      |> put_prop("home", assigns.step.home)
+      |> put_groups(assigns.step.groups)
+      |> put_bool("system", assigns.step.system)
+      |> put_bool("create home", assigns.step.create_home)
+      |> put_bool("remove", assigns.step.remove)
+      |> put_prop("comment", assigns.step.comment)
+
+    assigns = Map.put(assigns, :props, props)
+
+    ~H"""
+    <.detail_props props={@props} />
+    <.framework_details framework_opts={@framework_opts} />
+    """
+  end
+
+  defp render_builder(assigns) do
+    fields = field_infos(assigns.step)
+    active = Map.get(assigns, :active_group_fields, %{})
+
+    assigns =
+      assigns
+      |> Map.put(:fields, fields)
+      |> Map.put(:active_group_fields, active)
+
+    ~H"""
+    <.builder_fields fields={@fields} step={@step} active_group_fields={@active_group_fields} />
+    <.framework_details framework_opts={@framework_opts} />
+    """
+  end
+
+  defp to_str(val) when is_atom(val) and not is_nil(val), do: to_string(val)
+  defp to_str(val) when is_binary(val), do: val
+  defp to_str(_), do: nil
+
+  defp put_prop(acc, _label, nil), do: acc
+  defp put_prop(acc, label, value) when is_binary(value), do: acc ++ [%{label: label, value: value}]
+  defp put_prop(acc, _, _), do: acc
+
+  defp put_groups(acc, groups) when is_list(groups) and groups != [],
+    do: acc ++ [%{label: "groups", value: Enum.join(groups, ", ")}]
+
+  defp put_groups(acc, _), do: acc
+
+  defp put_bool(acc, label, true), do: acc ++ [%{label: label, value: "yes"}]
+  defp put_bool(acc, _, _), do: acc
+end
+
+defimpl RuncomWeb.StepRenderer, for: Runcom.Steps.Group do
+  use Phoenix.Component
+
+  import RuncomWeb.StepRendererComponents
+
+  def render(step, assigns) do
+    assigns = Map.put(assigns, :step, step)
+
+    case assigns.view_mode do
+      :node -> render_node(assigns)
+      :details -> render_details(assigns)
+      :builder -> render_builder(assigns)
+    end
+  end
+
+  defp render_node(assigns) do
+    summary =
+      case assigns.step do
+        %{name: name, state: state} when is_binary(name) and is_atom(state) ->
+          name <> " " <> to_string(state)
+
+        %{name: name} when is_binary(name) ->
+          name
+
+        _ ->
+          nil
+      end
+
+    assigns = Map.put(assigns, :summary, summary)
+
+    ~H"""
+    <span :if={@summary} class="step-summary">{@summary}</span>
+    """
+  end
+
+  defp render_details(assigns) do
+    props =
+      []
+      |> put_prop("group", assigns.step.name)
+      |> put_prop("state", to_str(assigns.step.state))
+      |> put_prop("gid", format_int(assigns.step.gid))
+      |> put_bool("system", assigns.step.system)
+
+    assigns = Map.put(assigns, :props, props)
+
+    ~H"""
+    <.detail_props props={@props} />
+    <.framework_details framework_opts={@framework_opts} />
+    """
+  end
+
+  defp render_builder(assigns) do
+    fields = field_infos(assigns.step)
+    active = Map.get(assigns, :active_group_fields, %{})
+
+    assigns =
+      assigns
+      |> Map.put(:fields, fields)
+      |> Map.put(:active_group_fields, active)
+
+    ~H"""
+    <.builder_fields fields={@fields} step={@step} active_group_fields={@active_group_fields} />
+    <.framework_details framework_opts={@framework_opts} />
+    """
+  end
+
+  defp to_str(val) when is_atom(val) and not is_nil(val), do: to_string(val)
+  defp to_str(val) when is_binary(val), do: val
+  defp to_str(_), do: nil
+
+  defp put_prop(acc, _label, nil), do: acc
+  defp put_prop(acc, label, value) when is_binary(value), do: acc ++ [%{label: label, value: value}]
+  defp put_prop(acc, _, _), do: acc
+
+  defp put_bool(acc, label, true), do: acc ++ [%{label: label, value: "yes"}]
+  defp put_bool(acc, _, _), do: acc
+
+  defp format_int(val) when is_integer(val), do: to_string(val)
+  defp format_int(_), do: nil
+end
+
+defimpl RuncomWeb.StepRenderer, for: Runcom.Steps.AptRepository do
+  use Phoenix.Component
+
+  import RuncomWeb.Helpers, only: [truncate: 1]
+  import RuncomWeb.StepRendererComponents
+
+  def render(step, assigns) do
+    assigns = Map.put(assigns, :step, step)
+
+    case assigns.view_mode do
+      :node -> render_node(assigns)
+      :details -> render_details(assigns)
+      :builder -> render_builder(assigns)
+    end
+  end
+
+  defp render_node(assigns) do
+    summary = if is_binary(assigns.step.repo), do: truncate(assigns.step.repo)
+    assigns = Map.put(assigns, :summary, summary)
+
+    ~H"""
+    <span :if={@summary} class="step-summary">{@summary}</span>
+    """
+  end
+
+  defp render_details(assigns) do
+    props =
+      []
+      |> put_prop("repo", assigns.step.repo)
+      |> put_prop("state", to_str(assigns.step.state))
+      |> put_prop("filename", assigns.step.filename)
+      |> put_bool("update cache", assigns.step.update_cache)
+
+    assigns = Map.put(assigns, :props, props)
+
+    ~H"""
+    <.detail_props props={@props} />
+    <.framework_details framework_opts={@framework_opts} />
+    """
+  end
+
+  defp render_builder(assigns) do
+    fields = field_infos(assigns.step)
+    active = Map.get(assigns, :active_group_fields, %{})
+
+    assigns =
+      assigns
+      |> Map.put(:fields, fields)
+      |> Map.put(:active_group_fields, active)
+
+    ~H"""
+    <.builder_fields fields={@fields} step={@step} active_group_fields={@active_group_fields} />
+    <.framework_details framework_opts={@framework_opts} />
+    """
+  end
+
+  defp to_str(val) when is_atom(val) and not is_nil(val), do: to_string(val)
+  defp to_str(val) when is_binary(val), do: val
+  defp to_str(_), do: nil
+
+  defp put_prop(acc, _label, nil), do: acc
+  defp put_prop(acc, label, value) when is_binary(value), do: acc ++ [%{label: label, value: value}]
+  defp put_prop(acc, _, _), do: acc
+
+  defp put_bool(acc, label, true), do: acc ++ [%{label: label, value: "yes"}]
+  defp put_bool(acc, _, _), do: acc
+end
+
+defimpl RuncomWeb.StepRenderer, for: Runcom.Steps.Hostname do
+  use Phoenix.Component
+
+  import RuncomWeb.StepRendererComponents
+
+  def render(step, assigns) do
+    assigns = Map.put(assigns, :step, step)
+
+    case assigns.view_mode do
+      :node -> render_node(assigns)
+      :details -> render_details(assigns)
+      :builder -> render_builder(assigns)
+    end
+  end
+
+  defp render_node(assigns) do
+    summary = assigns.step.name
+    assigns = Map.put(assigns, :summary, summary)
+
+    ~H"""
+    <span :if={@summary} class="step-summary">{@summary}</span>
+    """
+  end
+
+  defp render_details(assigns) do
+    props =
+      case assigns.step.name do
+        name when is_binary(name) -> [%{label: "hostname", value: name}]
+        _ -> []
+      end
+
+    assigns = Map.put(assigns, :props, props)
+
+    ~H"""
+    <.detail_props props={@props} />
+    <.framework_details framework_opts={@framework_opts} />
+    """
+  end
+
+  defp render_builder(assigns) do
+    fields = field_infos(assigns.step)
+    active = Map.get(assigns, :active_group_fields, %{})
+
+    assigns =
+      assigns
+      |> Map.put(:fields, fields)
+      |> Map.put(:active_group_fields, active)
+
+    ~H"""
+    <.builder_fields fields={@fields} step={@step} active_group_fields={@active_group_fields} />
+    <.framework_details framework_opts={@framework_opts} />
+    """
+  end
+end
+
+defimpl RuncomWeb.StepRenderer, for: Runcom.Steps.Http do
+  use Phoenix.Component
+
+  import RuncomWeb.Helpers, only: [truncate: 1]
+  import RuncomWeb.StepRendererComponents
+
+  def render(step, assigns) do
+    assigns = Map.put(assigns, :step, step)
+
+    case assigns.view_mode do
+      :node -> render_node(assigns)
+      :details -> render_details(assigns)
+      :builder -> render_builder(assigns)
+    end
+  end
+
+  defp render_node(assigns) do
+    summary =
+      case assigns.step do
+        %{method: method, url: url} when is_binary(url) ->
+          method_str = method |> to_string() |> String.upcase()
+          method_str <> " " <> truncate(url)
+
+        _ ->
+          nil
+      end
+
+    assigns = Map.put(assigns, :summary, summary)
+
+    ~H"""
+    <span :if={@summary} class="step-summary">{@summary}</span>
+    """
+  end
+
+  defp render_details(assigns) do
+    props =
+      []
+      |> put_prop("method", assigns.step.method |> to_string() |> String.upcase())
+      |> put_prop("url", assigns.step.url)
+      |> put_body(assigns.step.body)
+      |> put_headers(assigns.step.headers)
+      |> put_status(assigns.step.status_code)
+      |> put_prop("timeout", format_ms(assigns.step.timeout))
+
+    assigns = Map.put(assigns, :props, props)
+
+    ~H"""
+    <.detail_props props={@props} />
+    <.framework_details framework_opts={@framework_opts} />
+    """
+  end
+
+  defp render_builder(assigns) do
+    fields = field_infos(assigns.step)
+    active = Map.get(assigns, :active_group_fields, %{})
+
+    assigns =
+      assigns
+      |> Map.put(:fields, fields)
+      |> Map.put(:active_group_fields, active)
+
+    ~H"""
+    <.builder_fields fields={@fields} step={@step} active_group_fields={@active_group_fields} />
+    <.framework_details framework_opts={@framework_opts} />
+    """
+  end
+
+  defp put_prop(acc, _label, nil), do: acc
+  defp put_prop(acc, label, value) when is_binary(value), do: acc ++ [%{label: label, value: value}]
+  defp put_prop(acc, _, _), do: acc
+
+  defp put_body(acc, body) when is_binary(body) and body != "",
+    do: acc ++ [%{label: "body", value: body, type: :code, language: "json"}]
+
+  defp put_body(acc, _), do: acc
+
+  defp put_headers(acc, headers) when is_list(headers) and headers != [] do
+    formatted = Enum.map_join(headers, "\n", fn {k, v} -> "#{k}: #{v}" end)
+    acc ++ [%{label: "headers", value: formatted}]
+  end
+
+  defp put_headers(acc, _), do: acc
+
+  defp put_status(acc, code) when is_integer(code), do: acc ++ [%{label: "expected status", value: to_string(code)}]
+  defp put_status(acc, codes) when is_list(codes), do: acc ++ [%{label: "expected status", value: Enum.map_join(codes, ", ", &to_string/1)}]
+  defp put_status(acc, _), do: acc
+
+  defp format_ms(val) when is_integer(val), do: "#{val}ms"
+  defp format_ms(_), do: nil
+end

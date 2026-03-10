@@ -411,7 +411,11 @@ defmodule Runcom.Orchestrator do
     sink = Sink.open(sink)
 
     # Build a minimal rc for deferred value resolution
-    rc_for_deferred = %Runcom{id: ctx.runbook_id, assigns: ctx.runbook_assigns, facts: ctx.runbook_facts}
+    rc_for_deferred = %Runcom{
+      id: ctx.runbook_id,
+      assigns: ctx.runbook_assigns,
+      facts: ctx.runbook_facts
+    }
 
     # Resolve deferred values, apply schema defaults, and resolve secrets
     resolved_opts = resolve_deferred_values(rc_for_deferred, opts)

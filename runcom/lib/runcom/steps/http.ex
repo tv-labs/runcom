@@ -29,7 +29,7 @@ defmodule Runcom.Steps.Http do
       |> Http.add("trigger_deploy",
            url: "http://api.example.com/deploy",
            method: :post,
-           body: ~s({"version": "1.0.0"}),
+           body: ~s|{"version": "1.0.0"}|,
            headers: [{"content-type", "application/json"}],
            status_code: [200, 201]
          )

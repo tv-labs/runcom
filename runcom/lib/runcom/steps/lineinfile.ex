@@ -62,13 +62,8 @@ defmodule Runcom.Steps.Lineinfile do
     with {:ok, regexp} <- maybe_compile(opts[:regexp], "regexp"),
          {:ok, insertafter} <- maybe_compile(opts[:insertafter], "insertafter"),
          {:ok, insertbefore} <- maybe_compile(opts[:insertbefore], "insertbefore") do
-      compiled =
-        opts
-        |> Map.put(:regexp, regexp)
-        |> Map.put(:insertafter, insertafter)
-        |> Map.put(:insertbefore, insertbefore)
-
-      {:ok, compiled}
+      {:ok,
+       Map.merge(opts, %{regexp: regexp, insertafter: insertafter, insertbefore: insertbefore})}
     end
   end
 
@@ -76,11 +71,8 @@ defmodule Runcom.Steps.Lineinfile do
 
   defp maybe_compile(pattern, label) when is_binary(pattern) do
     case Regex.compile(pattern) do
-      {:ok, compiled} ->
-        {:ok, compiled}
-
-      {:error, {reason, _pos}} ->
-        {:error, "Invalid #{label} pattern: #{reason}"}
+      {:error, {reason, _pos}} -> {:error, "Invalid #{label} pattern: #{reason}"}
+      ok -> ok
     end
   end
 
@@ -152,9 +144,8 @@ defmodule Runcom.Steps.Lineinfile do
     if new_lines == lines do
       {:ok, Result.ok(output: "Line already absent")}
     else
-      removed = length(lines) - length(new_lines)
-
       with :ok <- write_lines(path, new_lines) do
+        removed = length(lines) - length(new_lines)
         {:ok, Result.ok(output: "Line removed (#{removed} occurrence(s))")}
       end
     end
@@ -219,11 +210,9 @@ defmodule Runcom.Steps.Lineinfile do
   end
 
   defp write_lines(path, lines) do
-    content = Enum.join(lines, "\n") <> "\n"
-
-    with :ok <- File.mkdir_p(Path.dirname(path)),
-         :ok <- File.write(path, content) do
-      :ok
+    with :ok <- File.mkdir_p(Path.dirname(path)) do
+      content = Enum.join(lines, "\n") <> "\n"
+      File.write(path, content)
     end
   end
 end

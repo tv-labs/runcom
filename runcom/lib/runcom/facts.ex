@@ -73,13 +73,17 @@ defmodule Runcom.Facts do
 
   defp gather_distro_family do
     case :os.type() do
-      {:unix, :darwin} -> :macos
+      {:unix, :darwin} ->
+        :macos
+
       {:unix, _} ->
         case File.read("/etc/os-release") do
           {:ok, content} -> parse_os_release(content)
           {:error, _} -> :unknown
         end
-      _ -> :unknown
+
+      _ ->
+        :unknown
     end
   end
 

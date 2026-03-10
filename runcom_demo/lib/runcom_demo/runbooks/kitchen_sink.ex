@@ -6,39 +6,44 @@ defmodule RuncomDemo.Runbooks.KitchenSink do
   ## DAG
 
   ```
-           start
-             |
-        setup_dir
-             |
-      ┌──────┼──────┐
-      |      |      |
-   sysinfo  disk  uptime        (fan-out: parallel system info)
-      |      |      |
-      └──────┼──────┘
-             |
-          collect               (fan-in: reads prior step outputs)
-             |
-        auth_check              (secrets: api_token, deploy_key)
-             |
-      ┌──────┴──────┐
-      |             |
-   write_report   render_html   (fan-out: Copy + EExTemplate)
-      |             |
-      └──────┬──────┘
-             |
-         verify_files           (fan-in: Bash with assert)
-             |
-         node_gate              (deliberate failure per $(hostname))
-             |
-         post_gate              (skipped when node_gate fails)
-             |
-         wait_marker            (WaitFor: file from verify_files)
-             |
-         brief_pause            (Pause: 200ms)
-             |
-         cleanup
-             |
-           done
+                        start
+                          |
+                      setup_dir
+                          |
+      ┌─────┬─────┬──────┼──────┬───────────┬───────────────┐
+      |     |     |      |      |           |               |
+   sysinfo disk uptime install  add-demo  ensure-deploy   set-hostname
+      |     |     |    -curl     -repo     -group            |
+      |     |     |      |      |           |          write-config-line
+      |     |     |      |      |     ensure-deploy         |
+      |     |     |      |      |        -user        write-config-block
+      └─────┴─────┘      |      |           |               |
+             |            |      |           |               |
+          collect ────────┘      |           |               |
+             |                   |           |               |
+        auth_check               |           |               |
+             |                   |           |               |
+      ┌──────┴──────┐           |           |               |
+      |             |            |           |               |
+   write_report   render_html   |           |               |
+      |             |            |           |               |
+      └──────┬──────┘           |           |               |
+             |                   |           |               |
+         verify_files            |           |               |
+             |                   |           |               |
+         node_gate               |           |               |
+             |                   |           |               |
+         post_gate               |           |               |
+             |                   |           |               |
+         wait_marker             |           |               |
+             |                   |           |               |
+         brief_pause             |           |               |
+             |                   |           |               |
+         http-check              |           |               |
+             |                   |           |               |
+         cleanup                 |           |               |
+             |                   |           |               |
+           done                  |           |               |
   ```
 
   ## Parameters
@@ -57,15 +62,22 @@ defmodule RuncomDemo.Runbooks.KitchenSink do
 
   import Bash.Sigil
 
-  require Runcom.Steps.Bash, as: RCBash
-  require Runcom.Steps.Debug, as: Debug
-  require Runcom.Steps.File, as: RCFile
-  require Runcom.Steps.Copy, as: Copy
-  require Runcom.Steps.EExTemplate, as: EExTemplate
-  require Runcom.Steps.Reboot, as: Reboot
-  require Runcom.Steps.Pause, as: Pause
-  require Runcom.Steps.WaitFor, as: WaitFor
   require Runcom.Steps.Apt, as: Apt
+  require Runcom.Steps.AptRepository, as: AptRepository
+  require Runcom.Steps.Bash, as: RCBash
+  require Runcom.Steps.Blockinfile, as: Blockinfile
+  require Runcom.Steps.Copy, as: Copy
+  require Runcom.Steps.Debug, as: Debug
+  require Runcom.Steps.EExTemplate, as: EExTemplate
+  require Runcom.Steps.File, as: RCFile
+  require Runcom.Steps.Group, as: Group
+  require Runcom.Steps.Hostname, as: Hostname
+  require Runcom.Steps.Http, as: Http
+  require Runcom.Steps.Lineinfile, as: Lineinfile
+  require Runcom.Steps.Pause, as: Pause
+  require Runcom.Steps.Reboot, as: Reboot
+  require Runcom.Steps.User, as: User
+  require Runcom.Steps.WaitFor, as: WaitFor
 
   schema do
     field :run_id, :string, default: "ks"
@@ -105,9 +117,45 @@ defmodule RuncomDemo.Runbooks.KitchenSink do
       state: :latest,
       await: ["setup_dir"]
     )
+    |> AptRepository.add("add-demo-repo",
+      repo: "deb http://example.com/repo stable main",
+      state: :present,
+      update_cache: false,
+      await: ["setup_dir"]
+    )
     |> RCBash.add("uptime",
       script: ~BASH"uptime || cat /proc/uptime",
       await: ["setup_dir"]
+    )
+    |> Group.add("ensure-deploy-group",
+      name: "deploy",
+      state: :present,
+      await: ["setup_dir"]
+    )
+    |> User.add("ensure-deploy-user",
+      name: "deploy",
+      state: :present,
+      shell: "/bin/bash",
+      create_home: true,
+      groups: ["deploy"],
+      await: ["ensure-deploy-group"]
+    )
+    |> Hostname.add("set-hostname",
+      name: "ks-demo-host",
+      await: ["setup_dir"]
+    )
+    |> Lineinfile.add("write-config-line",
+      path: fn rc -> "#{rc.assigns.work_dir}/app.conf" end,
+      line: "run_id=kitchen-sink",
+      regexp: "^run_id=",
+      create: true,
+      await: ["setup_dir"]
+    )
+    |> Blockinfile.add("write-config-block",
+      path: fn rc -> "#{rc.assigns.work_dir}/app.conf" end,
+      block: "# managed settings\nlog_level=info\nmax_retries=3",
+      create: true,
+      await: ["write-config-line"]
     )
     |> RCBash.add("collect",
       script: fn rc ->
@@ -205,6 +253,12 @@ defmodule RuncomDemo.Runbooks.KitchenSink do
     )
     |> Pause.add("brief_pause",
       duration: to_timeout(second: 5)
+    )
+    |> Http.add("http-check",
+      url: "https://httpbin.org/status/200",
+      method: :get,
+      status_code: 200,
+      timeout: 10_000
     )
     |> RCBash.add("cleanup",
       script: fn rc -> "rm -rf '#{rc.assigns.work_dir}' && echo 'cleaned up'" end
