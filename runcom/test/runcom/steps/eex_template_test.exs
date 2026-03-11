@@ -47,7 +47,7 @@ defmodule Runcom.Steps.EExTemplateTest do
           %{
             dest: dest,
             template: "Hello, <%= @name %> - <%= @greeting %>!",
-            vars: %{greeting: "Welcome"}
+            assigns: %{greeting: "Welcome"}
           }
         )
 
@@ -62,7 +62,7 @@ defmodule Runcom.Steps.EExTemplateTest do
       {:ok, result} =
         EExTemplate.run(
           %{assigns: %{name: "World"}},
-          %{dest: dest, template: "Hello, <%= @name %>!", vars: %{name: "Override"}}
+          %{dest: dest, template: "Hello, <%= @name %>!", assigns: %{name: "Override"}}
         )
 
       assert result.status == :ok
@@ -157,7 +157,7 @@ defmodule Runcom.Steps.EExTemplateTest do
       {:ok, result} =
         EExTemplate.run(
           nil,
-          %{dest: dest, template: "Hello, <%= @name %>!", vars: %{name: "Test"}}
+          %{dest: dest, template: "Hello, <%= @name %>!", assigns: %{name: "Test"}}
         )
 
       assert result.status == :ok

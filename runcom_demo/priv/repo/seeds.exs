@@ -475,7 +475,8 @@ results
       runbook_id: runbook_id,
       status: "completed",
       started_at: runbook_results |> Enum.map(& &1.started_at) |> Enum.min(DateTime),
-      completed_at: runbook_results |> Enum.map(&(&1[:completed_at] || &1.started_at)) |> Enum.max(DateTime)
+      completed_at:
+        runbook_results |> Enum.map(&(&1[:completed_at] || &1.started_at)) |> Enum.max(DateTime)
     })
 
   IO.puts("  Created dispatch: #{runbook_id} (#{dispatch.id})")

@@ -25,8 +25,26 @@ defmodule RuncomEcto.Store do
 
   @failure_statuses ["failed", "error"]
 
+  @step_result_fields ~w(name order status module exit_code duration_ms attempts
+    started_at completed_at output output_ref error opts meta)a
+
+  @result_upsert_fields [
+    :status,
+    :mode,
+    :started_at,
+    :completed_at,
+    :duration_ms,
+    :error_message,
+    :edges,
+    :updated_at
+  ]
+
   @doc """
-  Inserts an execution result record.
+  Inserts or updates an execution result record.
+
+  When a result already exists for the same `(dispatch_id, node_id)` pair
+  (e.g. a halted run that was resumed), the existing row is updated in place
+  and its step results are upserted by name.
   """
   @impl true
   @spec save_result(map(), keyword()) :: {:ok, Result.t()} | {:error, term()}
@@ -36,7 +54,11 @@ defmodule RuncomEcto.Store do
 
     multi =
       Ecto.Multi.new()
-      |> Ecto.Multi.insert(:result, Result.changeset(%Result{}, result_attrs))
+      |> Ecto.Multi.insert(:result, Result.changeset(%Result{}, result_attrs),
+        on_conflict: {:replace, @result_upsert_fields},
+        conflict_target: [:dispatch_id, :node_id],
+        returning: true
+      )
       |> Ecto.Multi.run(:step_results, fn repo, %{result: result} ->
         insert_step_results(repo, result.id, step_results_attrs)
       end)
@@ -145,7 +167,7 @@ defmodule RuncomEcto.Store do
   def get_dispatch(id, opts \\ []) do
     repo = repo!(opts)
 
-    case repo.get(Dispatch, id) |> repo.preload(:dispatch_nodes) do
+    case Dispatch |> repo.get(id) |> repo.preload(:dispatch_nodes) do
       nil -> {:error, :not_found}
       dispatch -> {:ok, dispatch}
     end
@@ -419,7 +441,8 @@ defmodule RuncomEcto.Store do
 
     query =
       from(r in Result,
-        join: d in Dispatch, on: d.id == r.dispatch_id,
+        join: d in Dispatch,
+        on: d.id == r.dispatch_id,
         where: r.started_at >= ^since,
         select: %{
           bucket: fragment("date_trunc(?, ?)", ^bucket, r.started_at) |> selected_as(:bucket),
@@ -455,7 +478,8 @@ defmodule RuncomEcto.Store do
 
     query =
       from(r in Result,
-        join: d in Dispatch, on: d.id == r.dispatch_id,
+        join: d in Dispatch,
+        on: d.id == r.dispatch_id,
         where: r.started_at >= ^since and not is_nil(r.duration_ms),
         group_by: d.runbook_id,
         select: %{
@@ -497,7 +521,8 @@ defmodule RuncomEcto.Store do
 
     query =
       from(r in Result,
-        join: d in Dispatch, on: d.id == r.dispatch_id,
+        join: d in Dispatch,
+        on: d.id == r.dispatch_id,
         where: r.started_at >= ^since,
         group_by: d.runbook_id,
         select: %{
@@ -533,8 +558,10 @@ defmodule RuncomEcto.Store do
 
     query =
       from(sr in StepResult,
-        join: r in Result, on: sr.result_id == r.id,
-        join: d in Dispatch, on: d.id == r.dispatch_id,
+        join: r in Result,
+        on: sr.result_id == r.id,
+        join: d in Dispatch,
+        on: d.id == r.dispatch_id,
         where:
           d.runbook_id == ^runbook_id and
             r.started_at >= ^since and
@@ -582,16 +609,20 @@ defmodule RuncomEcto.Store do
     case Enum.find(rows, fn attrs -> not StepResult.changeset(attrs).valid? end) do
       nil ->
         rows = Enum.map(rows, &Map.put_new(&1, :inserted_at, now))
-        {_count, inserted} = repo.insert_all(StepResult, rows, returning: true)
+
+        {_count, inserted} =
+          repo.insert_all(StepResult, rows,
+            on_conflict: {:replace, @step_result_fields -- [:name]},
+            conflict_target: [:result_id, :name],
+            returning: true
+          )
+
         {:ok, inserted}
 
       invalid ->
         {:error, StepResult.changeset(invalid)}
     end
   end
-
-  @step_result_fields ~w(name order status module exit_code duration_ms attempts
-    started_at completed_at output output_ref error opts meta)a
 
   # Normalize step_results from map format %{name => result} to list of maps with :name key
   defp normalize_step_results(attrs) when is_map(attrs) do

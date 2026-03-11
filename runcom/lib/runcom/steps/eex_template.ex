@@ -1,10 +1,10 @@
 defmodule Runcom.Steps.EExTemplate do
-  @moduledoc """
+  @moduledoc ~S"""
   Render an EEx template to a file.
 
   Uses Elixir's EEx templating engine to render templates with variable
   substitution. The runbook's assigns are available as template bindings,
-  and additional variables can be provided via the `:vars` option.
+  and additional variables can be provided via the `:assigns` option.
 
   Inspired by [ansible.builtin.template](https://docs.ansible.com/projects/ansible/latest/collections/ansible/builtin/template_module.html).
 
@@ -19,7 +19,7 @@ defmodule Runcom.Steps.EExTemplate do
       (mutually exclusive with `:template` and `:file`). Works with `~E` sigils,
       `EEx.function_from_file/5`, `EEx.function_from_string/5`, or any function.
       The template is already compiled to BEAM bytecode — no runtime evaluation.
-    * `:vars` - Additional variables to merge with runbook assigns. These take
+    * `:assigns` - Additional variables to merge with runbook assigns. These take
       precedence over assigns when there are key conflicts.
 
   ## Template Syntax
@@ -87,7 +87,7 @@ defmodule Runcom.Steps.EExTemplate do
     field(:template, :string, group: :source, ui_type: {:code, :eex})
     field(:fun, :any, group: :source)
     field(:dest, :any, required: true)
-    field(:vars, :map)
+    field(:assigns, :map)
 
     group(:source, required: true, exclusive: true)
   end
@@ -125,9 +125,6 @@ defmodule Runcom.Steps.EExTemplate do
          :ok <- File.write(dest, content) do
       {:ok, Result.ok(output: dest)}
     else
-      {:error, reason} when is_atom(reason) ->
-        {:ok, Result.error(error: inspect(reason))}
-
       {:error, reason} when is_binary(reason) ->
         {:ok, Result.error(error: reason)}
 
@@ -142,20 +139,16 @@ defmodule Runcom.Steps.EExTemplate do
   end
 
   defp render(%{fun: fun}, assigns) do
-    try do
-      {:ok, fun.(assigns)}
-    rescue
-      e in KeyError ->
-        {:error, "assign @#{e.key} not available in template assigns"}
+    {:ok, fun.(assigns)}
+  rescue
+    e in KeyError ->
+      {:error, "assign @#{e.key} not available in template assigns"}
 
-      e ->
-        {:error, Exception.message(e)}
-    end
+    e ->
+      {:error, Exception.message(e)}
   end
 
-  defp render(%{template: template}, assigns) do
-    eval_string(template, assigns)
-  end
+  defp render(%{template: template}, assigns), do: eval_string(template, assigns)
 
   defp render(%{file: file}, assigns) do
     with {:ok, content} <- File.read(file) do
@@ -166,15 +159,13 @@ defmodule Runcom.Steps.EExTemplate do
   end
 
   defp eval_string(template, assigns) do
-    try do
-      {:ok, EEx.eval_string(template, assigns: assigns)}
-    rescue
-      e in KeyError ->
-        {:error, "assign @#{e.key} not available in template assigns"}
+    {:ok, EEx.eval_string(template, assigns: assigns)}
+  rescue
+    e in KeyError ->
+      {:error, "assign @#{e.key} not available in template assigns"}
 
-      e ->
-        {:error, Exception.message(e)}
-    end
+    e ->
+      {:error, Exception.message(e)}
   end
 
   defp build_assigns(rc, opts) do
@@ -184,7 +175,7 @@ defmodule Runcom.Steps.EExTemplate do
         _ -> %{}
       end
 
-    extra = Map.get(opts, :vars, %{})
+    extra = Map.get(opts, :assigns, %{})
     Map.merge(base, extra)
   end
 end

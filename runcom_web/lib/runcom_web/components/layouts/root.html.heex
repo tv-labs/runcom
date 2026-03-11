@@ -1,0 +1,18 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="csrf-token" content={Plug.CSRFProtection.get_csrf_token()} />
+    <meta name="live-transport" content={@live_transport} />
+    <meta name="live-path" content={@live_path} />
+
+    <link rel="stylesheet" nonce={@csp_nonces[:style]} href={asset_path(@prefix, :css)} />
+    <script nonce={@csp_nonces[:script]} src={asset_path(@prefix, :js)} defer />
+    <script nonce={@csp_nonces[:script]} src={asset_path(@prefix, :dag)} defer async />
+    <script nonce={@csp_nonces[:script]} src={asset_path(@prefix, :player)} defer async />
+  </head>
+  <body>
+    {@inner_content}
+  </body>
+</html>

@@ -1,127 +1,16 @@
-// If you want to use Phoenix channels, run `mix help phx.gen.channel`
-// to get started and then uncomment the line below.
-// import "./user_socket.js"
-
-// You can include dependencies in two ways.
-//
-// The simplest option is to put them in assets/vendor and
-// import them using relative paths:
-//
-//     import "../vendor/some-package.js"
-//
-// Alternatively, you can `npm install some-package --prefix assets` and import
-// them using a path starting with the package name:
-//
-//     import "some-package"
-//
-// If you have dependencies that try to import CSS, esbuild will generate a separate `app.css` file.
-// To load it, simply add a second `<link>` to your `root.html.heex` file.
-
 // Include phoenix_html to handle method=PUT/DELETE in forms and buttons.
 import "phoenix_html"
 // Establish Phoenix Socket and LiveView configuration.
 import {Socket} from "phoenix"
 import {LiveSocket} from "phoenix_live_view"
 import {hooks as colocatedHooks} from "phoenix-colocated/runcom_demo"
-import {hooks as webHooks} from "runcom_web/priv/static/runcom_web"
-import topbar from "../vendor/topbar"
-
-// View Transition support
-let transitionEls = []
-let transitionTypes = []
-let transitionTarget = null
-let scheduleTransition = null
-
-function setChildVtNames(el) {
-  el.querySelectorAll("[data-vt]").forEach((child) => {
-    child.style.viewTransitionName = child.dataset.vt
-  })
-}
-
-function clearChildVtNames(el) {
-  el.querySelectorAll("[data-vt]").forEach((child) => {
-    child.style.viewTransitionName = ""
-  })
-}
-
-window.addEventListener("phx:start-view-transition", (e) => {
-  const opts = e.detail
-  if (opts.temp_name && e.target !== window) {
-    e.target.style.viewTransitionName = opts.temp_name
-    setChildVtNames(e.target)
-    transitionEls.push(e.target)
-  }
-  if (opts.target) {
-    transitionTarget = { selector: opts.target, name: opts.temp_name }
-  }
-  if (opts.type) {
-    transitionTypes.push(opts.type)
-  }
-  scheduleTransition = true
-})
 
 const csrfToken = document.querySelector("meta[name='csrf-token']").getAttribute("content")
 const liveSocket = new LiveSocket("/live", Socket, {
   longPollFallbackMs: 2500,
   params: {_csrf_token: csrfToken},
-  hooks: {...colocatedHooks, ...webHooks},
-  dom: {
-    onDocumentPatch(start) {
-      const savedTarget = transitionTarget
-
-      const update = () => {
-        transitionEls.forEach((el) => {
-          el.style.viewTransitionName = ""
-          clearChildVtNames(el)
-        })
-        transitionEls = []
-        transitionTypes = []
-        transitionTarget = null
-        scheduleTransition = null
-        start()
-
-        // After DOM patch, set transition names on target element in new DOM
-        if (savedTarget) {
-          const el = document.querySelector(savedTarget.selector)
-          if (el) {
-            el.style.viewTransitionName = savedTarget.name
-            setChildVtNames(el)
-          }
-        }
-      }
-
-      if (transitionEls.length !== 0 || scheduleTransition) {
-        let vt
-        try {
-          vt = document.startViewTransition({
-            update,
-            types: transitionTypes.length ? transitionTypes : ["same-document"],
-          })
-        } catch (error) {
-          vt = document.startViewTransition(update)
-        }
-
-        // Clean up target transition names after animation finishes
-        if (vt && savedTarget) {
-          vt.finished.then(() => {
-            const el = document.querySelector(savedTarget.selector)
-            if (el) {
-              el.style.viewTransitionName = ""
-              clearChildVtNames(el)
-            }
-          }).catch(() => {})
-        }
-      } else {
-        update()
-      }
-    }
-  }
+  hooks: colocatedHooks,
 })
-
-// Show progress bar on live navigation and form submits
-topbar.config({barColors: {0: "#29d"}, shadowColor: "rgba(0, 0, 0, .3)"})
-window.addEventListener("phx:page-loading-start", _info => topbar.show(300))
-window.addEventListener("phx:page-loading-stop", _info => topbar.hide())
 
 // connect if there are any LiveViews on the page
 liveSocket.connect()
@@ -166,4 +55,3 @@ if (process.env.NODE_ENV === "development") {
     window.liveReloader = reloader
   })
 }
-

@@ -1,5 +1,5 @@
 import { mount as svelteMount, unmount } from "svelte"
-import DagViewer from "../../svelte/DagViewer.svelte"
+import DagViewer from "../svelte/DagViewer.svelte"
 import xyflowCss from "@xyflow/svelte/dist/style.css"
 
 if (!document.querySelector("[data-xyflow-css]")) {
@@ -31,3 +31,5 @@ export function mount(el, hook) {
     window.addEventListener("phx:page-loading-stop", () => unmount(instance), { once: true })
   }
 }
+
+window.__runcom_dag = { mount }

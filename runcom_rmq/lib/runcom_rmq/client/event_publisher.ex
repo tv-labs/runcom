@@ -196,6 +196,7 @@ defmodule RuncomRmq.Client.EventPublisher do
       type: :step_event,
       node_id: node_id,
       runbook_id: metadata[:runcom_id],
+      dispatch_id: metadata[:dispatch_id],
       step_name: metadata[:step_name],
       step_module: metadata[:step_module],
       step_order: metadata[:step_order],

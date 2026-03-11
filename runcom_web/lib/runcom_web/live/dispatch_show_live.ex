@@ -6,18 +6,16 @@ defmodule RuncomWeb.Live.DispatchShowLive do
   import RuncomWeb.Helpers
   import RuncomWeb.ViewTransitions
 
-  @results_topic "runcom:results"
-  @events_topic "runcom:events"
+  defp topic_for(dispatch_id), do: "runcom:events:#{dispatch_id}"
 
   @impl true
-  def mount(_params, session, socket) do
+  def mount(%{"dispatch_id" => dispatch_id} = _params, session, socket) do
     config = session["runcom_config"] || []
     {store_mod, store_opts} = Runcom.Store.impl()
 
     if connected?(socket) do
       pubsub = config[:pubsub]
-      Phoenix.PubSub.subscribe(pubsub, @results_topic)
-      Phoenix.PubSub.subscribe(pubsub, @events_topic)
+      Phoenix.PubSub.subscribe(pubsub, topic_for(dispatch_id))
     end
 
     socket =
@@ -30,6 +28,7 @@ defmodule RuncomWeb.Live.DispatchShowLive do
       |> assign(:dag_nodes, [])
       |> assign(:dag_edges, [])
       |> assign(:base_path, "")
+      |> assign(:reload_timer, nil)
 
     {:ok, socket}
   end
@@ -54,23 +53,21 @@ defmodule RuncomWeb.Live.DispatchShowLive do
   def handle_params(_params, _uri, socket), do: {:noreply, socket}
 
   @impl true
-  def handle_info({:result, result}, socket) do
-    dispatch_id = socket.assigns[:dispatch_id]
-
-    if result_field(result, :dispatch_id) == dispatch_id do
-      {:noreply, load_dispatch(socket, dispatch_id)}
-    else
-      {:noreply, socket}
-    end
+  def handle_info({:result, _result}, socket) do
+    {:noreply, schedule_reload(socket)}
   end
 
-  def handle_info({:step_event, %{dispatch_id: id}}, socket)
-      when id == socket.assigns.dispatch_id do
-    {:noreply, load_dispatch(socket, id)}
-  end
-
-  def handle_info({:step_event, _event}, socket) do
+  def handle_info({:step_event, _}, socket) do
     {:noreply, socket}
+  end
+
+  def handle_info(:debounced_reload, socket) do
+    socket = assign(socket, :reload_timer, nil)
+
+    case socket.assigns[:dispatch_id] do
+      nil -> {:noreply, socket}
+      id -> {:noreply, load_dispatch(socket, id)}
+    end
   end
 
   def handle_info(_msg, socket), do: {:noreply, socket}
@@ -78,6 +75,17 @@ defmodule RuncomWeb.Live.DispatchShowLive do
   @impl true
   def handle_event("node_selected", _params, socket), do: {:noreply, socket}
   def handle_event("deselect", _params, socket), do: {:noreply, socket}
+
+  @reload_debounce_ms 500
+
+  defp schedule_reload(socket, delay \\ @reload_debounce_ms) do
+    if timer = socket.assigns[:reload_timer] do
+      Process.cancel_timer(timer)
+    end
+
+    timer = Process.send_after(self(), :debounced_reload, delay)
+    assign(socket, :reload_timer, timer)
+  end
 
   defp load_dispatch(socket, id) do
     mod = socket.assigns.store_mod
@@ -131,7 +139,6 @@ defmodule RuncomWeb.Live.DispatchShowLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <link rel="stylesheet" href={assets_url(@base_path, "runcom_web.css")} />
     <div class="flex h-screen bg-base-100">
       <main class="flex-1 flex flex-col overflow-hidden">
         <header :if={@dispatch} class="p-4 border-b border-base-300">

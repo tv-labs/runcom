@@ -60,14 +60,22 @@ defmodule RuncomRmq.Server.EventConsumerTest do
   end
 
   describe "handle_batch/4 with :result events" do
-    test "persists result to the store", %{
-      broadway_context: ctx,
-      store_name: store_name,
-      pubsub: pubsub
-    } do
-      Phoenix.PubSub.subscribe(pubsub, "runcom:results")
+    test "persists result to the store",
+         %{
+           broadway_context: ctx,
+           store_name: store_name,
+           pubsub: pubsub
+         } = context do
+      dispatch_id = "dispatch-#{context.test}"
+      Phoenix.PubSub.subscribe(pubsub, "runcom:events:#{dispatch_id}")
 
-      result_event = %{type: :result, runbook_id: "deploy-v1", status: :completed}
+      result_event = %{
+        type: :result,
+        runbook_id: "deploy-v1",
+        status: :completed,
+        dispatch_id: dispatch_id
+      }
+
       messages = [build_decoded_message(result_event)]
 
       batch_info = %Broadway.BatchInfo{
@@ -89,15 +97,17 @@ defmodule RuncomRmq.Server.EventConsumerTest do
       assert_receive {:result, %{runbook_id: "deploy-v1", status: :completed}}
     end
 
-    test "upserts node last_seen_at when node_id is present", %{
-      broadway_context: ctx,
-      store_name: store_name
-    } do
+    test "upserts node last_seen_at when node_id is present",
+         %{
+           broadway_context: ctx,
+           store_name: store_name
+         } = context do
       result_event = %{
         type: :result,
         runbook_id: "deploy-v1",
         status: :completed,
-        node_id: "agent-42"
+        node_id: "agent-42",
+        dispatch_id: "dispatch-#{context.test}"
       }
 
       messages = [build_decoded_message(result_event)]
@@ -116,11 +126,18 @@ defmodule RuncomRmq.Server.EventConsumerTest do
       assert %{"agent-42" => %{last_seen_at: %DateTime{}}} = nodes
     end
 
-    test "does not upsert node when node_id is absent", %{
-      broadway_context: ctx,
-      store_name: store_name
-    } do
-      result_event = %{type: :result, runbook_id: "deploy-v1", status: :completed}
+    test "does not upsert node when node_id is absent",
+         %{
+           broadway_context: ctx,
+           store_name: store_name
+         } = context do
+      result_event = %{
+        type: :result,
+        runbook_id: "deploy-v1",
+        status: :completed,
+        dispatch_id: "d-#{context.test}"
+      }
+
       messages = [build_decoded_message(result_event)]
 
       batch_info = %Broadway.BatchInfo{
@@ -139,10 +156,18 @@ defmodule RuncomRmq.Server.EventConsumerTest do
   end
 
   describe "handle_batch/4 with :step_event events" do
-    test "broadcasts step events to PubSub", %{broadway_context: ctx, pubsub: pubsub} do
-      Phoenix.PubSub.subscribe(pubsub, "runcom:events")
+    test "broadcasts step events to PubSub", %{broadway_context: ctx, pubsub: pubsub} = context do
+      dispatch_id = "dispatch-#{context.test}"
+      Phoenix.PubSub.subscribe(pubsub, "runcom:events:#{dispatch_id}")
 
-      step_event = %{type: :step_event, step: "download", status: :running, node_id: "agent-1"}
+      step_event = %{
+        type: :step_event,
+        step: "download",
+        status: :running,
+        node_id: "agent-1",
+        dispatch_id: dispatch_id
+      }
+
       messages = [build_decoded_message(step_event)]
 
       batch_info = %Broadway.BatchInfo{
@@ -163,18 +188,34 @@ defmodule RuncomRmq.Server.EventConsumerTest do
   end
 
   describe "handle_batch/4 with mixed events" do
-    test "handles a batch with both result and step events", %{
-      broadway_context: ctx,
-      store_name: store_name,
-      pubsub: pubsub
-    } do
-      Phoenix.PubSub.subscribe(pubsub, "runcom:results")
-      Phoenix.PubSub.subscribe(pubsub, "runcom:events")
+    test "handles a batch with both result and step events",
+         %{
+           broadway_context: ctx,
+           store_name: store_name,
+           pubsub: pubsub
+         } = context do
+      dispatch_id = "dispatch-#{context.test}"
+      Phoenix.PubSub.subscribe(pubsub, "runcom:events:#{dispatch_id}")
 
       messages = [
-        build_decoded_message(%{type: :result, runbook_id: "rb-1", status: :completed}),
-        build_decoded_message(%{type: :step_event, step: "check", status: :ok}),
-        build_decoded_message(%{type: :result, runbook_id: "rb-2", status: :failed})
+        build_decoded_message(%{
+          type: :result,
+          runbook_id: "rb-1",
+          status: :completed,
+          dispatch_id: dispatch_id
+        }),
+        build_decoded_message(%{
+          type: :step_event,
+          step: "check",
+          status: :ok,
+          dispatch_id: dispatch_id
+        }),
+        build_decoded_message(%{
+          type: :result,
+          runbook_id: "rb-2",
+          status: :failed,
+          dispatch_id: dispatch_id
+        })
       ]
 
       batch_info = %Broadway.BatchInfo{

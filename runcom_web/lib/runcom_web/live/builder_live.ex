@@ -4,7 +4,6 @@ defmodule RuncomWeb.Live.BuilderLive do
   use Phoenix.LiveView
 
   import RuncomWeb.Components.Autocomplete
-  import RuncomWeb.ViewTransitions
 
   alias RuncomWeb.StepLibrary
 
@@ -94,7 +93,6 @@ defmodule RuncomWeb.Live.BuilderLive do
       |> assign(:is_runbook_step, is_runbook_step)
 
     ~H"""
-    <link rel="stylesheet" href={assets_url(@base_path, "runcom_web.css")} />
     <div id="builder-persist" phx-hook="BuilderPersist"></div>
     <div class="flex flex-col h-screen bg-base-100">
       <div class="flex-1 relative min-h-0">

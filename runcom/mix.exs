@@ -51,7 +51,7 @@ defmodule Runcom.MixProject do
       maintainers: ["David Bernheisel"],
       licenses: ["Apache-2.0"],
       links: %{"GitHub" => @source_url},
-      files: ~w(lib priv .formatter.exs mix.exs README* LICENSE* CHANGELOG* usage-rules.md)
+      files: ~w[lib priv .formatter.exs mix.exs README* LICENSE* CHANGELOG* usage-rules.md]
     ]
   end
 

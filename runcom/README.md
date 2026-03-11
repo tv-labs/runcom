@@ -111,7 +111,7 @@ defmodule MyApp.Runbooks.Deploy do
   @impl true
   def build(assigns) do
     Runcom.new("deploy-#{assigns.version}", name: "Deploy v#{assigns.version}")
-    |> Runcom.assign(:version, params.version)
+    |> Runcom.assign(:version, assigns.version)
     |> GetUrl.add("download",
          url: &("#{&1.assigns.artifact_url}/#{&1.assigns.version}.tar.gz"),
          dest: "/tmp/app.tar.gz"
@@ -185,22 +185,35 @@ Runcom.read_stderr(rc, "download")       # captured stderr
 
 ## Testing
 
+Stub mode replaces real execution with test doubles, inspired by `Req.Test`. Stubs
+propagate to child processes via ProcessTree — no extra setup for async tests.
+
+Add `config :runcom, mode: :stub` to `config/test.exs`, then register stubs per test:
+
 ```elixir
-test "deploy succeeds" do
-  Runcom.Test.stub("test-deploy", fn
-    {"download", _opts} -> {:ok, Result.ok(output: "/tmp/app.tar.gz")}
-    {"restart", _opts} -> {:ok, Result.ok(exit_code: 0)}
+test "deploy succeeds", %{test: test_name} do
+  id = to_string(test_name)
+
+  # Stubs match on {module, opts} — use opts to distinguish steps of the same type
+  Runcom.Test.stub(id, fn
+    {Runcom.Steps.Command, %{cmd: "curl" <> _}} ->
+      {:ok, Result.ok(output: "/tmp/app.tar.gz")}
+
+    {Runcom.Steps.Systemd, _opts} ->
+      {:ok, Result.ok(exit_code: 0)}
   end)
 
   runbook =
-    Runcom.new("test-deploy")
-    |> Command.add("download", cmd: "curl ...")
-    |> Command.add("restart", cmd: "systemctl restart app")
+    Runcom.new(id)
+    |> Command.add("download", cmd: "curl -o /tmp/app.tar.gz ...")
+    |> Systemd.add("restart", name: "app", state: :restarted, await: ["download"])
 
   assert {:ok, rc} = Runcom.run_sync(runbook, mode: :stub)
   assert Runcom.ok?(rc, "restart")
 end
 ```
+
+For custom steps, match on your module directly: `{MyApp.Steps.Migrate, _opts} -> ...`
 
 ## Built-in Steps
 
@@ -232,15 +245,12 @@ end
 
 ```elixir
 defmodule MyApp.Steps.HealthCheck do
-  use Runcom.Step
+  use Runcom.Step, name: "Health Check"
 
   schema do
     field :url, :string, required: true
     field :timeout, :integer, default: 5_000
   end
-
-  @impl true
-  def name, do: "Health Check"
 
   @impl true
   def run(_rc, opts) do

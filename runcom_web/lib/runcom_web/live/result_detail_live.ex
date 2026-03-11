@@ -11,8 +11,7 @@ defmodule RuncomWeb.Live.ResultDetailLive do
 
   alias RuncomEcto.Schema.StepResult
 
-  @results_topic "runcom:results"
-  @events_topic "runcom:events"
+  defp topic_for(dispatch_id), do: "runcom:events:#{dispatch_id}"
 
   @step_result_fields [
     :id,
@@ -36,14 +35,9 @@ defmodule RuncomWeb.Live.ResultDetailLive do
     config = session["runcom_config"] || []
     {store_mod, store_opts} = Runcom.Store.impl()
 
-    if connected?(socket) do
-      pubsub = config[:pubsub]
-      Phoenix.PubSub.subscribe(pubsub, @results_topic)
-      Phoenix.PubSub.subscribe(pubsub, @events_topic)
-    end
-
     socket =
       socket
+      |> assign(:config, config)
       |> assign(:store_mod, store_mod)
       |> assign(:store_opts, store_opts)
       |> assign(:result, nil)
@@ -57,6 +51,7 @@ defmodule RuncomWeb.Live.ResultDetailLive do
       |> assign(:markdown_output, nil)
       |> assign(:markdown_html, nil)
       |> assign(:asciicast_data, nil)
+      |> assign(:reload_timer, nil)
 
     {:ok, socket}
   end
@@ -64,25 +59,34 @@ defmodule RuncomWeb.Live.ResultDetailLive do
   @impl true
   def handle_params(%{"id" => id} = params, uri, socket) do
     path = uri |> URI.parse() |> Map.get(:path)
-    base_path = String.replace(path, ~r"/result/.+$", "")
-
-    tab = if params["tab"] in ~w(steps markdown asciinema), do: params["tab"], else: "steps"
+    tab = if params["tab"] in ~w[steps markdown asciinema], do: params["tab"], else: "steps"
     id_changed? = socket.assigns.result_id != id
 
     socket =
-      socket
-      |> assign(:result_id, id)
-      |> assign(:base_path, base_path)
-      |> assign(:output_tab, tab)
-      |> assign(:patch_path, path)
+      if id_changed? do
+        new_socket = load_result(socket, id)
 
-    socket = if id_changed?, do: load_result(socket, id), else: socket
+        if connected?(socket) do
+          pubsub = socket.assigns.config[:pubsub]
+          Phoenix.PubSub.unsubscribe(pubsub, topic_for(socket.assigns.dispatch_id))
+          Phoenix.PubSub.subscribe(pubsub, topic_for(new_socket.assigns.dispatch_id))
+          new_socket
+        else
+          new_socket
+        end
+      else
+        socket
+      end
 
     expanded = parse_expanded_steps(params["steps"], socket.assigns.expanded_steps)
     new_to_fetch = MapSet.difference(expanded, socket.assigns.expanded_steps)
 
     socket =
       socket
+      |> assign(:result_id, id)
+      |> assign(:base_path, String.replace(path, ~r"/result/.+$", ""))
+      |> assign(:output_tab, tab)
+      |> assign(:patch_path, path)
       |> assign(:expanded_steps, expanded)
       |> fetch_outputs_for_steps(new_to_fetch)
 
@@ -93,15 +97,12 @@ defmodule RuncomWeb.Live.ResultDetailLive do
     end
   end
 
-  def handle_params(_params, _uri, socket) do
-    {:noreply, socket}
-  end
-
   @impl true
   def handle_info({:result, result}, socket) do
     if matches_current_result?(socket, result) do
       new_id = result_field(result, :id)
-      {:noreply, socket |> assign(:result_id, new_id) |> load_result(new_id)}
+      socket = if new_id, do: assign(socket, :result_id, new_id), else: socket
+      {:noreply, schedule_reload(socket)}
     else
       {:noreply, socket}
     end
@@ -115,12 +116,24 @@ defmodule RuncomWeb.Live.ResultDetailLive do
     end
   end
 
+  def handle_info(:debounced_reload, socket) do
+    socket = assign(socket, :reload_timer, nil)
+
+    if id = socket.assigns.result_id do
+      expanded = socket.assigns.expanded_steps
+      socket = merge_from_db(socket, id)
+      socket = socket |> assign(:expanded_steps, expanded) |> fetch_outputs_for_steps(expanded)
+      {:noreply, socket}
+    else
+      {:noreply, socket}
+    end
+  end
+
   def handle_info(_msg, socket), do: {:noreply, socket}
 
   @impl true
   def render(assigns) do
     ~H"""
-    <link rel="stylesheet" href={assets_url(@base_path, "runcom_web.css")} />
     <div class="flex h-screen bg-base-100">
       <main class="flex-1 flex flex-col overflow-hidden">
         <header
@@ -139,7 +152,7 @@ defmodule RuncomWeb.Live.ResultDetailLive do
                   Dashboard
                 </a>
               </li>
-              <li :if={@dispatch_id}>
+              <li>
                 <a
                   href="#"
                   phx-click={navigate_back("#{@base_path}/dispatch/#{@dispatch_id}")}
@@ -147,8 +160,7 @@ defmodule RuncomWeb.Live.ResultDetailLive do
                   Dispatch: {result_field(@result, :runbook_id)}
                 </a>
               </li>
-              <li :if={@dispatch_id}>{result_field(@result, :node_id)}</li>
-              <li :if={!@dispatch_id}>{result_field(@result, :runbook_id)}</li>
+              <li>{result_field(@result, :node_id)}</li>
             </ul>
           </div>
           <div class="flex items-center gap-4">
@@ -359,6 +371,59 @@ defmodule RuncomWeb.Live.ResultDetailLive do
   @impl true
   def handle_event("node_selected", _params, socket), do: {:noreply, socket}
   def handle_event("deselect", _params, socket), do: {:noreply, socket}
+
+  @reload_debounce_ms 500
+
+  defp schedule_reload(socket, delay \\ @reload_debounce_ms) do
+    if timer = socket.assigns[:reload_timer] do
+      Process.cancel_timer(timer)
+    end
+
+    timer = Process.send_after(self(), :debounced_reload, delay)
+    assign(socket, :reload_timer, timer)
+  end
+
+  defp merge_from_db(socket, id) do
+    mod = socket.assigns.store_mod
+    opts = socket.assigns.store_opts
+
+    case apply(mod, :get_result, [id | normalize_store_args(opts)]) do
+      {:ok, result} ->
+        result = preload_step_results(result, opts)
+        {new_nodes, edges} = result_to_graph(result)
+
+        # Preserve "running" from step_events for steps DB still shows as "pending"
+        running_steps =
+          socket.assigns.nodes
+          |> Enum.filter(fn n -> n["data"]["status"] == "running" end)
+          |> MapSet.new(fn n -> n["id"] end)
+
+        nodes =
+          Enum.map(new_nodes, fn node ->
+            if node["id"] in running_steps and node["data"]["status"] == "pending" do
+              put_in(node, ["data", "status"], "running")
+            else
+              node
+            end
+          end)
+
+        rc = build_runcom_from_result(result)
+        markdown = format_markdown(rc)
+
+        socket
+        |> assign(:result, result)
+        |> assign(:nodes, nodes)
+        |> assign(:edges, edges)
+        |> assign(:dispatch_id, result_field(result, :dispatch_id))
+        |> assign(:markdown_output, markdown)
+        |> assign(:markdown_html, render_markdown(markdown))
+        |> assign(:asciicast_data, format_asciicast(rc))
+        |> assign(:page_title, "Result: #{result_field(result, :runbook_id)}")
+
+      {:error, :not_found} ->
+        socket
+    end
+  end
 
   defp load_result(socket, id) do
     mod = socket.assigns.store_mod

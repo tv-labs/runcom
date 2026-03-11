@@ -153,6 +153,8 @@ defmodule Runcom.Schema do
     * `:values` - allowed values (for enums)
     * `:group` - assigns this field to a named group
     * `:depends_on` - this field is only valid when the named field is present
+    * `:empty` - values considered empty/absent (default: `[nil, ""]`)
+    * `:message` - custom error message used when validation fails
     * `:label` - human-readable label for UI
     * `:placeholder` - placeholder text for UI
     * `:ui_type` - override UI input type (e.g., `:textarea`, `{:code, :bash}`)
@@ -195,42 +197,60 @@ defmodule Runcom.Schema do
   def do_cast(fields, input) when is_map(input) do
     {result, errors} =
       Enum.reduce(fields, {%{}, []}, fn {name, type, opts}, {acc, errs} ->
+        empty_values = Keyword.get(opts, :empty, [nil, ""])
+
         case Map.fetch(input, name) do
           {:ok, value} ->
-            if is_function(value) do
-              {Map.put(acc, name, value), errs}
-            else
-              case check_type(value, type) do
-                :ok ->
-                  case opts[:values] do
-                    nil ->
-                      {Map.put(acc, name, value), errs}
+            cond do
+              is_function(value) ->
+                {Map.put(acc, name, value), errs}
 
-                    allowed ->
-                      if value in allowed do
+              value in empty_values ->
+                handle_missing(acc, errs, name, opts)
+
+              true ->
+                case check_type(value, type) do
+                  :ok ->
+                    case opts[:values] do
+                      nil ->
                         {Map.put(acc, name, value), errs}
-                      else
-                        {acc, [{name, "must be one of: #{inspect(allowed)}"} | errs]}
-                      end
-                  end
 
-                {:error, msg} ->
-                  {acc, [{name, msg} | errs]}
-              end
+                      allowed ->
+                        if value in allowed do
+                          {Map.put(acc, name, value), errs}
+                        else
+                          msg = opts[:message] || "must be one of: #{inspect(allowed)}"
+                          {acc, [{name, msg} | errs]}
+                        end
+                    end
+
+                  {:error, default_msg} ->
+                    {acc, [{name, opts[:message] || default_msg} | errs]}
+                end
             end
 
           :error ->
-            if opts[:required] do
-              {acc, [{name, "is required"} | errs]}
-            else
-              {Map.put(acc, name, Keyword.get(opts, :default)), errs}
-            end
+            handle_missing(acc, errs, name, opts)
         end
       end)
 
     case errors do
       [] -> {:ok, result}
       errs -> {:error, Enum.reverse(errs)}
+    end
+  end
+
+  defp handle_missing(acc, errs, name, opts) do
+    if opts[:required] do
+      {acc, [{name, opts[:message] || "is required"} | errs]}
+    else
+      default = Keyword.get(opts, :default)
+
+      if is_nil(default) do
+        {acc, errs}
+      else
+        {Map.put(acc, name, default), errs}
+      end
     end
   end
 
@@ -331,13 +351,25 @@ defmodule Runcom.Schema do
     if Enum.any?(types, &(check_type(value, &1) == :ok)) do
       :ok
     else
-      {:error, "has invalid type, expected one of #{inspect(types)}"}
+      {:error, "has invalid type, expected one of #{inspect(types)}, got #{type_of(value)}"}
     end
   end
 
-  def check_type(_value, type) do
-    {:error, "has invalid type, expected #{inspect(type)}"}
+  def check_type(%{__struct__: module}, module), do: :ok
+
+  def check_type(value, type) do
+    {:error, "has invalid type, expected #{inspect(type)}, got #{type_of(value)}"}
   end
+
+  defp type_of(value) when is_binary(value), do: "string"
+  defp type_of(value) when is_integer(value), do: "integer"
+  defp type_of(value) when is_float(value), do: "float"
+  defp type_of(value) when is_boolean(value), do: "boolean"
+  defp type_of(value) when is_atom(value), do: "atom"
+  defp type_of(value) when is_list(value), do: "list"
+  defp type_of(%{__struct__: mod}), do: inspect(mod)
+  defp type_of(value) when is_map(value), do: "map"
+  defp type_of(value), do: inspect(value)
 
   @doc """
   Builds a complete field info map from a `{name, type, opts}` tuple and
@@ -356,6 +388,7 @@ defmodule Runcom.Schema do
       required: opts[:required] || false,
       default: Keyword.get(opts, :default),
       placeholder: opts[:placeholder],
+      empty: Keyword.get(opts, :empty, [nil, ""]),
       options: opts[:values] && Enum.map(opts[:values], &to_string/1),
       group: group_info,
       depends_on: opts[:depends_on]

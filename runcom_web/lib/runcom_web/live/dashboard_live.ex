@@ -7,8 +7,6 @@ defmodule RuncomWeb.Live.DashboardLive do
   import RuncomWeb.ViewTransitions
   import RuncomWeb.Components.Sidebar
 
-  @results_topic "runcom:results"
-  @events_topic "runcom:events"
   @per_page 100
 
   @impl true
@@ -36,11 +34,12 @@ defmodule RuncomWeb.Live.DashboardLive do
       |> assign(:node_filter, MapSet.new())
       |> stream(:results, [])
       |> stream(:dispatches, [])
+      |> assign(:subscribed_dispatches, MapSet.new())
+      |> assign(:reload_timer, nil)
+      |> assign(:pending_dispatch_ids, MapSet.new())
 
-    if connected?(socket) do
-      pubsub = socket.assigns.pubsub
-      Phoenix.PubSub.subscribe(pubsub, @results_topic)
-      Phoenix.PubSub.subscribe(pubsub, @events_topic)
+    if connected?(socket) && socket.assigns.pubsub do
+      Phoenix.PubSub.subscribe(socket.assigns.pubsub, "runcom:dispatches")
     end
 
     {:ok, socket}
@@ -87,7 +86,6 @@ defmodule RuncomWeb.Live.DashboardLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <link rel="stylesheet" href={assets_url(@base_path, "runcom_web.css")} />
     <div class="flex h-screen bg-base-100">
       <.sidebar id="dashboard-sidebar" collapsed={@sidebar_collapsed}>
         <.sidebar_header>
@@ -331,6 +329,8 @@ defmodule RuncomWeb.Live.DashboardLive do
     end
   end
 
+  @reload_debounce_ms 500
+
   @impl true
   def handle_info({:result, result}, socket) do
     case socket.assigns.view_mode do
@@ -343,26 +343,74 @@ defmodule RuncomWeb.Live.DashboardLive do
     {:noreply, socket}
   end
 
+  def handle_info({:dispatch_created, dispatch_id}, socket) do
+    pubsub = socket.assigns.pubsub
+
+    if pubsub do
+      Phoenix.PubSub.subscribe(pubsub, "runcom:events:#{dispatch_id}")
+    end
+
+    subscribed = MapSet.put(socket.assigns.subscribed_dispatches, dispatch_id)
+    pending = MapSet.put(socket.assigns.pending_dispatch_ids, dispatch_id)
+
+    {:noreply,
+     socket
+     |> assign(:subscribed_dispatches, subscribed)
+     |> assign(:pending_dispatch_ids, pending)
+     |> schedule_dispatch_reload()}
+  end
+
+  def handle_info(:debounced_dispatch_reload, socket) do
+    socket = assign(socket, :reload_timer, nil)
+    ids = socket.assigns.pending_dispatch_ids
+    socket = assign(socket, :pending_dispatch_ids, MapSet.new())
+
+    mod = socket.assigns.store_mod
+    opts = base_store_opts(socket)
+
+    socket =
+      Enum.reduce(ids, socket, fn dispatch_id, acc ->
+        case apply(mod, :get_dispatch, [dispatch_id, opts]) do
+          {:ok, dispatch} ->
+            dispatch = %{dispatch | total_nodes: length(dispatch.dispatch_nodes)}
+            stream_insert(acc, :dispatches, dispatch, at: 0)
+
+          _ ->
+            acc
+        end
+      end)
+
+    {:noreply, socket}
+  end
+
   def handle_info(_msg, socket), do: {:noreply, socket}
 
   defp handle_result_in_dispatch_mode(result, socket) do
     dispatch_id = result_field(result, :dispatch_id)
 
     if dispatch_id do
-      mod = socket.assigns.store_mod
-      opts = base_store_opts(socket)
-
-      case apply(mod, :get_dispatch, [dispatch_id, opts]) do
-        {:ok, dispatch} ->
-          dispatch = %{dispatch | total_nodes: length(dispatch.dispatch_nodes)}
-          {:noreply, stream_insert(socket, :dispatches, dispatch, at: 0)}
-
-        _ ->
-          {:noreply, socket}
-      end
+      {:noreply,
+       socket
+       |> assign(
+         :pending_dispatch_ids,
+         MapSet.put(socket.assigns.pending_dispatch_ids, dispatch_id)
+       )
+       |> schedule_dispatch_reload()}
     else
       {:noreply, socket}
     end
+  end
+
+  defp schedule_dispatch_reload(socket) do
+    if timer = socket.assigns[:reload_timer] do
+      Process.cancel_timer(timer)
+    end
+
+    assign(
+      socket,
+      :reload_timer,
+      Process.send_after(self(), :debounced_dispatch_reload, @reload_debounce_ms)
+    )
   end
 
   defp handle_result_in_node_mode(result, socket) do
@@ -458,6 +506,7 @@ defmodule RuncomWeb.Live.DashboardLive do
 
     socket
     |> stream(:dispatches, dispatches, reset: true)
+    |> sync_dispatch_subscriptions(dispatches)
     |> assign(:cursor, cursor)
     |> assign(:has_more, length(dispatches) >= @per_page)
     |> assign(:dispatch_count, counts.total)
@@ -495,6 +544,7 @@ defmodule RuncomWeb.Live.DashboardLive do
 
     socket
     |> stream(:dispatches, dispatches)
+    |> subscribe_to_dispatches(dispatches)
     |> assign(:cursor, cursor)
     |> assign(:has_more, length(dispatches) >= @per_page)
   end
@@ -515,6 +565,44 @@ defmodule RuncomWeb.Live.DashboardLive do
     |> stream(:results, results)
     |> assign(:cursor, cursor)
     |> assign(:has_more, length(results) >= @per_page)
+  end
+
+  @terminal_statuses ~w(completed failed)
+
+  defp active_ids(dispatches) do
+    for d <- dispatches, d.status not in @terminal_statuses, into: MapSet.new(), do: d.id
+  end
+
+  defp sync_dispatch_subscriptions(socket, dispatches) do
+    pubsub = socket.assigns.pubsub
+    current = socket.assigns.subscribed_dispatches
+    desired = active_ids(dispatches)
+
+    if pubsub do
+      for id <- MapSet.difference(current, desired) do
+        Phoenix.PubSub.unsubscribe(pubsub, "runcom:events:#{id}")
+      end
+
+      for id <- MapSet.difference(desired, current) do
+        Phoenix.PubSub.subscribe(pubsub, "runcom:events:#{id}")
+      end
+    end
+
+    assign(socket, :subscribed_dispatches, desired)
+  end
+
+  defp subscribe_to_dispatches(socket, dispatches) do
+    pubsub = socket.assigns.pubsub
+    current = socket.assigns.subscribed_dispatches
+    new_ids = active_ids(dispatches)
+
+    if pubsub do
+      for id <- MapSet.difference(new_ids, current) do
+        Phoenix.PubSub.subscribe(pubsub, "runcom:events:#{id}")
+      end
+    end
+
+    assign(socket, :subscribed_dispatches, MapSet.union(current, new_ids))
   end
 
   defp cursor_from_results([]), do: nil

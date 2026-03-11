@@ -37,9 +37,9 @@ const shared = {
 }
 
 const builds = [
-  { ...shared, entryPoints: ["js/hooks.js"], outfile: "../priv/static/runcom_web.js" },
-  { ...shared, entryPoints: ["js/chunks/dag_viewer.svelte.js"], outfile: "../priv/static/runcom_web_dag.js" },
-  { ...shared, entryPoints: ["js/chunks/asciinema_player.js"], outfile: "../priv/static/runcom_web_player.js" },
+  { ...shared, entryPoints: ["js/app.js"], outfile: "../priv/static/runcom_web_app.js" },
+  { ...shared, entryPoints: ["js/dag_viewer.svelte.js"], format: "iife", outfile: "../priv/static/runcom_web_dag.js" },
+  { ...shared, entryPoints: ["js/asciinema_player.js"], format: "iife", outfile: "../priv/static/runcom_web_player.js" },
 ]
 
 if (watch) {

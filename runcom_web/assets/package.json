@@ -5,7 +5,8 @@
     "@xyflow/svelte": "^1.5.1",
     "asciinema-player": "^3.8.0",
     "daisyui": "^5.5.19",
-    "svelte": "^5.25.0"
+    "svelte": "^5.25.0",
+    "topbar": "^3.0.1"
   },
   "devDependencies": {
     "@tailwindcss/cli": "~4.1.12",

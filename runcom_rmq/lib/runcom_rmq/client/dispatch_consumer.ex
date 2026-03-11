@@ -152,7 +152,14 @@ defmodule RuncomRmq.Client.DispatchConsumer do
       {:ok, {mod, bytecodes}} ->
         assigns = normalize_assigns(message[:assigns] || message["assigns"] || %{})
         runbook = rebuild_with_assigns(mod, assigns, bytecodes)
-        enriched = Map.put(message, :runbook, runbook)
+
+        enriched =
+          Map.merge(message, %{
+            runbook: runbook,
+            runbook_id: message[:runbook_id],
+            dispatch_id: message[:dispatch_id]
+          })
+
         call_handler(enriched, state.dispatch_handler)
 
       {:error, reason} ->
@@ -239,7 +246,10 @@ defmodule RuncomRmq.Client.DispatchConsumer do
       stacktrace = __STACKTRACE__
       runbook_id = message[:runbook_id] || message["runbook_id"]
       dispatch_id = message[:dispatch_id] || message["dispatch_id"]
-      Logger.error("DispatchConsumer: handler crashed: #{Exception.message(error)}")
+
+      Logger.error(
+        "DispatchConsumer: handler crashed: #{Exception.format(:error, error, stacktrace)}"
+      )
 
       :telemetry.execute(
         [:runcom, :run, :exception],

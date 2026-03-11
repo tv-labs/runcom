@@ -66,6 +66,7 @@ defmodule Runcom do
             secret_store: nil,
             source: nil
 
+  alias Runcom.Executor
   alias Runcom.Orchestrator
   alias Runcom.StepNode
   alias Runcom.Sink
@@ -603,6 +604,7 @@ defmodule Runcom do
   @spec run_sync(t(), keyword()) :: {:ok, t()} | {:error, t()} | {:error, :cyclic_graph}
   def run_sync(%__MODULE__{} = rc, opts \\ []) do
     mode = Keyword.get(opts, :mode, :run)
+    dispatch_id = Keyword.get(opts, :dispatch_id)
 
     g = to_digraph(rc)
 
@@ -615,6 +617,7 @@ defmodule Runcom do
         meta = %{
           runcom_id: rc.id,
           runcom_name: rc.name,
+          dispatch_id: dispatch_id,
           step_count: map_size(rc.steps),
           mode: mode
         }
@@ -626,7 +629,7 @@ defmodule Runcom do
         rc = %{rc | status: :running, facts: rc.facts || Runcom.Facts.gather()}
 
         try do
-          result = execute_in_order(rc, g, order, mode, 1)
+          result = execute_in_order(rc, g, order, mode, dispatch_id, 1)
           :digraph.delete(g)
 
           duration_ms =
@@ -658,7 +661,7 @@ defmodule Runcom do
               steps_failed: steps_failed,
               steps_skipped: steps_skipped,
               step_results: step_results,
-              edges: serialize_edges(completed_rc.edges),
+              edges: Executor.serialize_edges(completed_rc.edges),
               errors: completed_rc.errors
             })
           )
@@ -862,7 +865,7 @@ defmodule Runcom do
     Runcom.Checkpoint.delete(id, opts)
   end
 
-  defp execute_in_order(rc, g, [name | rest], mode, step_order) do
+  defp execute_in_order(rc, g, [name | rest], mode, dispatch_id, step_order) do
     {^name, step} = :digraph.vertex(g, name)
 
     predecessors = :digraph.in_neighbours(g, name)
@@ -874,14 +877,14 @@ defmodule Runcom do
 
     if any_failed? do
       rc = %{rc | step_status: Map.put(rc.step_status, name, :skipped)}
-      execute_in_order(rc, g, rest, mode, step_order + 1)
+      execute_in_order(rc, g, rest, mode, dispatch_id, step_order + 1)
     else
-      {_result_status, rc} = execute_step(rc, step, mode, step_order)
-      execute_in_order(rc, g, rest, mode, step_order + 1)
+      {_result_status, rc} = execute_step(rc, step, mode, dispatch_id, step_order)
+      execute_in_order(rc, g, rest, mode, dispatch_id, step_order + 1)
     end
   end
 
-  defp execute_in_order(rc, _g, [], _mode, _step_order) do
+  defp execute_in_order(rc, _g, [], _mode, _dispatch_id, _step_order) do
     has_errors? = Enum.any?(rc.step_status, fn {_name, status} -> status == :error end)
 
     if has_errors? do
@@ -891,111 +894,20 @@ defmodule Runcom do
     end
   end
 
-  defp execute_step(
-         rc,
-         %StepNode{name: name, module: module, opts: opts, sink: step_sink} = step,
-         mode,
-         step_order
-       ) do
-    sink = step_sink || create_step_sink(rc.id, name)
-    secrets = collect_secret_values(rc)
-    sink = %{sink | secrets: secrets}
-    sink = Sink.open(sink)
-
-    resolved_opts = resolve_deferred_values(rc, opts)
-    resolved_opts = apply_schema_defaults(module, resolved_opts)
-    opts_with_sink = Map.put(resolved_opts, :sink, sink)
-
-    meta = %{
-      runcom_id: rc.id,
-      step_name: name,
-      step_module: module,
+  defp execute_step(rc, %StepNode{name: name} = step, mode, dispatch_id, step_order) do
+    ctx = %Executor{
+      rc: rc,
+      step: step,
+      mode: mode,
       step_order: step_order,
-      mode: mode
+      dispatch_id: dispatch_id,
+      prepare_sink: &prepare_sync_sink(rc, &1, &2),
+      fetch_secret: &fetch_sync_secret(rc, &1)
     }
 
-    started_at = DateTime.utc_now()
-    start_time = System.monotonic_time()
-    :telemetry.execute([:runcom, :step, :start], %{system_time: System.system_time()}, meta)
+    {status, res, sink} = Executor.execute_step(ctx)
 
-    run_once = fn ->
-      try do
-        case mode do
-          :run ->
-            res = module.run(rc, opts_with_sink)
-            {res, opts_with_sink[:sink]}
-
-          :dryrun ->
-            {module.dryrun(rc, opts_with_sink), sink}
-
-          :stub ->
-            {module.stub(rc, opts_with_sink), sink}
-        end
-      rescue
-        e ->
-          duration = System.monotonic_time() - start_time
-
-          :telemetry.execute(
-            [:runcom, :step, :exception],
-            %{duration: duration},
-            Map.merge(meta, %{
-              kind: :error,
-              reason: e,
-              stacktrace: __STACKTRACE__
-            })
-          )
-
-          reraise e, __STACKTRACE__
-      catch
-        kind, reason ->
-          duration = System.monotonic_time() - start_time
-
-          :telemetry.execute(
-            [:runcom, :step, :exception],
-            %{duration: duration},
-            Map.merge(meta, %{
-              kind: kind,
-              reason: reason,
-              stacktrace: __STACKTRACE__
-            })
-          )
-
-          :erlang.raise(kind, reason, __STACKTRACE__)
-      end
-    end
-
-    {result, sink} = apply_retry(run_once, step.retry_opts)
-
-    duration = System.monotonic_time() - start_time
-    completed_at = DateTime.utc_now()
-    duration_ms = System.convert_time_unit(duration, :native, :millisecond)
-
-    # Normalize raw result into a Result struct
-    res =
-      case result do
-        {:ok, %Runcom.Step.Result{} = res} -> res
-        {:error, reason} -> Runcom.Step.Result.error(error: reason)
-      end
-
-    {sink, res} = write_result_to_sink(sink, res)
-
-    res = add_timing(res, started_at, completed_at, duration_ms, step_order)
-
-    # Apply framework callbacks
-    res = apply_assert(res, step.assert_fn)
-    res = apply_post(res, step.post_fn, sink)
-
-    status = if res.status == :error, do: :error, else: :ok
-
-    :telemetry.execute(
-      [:runcom, :step, :stop],
-      %{duration: duration},
-      Map.merge(meta, %{status: status, result: res})
-    )
-
-    # Don't close the sink - keep it open for reading after execution
-    updated_step = %{step | sink: sink}
-    updated_step = StepNode.put_result(updated_step, res)
+    updated_step = %{step | sink: sink} |> StepNode.put_result(res)
 
     rc =
       if status == :error do
@@ -1016,72 +928,22 @@ defmodule Runcom do
     {status, rc}
   end
 
-  defp add_timing(result, started_at, completed_at, duration_ms, order) do
-    %{
-      result
-      | started_at: result.started_at || started_at,
-        completed_at: result.completed_at || completed_at,
-        duration_ms: result.duration_ms || duration_ms,
-        order: result.order || order
-    }
+  defp prepare_sync_sink(rc, existing_sink, step_name) do
+    sink = existing_sink || create_step_sink(rc.id, step_name)
+    secrets = collect_secret_values(rc)
+    sink = %{sink | secrets: secrets}
+    Sink.open(sink)
   end
 
-  defp apply_retry(run_once, nil), do: run_once.()
+  defp fetch_sync_secret(rc, name) do
+    secrets = Map.get(rc.assigns, :__secrets__, %{})
 
-  defp apply_retry(run_once, %{max: max, delay: delay}) do
-    Enum.reduce_while(1..max, nil, fn attempt, _acc ->
-      {result, sink} = run_once.()
-
-      case result do
-        {:ok, %Runcom.Step.Result{status: :ok} = res} ->
-          {:halt, {{:ok, %{res | attempts: attempt}}, sink}}
-
-        _ when attempt < max ->
-          Process.sleep(delay)
-          {:cont, nil}
-
-        _ ->
-          res =
-            case result do
-              {:ok, %Runcom.Step.Result{} = res} -> %{res | attempts: max}
-              {:error, reason} -> Runcom.Step.Result.error(error: reason, attempts: max)
-            end
-
-          {:halt, {{:ok, res}, sink}}
-      end
-    end)
-  end
-
-  defp apply_assert(%Runcom.Step.Result{status: :ok} = res, assert_fn)
-       when is_function(assert_fn) do
-    if assert_fn.(res) do
-      res
-    else
-      %{res | status: :error, error: "assertion failed"}
+    case Map.fetch(secrets, name) do
+      {:ok, value} when is_binary(value) -> {:ok, value}
+      {:ok, fun} when is_function(fun, 0) -> {:ok, fun.()}
+      :error -> {:error, :not_found}
     end
-  rescue
-    e -> %{res | status: :error, error: "assertion raised: #{Exception.message(e)}"}
   end
-
-  defp apply_assert(res, _assert_fn), do: res
-
-  defp apply_post(%Runcom.Step.Result{status: :ok} = res, post_fn, sink)
-       when is_function(post_fn) do
-    {:ok, output} = Sink.read(sink)
-    %{res | output: post_fn.(output)}
-  rescue
-    e -> %{res | status: :error, error: "post callback raised: #{Exception.message(e)}"}
-  end
-
-  defp apply_post(res, _post_fn, _sink), do: res
-
-  defp write_result_to_sink(sink, %{output: output} = res)
-       when is_binary(output) and output != "" do
-    sink = Sink.write(sink, output <> "\n")
-    {sink, %{res | output: nil}}
-  end
-
-  defp write_result_to_sink(sink, res), do: {sink, res}
 
   defp collect_secret_values(rc) do
     rc.assigns
@@ -1098,37 +960,6 @@ defmodule Runcom do
         []
     end)
   end
-
-  defp serialize_edges(edges) do
-    Enum.map(edges, fn {from, to, condition} ->
-      %{"source" => from, "target" => to, "condition" => to_string(condition)}
-    end)
-  end
-
-  defp apply_schema_defaults(module, opts) do
-    defaults =
-      module.__schema__(:defaults)
-      |> Enum.reject(fn {_k, v} -> is_nil(v) end)
-      |> Map.new()
-
-    Map.merge(defaults, opts)
-  end
-
-  defp resolve_deferred_values(rc, opts) when is_map(opts) do
-    Map.new(opts, fn {k, v} -> {k, resolve_value(rc, v)} end)
-  end
-
-  defp resolve_value(rc, value) when is_function(value, 1), do: value.(rc)
-
-  defp resolve_value(rc, values) when is_list(values),
-    do: Enum.map(values, &resolve_value(rc, &1))
-
-  defp resolve_value(_rc, value) when is_struct(value), do: value
-
-  defp resolve_value(rc, values) when is_map(values),
-    do: Map.new(values, fn {k, v} -> {k, resolve_value(rc, v)} end)
-
-  defp resolve_value(_rc, value), do: value
 
   @doc """
   Returns true if the step completed successfully.

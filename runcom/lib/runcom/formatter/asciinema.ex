@@ -210,7 +210,7 @@ defmodule Runcom.Formatter.Asciinema do
 
         {halt_events, halt_duration} =
           if halt_wait do
-            scaled = halt_wait / 1000.0 |> max(@min_step_duration)
+            scaled = (halt_wait / 1000.0) |> max(@min_step_duration)
             end_time = offset + step_duration
             msg = "⏸ halted · resumed after #{Helpers.format_duration_ms(halt_wait)}\r\n"
             {[[end_time, "o", msg]], scaled}

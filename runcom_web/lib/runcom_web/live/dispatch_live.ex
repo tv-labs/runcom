@@ -29,6 +29,7 @@ defmodule RuncomWeb.Live.DispatchLive do
       socket
       |> assign(:node_search_component, node_search_component)
       |> assign(:render_node_component, render_node_component)
+      |> assign(:pubsub, config[:pubsub])
       |> assign(:dispatcher, dispatcher)
       |> assign(:store_mod, store_mod)
       |> assign(:store_opts, store_opts)
@@ -60,7 +61,6 @@ defmodule RuncomWeb.Live.DispatchLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <link rel="stylesheet" href={assets_url(@base_path, "runcom_web.css")} />
     <div class="flex flex-col h-screen bg-base-100">
       <%!-- Top toolbar --%>
       <header class="h-12 min-h-12 flex items-center gap-3 px-4 border-b border-base-300 bg-base-100">
@@ -289,6 +289,10 @@ defmodule RuncomWeb.Live.DispatchLive do
       |> maybe_add_opt(:assigns, runbook_assigns)
 
     dispatch_async(dispatcher, runbook_id, selected_nodes, dispatch_opts, store_mod, store_opts)
+
+    if pubsub = socket.assigns.pubsub do
+      Phoenix.PubSub.broadcast(pubsub, "runcom:dispatches", {:dispatch_created, dispatch.id})
+    end
 
     {:noreply,
      socket

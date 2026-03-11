@@ -99,3 +99,5 @@ export function mount(el) {
     if (player && player.dispose) player.dispose()
   }
 }
+
+window.__runcom_player = { mount }

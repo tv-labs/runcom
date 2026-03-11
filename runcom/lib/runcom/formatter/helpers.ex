@@ -52,6 +52,7 @@ defmodule Runcom.Formatter.Helpers do
       _ -> nil
     end
   end
+
   def halt_wait_ms(%DateTime{} = completed_at, successor_started_ats)
       when is_list(successor_started_ats) do
     Enum.reduce(successor_started_ats, nil, fn started, acc ->

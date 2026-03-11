@@ -17,10 +17,8 @@ defmodule RuncomRmq.Server.EventConsumer do
 
   ## PubSub Topics
 
-    * `"runcom:results"` -- published for each `:result` event with the
-      full result map as payload
-    * `"runcom:events"` -- published for each `:step_event` with the
-      event map as payload
+    * `"runcom:events:{dispatch_id}"` -- all events for a specific dispatch;
+      payloads are tagged `{:result, map}` or `{:step_event, map}`
 
   ## Options
 
@@ -113,9 +111,6 @@ defmodule RuncomRmq.Server.EventConsumer do
   defp handle_event(%{type: :result} = event, store_mod, store_opts, pubsub) do
     result_attrs = Map.delete(event, :type)
 
-    # Correlate with active dispatch if no dispatch_id present
-    result_attrs = maybe_correlate_dispatch(result_attrs, store_mod, store_opts)
-
     broadcast_payload =
       case store_mod.save_result(result_attrs, store_opts) do
         {:ok, saved} ->
@@ -128,12 +123,12 @@ defmodule RuncomRmq.Server.EventConsumer do
       end
 
     maybe_upsert_node(result_attrs, store_mod, store_opts)
-    Phoenix.PubSub.broadcast(pubsub, "runcom:results", {:result, broadcast_payload})
+    broadcast(pubsub, result_attrs.dispatch_id, {:result, broadcast_payload})
   end
 
   defp handle_event(%{type: :step_event} = event, _store_mod, _store_opts, pubsub) do
     event_payload = Map.delete(event, :type)
-    Phoenix.PubSub.broadcast(pubsub, "runcom:events", {:step_event, event_payload})
+    broadcast(pubsub, event_payload.dispatch_id, {:step_event, event_payload})
   end
 
   defp handle_event(event, _store_mod, _store_opts, _pubsub) do
@@ -149,22 +144,10 @@ defmodule RuncomRmq.Server.EventConsumer do
 
   defp maybe_upsert_node(_attrs, _store_mod, _store_opts), do: :ok
 
-  defp maybe_correlate_dispatch(%{dispatch_id: id} = attrs, _store_mod, _store_opts)
-       when is_binary(id) and id != "",
-       do: attrs
+  defp broadcast(nil, _dispatch_id, _message), do: :ok
 
-  defp maybe_correlate_dispatch(attrs, store_mod, store_opts) do
-    runbook_id = attrs[:runbook_id]
-    node_id = attrs[:node_id]
-
-    if runbook_id && node_id && function_exported?(store_mod, :find_active_dispatch_node, 3) do
-      case store_mod.find_active_dispatch_node(runbook_id, node_id, store_opts) do
-        {:ok, dn} -> Map.put(attrs, :dispatch_id, dn.dispatch_id)
-        _ -> attrs
-      end
-    else
-      attrs
-    end
+  defp broadcast(pubsub, dispatch_id, message) do
+    Phoenix.PubSub.broadcast(pubsub, "runcom:events:#{dispatch_id}", message)
   end
 
   defp update_dispatch_tracking(result, event_attrs, store_mod, store_opts) do
@@ -205,7 +188,9 @@ defmodule RuncomRmq.Server.EventConsumer do
     end
   rescue
     e ->
-      Logger.error("EventConsumer dispatch tracking failed: #{Exception.message(e)}")
+      Logger.error(
+        "EventConsumer dispatch tracking failed: #{Exception.format(:error, e, __STACKTRACE__)}"
+      )
   end
 
   defp result_field(result, field) when is_map(result), do: Map.get(result, field)

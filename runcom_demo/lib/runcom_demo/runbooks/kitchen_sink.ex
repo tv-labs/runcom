@@ -214,6 +214,19 @@ defmodule RuncomDemo.Runbooks.KitchenSink do
       end,
       await: ["reboot"]
     )
+    |> Lineinfile.add("write-config-line-existing",
+      path: fn rc -> "#{rc.assigns.work_dir}/app.conf" end,
+      line: "run_id=kitchen-sink",
+      regexp: "^run_id=",
+      create: true,
+      await: ["setup_dir"]
+    )
+    |> Blockinfile.add("write-config-block-existing",
+      path: fn rc -> "#{rc.assigns.work_dir}/app.conf" end,
+      block: "# managed settings\nlog_level=info\nmax_retries=3",
+      create: true,
+      await: ["write-config-line"]
+    )
     |> RCBash.add("verify_files",
       script: fn rc ->
         dir = rc.assigns.work_dir
@@ -246,7 +259,7 @@ defmodule RuncomDemo.Runbooks.KitchenSink do
     |> Debug.add("post_gate",
       message: "Node gate passed, continuing 2"
     )
-    |> WaitFor.add("wait_marker",
+    |> WaitFor.add("wait_file_marker",
       path: fn rc -> "#{rc.assigns.work_dir}/.marker" end,
       timeout: 5000,
       interval: 100
@@ -255,10 +268,10 @@ defmodule RuncomDemo.Runbooks.KitchenSink do
       duration: to_timeout(second: 5)
     )
     |> Http.add("http-check",
-      url: "https://httpbin.org/status/200",
+      url: "https://httpbin.org/delay/2",
       method: :get,
       status_code: 200,
-      timeout: 10_000
+      timeout: 1_000
     )
   end
 

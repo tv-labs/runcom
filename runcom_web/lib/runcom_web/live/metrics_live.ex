@@ -52,7 +52,6 @@ defmodule RuncomWeb.Live.MetricsLive do
   @impl true
   def render(assigns) do
     ~H"""
-    <link rel="stylesheet" href={assets_url(@base_path, "runcom_web.css")} />
     <style>
       .metrics-chart canvas {
         max-width: 100% !important;
@@ -513,7 +512,6 @@ defmodule RuncomWeb.Live.MetricsLive do
   end
 
   defp draw_y_labels_duration(canvas, max_val, padding, chart_h, ticks, top) do
-
     Enum.reduce(0..ticks, canvas, fn i, acc ->
       val = round(max_val / ticks * i)
       y = top + chart_h - chart_h / ticks * i

@@ -27,7 +27,7 @@ defmodule Runcom.Steps.Bash do
   use Runcom.Step, name: "Bash", category: "Commands"
 
   schema do
-    field(:script, :string, group: :content, ui_type: {:code, :bash})
+    field(:script, [:string, Bash.Script], group: :content, ui_type: {:code, :bash})
     field(:file, :string, group: :content)
     field(:args, {:array, :string}, default: [])
     field(:env, :map)

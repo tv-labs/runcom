@@ -36,7 +36,7 @@ defmodule Runcom.Steps.Blockinfile do
 
   schema do
     field(:path, :string, required: true)
-    field(:block, :string, required: true)
+    field(:block, :string, required: true, empty: [nil])
     field(:state, :enum, values: [:present, :absent], default: :present)
     field(:marker_begin, :string, default: @default_marker_begin)
     field(:marker_end, :string, default: @default_marker_end)

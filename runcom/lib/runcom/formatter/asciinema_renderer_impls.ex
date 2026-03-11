@@ -37,7 +37,9 @@ defimpl Runcom.Formatter.AsciinemaRenderer, for: Runcom.Steps.Bash do
 
     lines
     |> Enum.map_join("\n", fn line ->
-      if byte_size(line) >= min_indent, do: binary_slice(line, min_indent, byte_size(line)), else: line
+      if byte_size(line) >= min_indent,
+        do: binary_slice(line, min_indent, byte_size(line)),
+        else: line
     end)
     |> String.trim()
   end

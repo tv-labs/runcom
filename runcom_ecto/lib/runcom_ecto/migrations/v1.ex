@@ -24,6 +24,7 @@ defmodule RuncomEcto.Migrations.V1 do
     create index(:runcom_results, [:runbook_id], prefix: prefix)
     create index(:runcom_results, [:node_id], prefix: prefix)
     create index(:runcom_results, [:dispatch_id], prefix: prefix)
+    create unique_index(:runcom_results, [:dispatch_id, :node_id], prefix: prefix)
 
     # Composite index for keyset pagination: ORDER BY COALESCE(completed_at, started_at) DESC, id DESC
     execute(
