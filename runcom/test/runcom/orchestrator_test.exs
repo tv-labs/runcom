@@ -101,9 +101,9 @@ defmodule Runcom.OrchestratorTest do
       assert result.status == :completed
 
       # Step output is automatically redacted by the orchestrator
-      step_result = Runcom.result(result, "leak")
-      refute step_result.output =~ "super-secret-value-42"
-      assert step_result.output =~ "[REDACTED]"
+      {:ok, output} = Runcom.read_sink(result, "leak")
+      refute output =~ "super-secret-value-42"
+      assert output =~ "[REDACTED]"
 
       # Secrets are still extractable from the runbook assigns
       secrets = Redactor.extract_secrets(result)

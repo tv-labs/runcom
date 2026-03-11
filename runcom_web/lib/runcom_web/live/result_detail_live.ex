@@ -1,32 +1,9 @@
 defmodule RuncomWeb.Live.ResultDetailLive do
-  @moduledoc """
-  Result detail LiveView with step DAG visualization.
-
-  Displays the full result record with a read-only SvelteFlow DAG viewer
-  where nodes are color-coded by step status. Clicking a node in the DAG
-  shows step details in a side panel.
-
-  ## Lifecycle
-
-  ```mermaid
-  stateDiagram-v2
-      [*] --> Mounted: mount/3
-      Mounted --> Loaded: handle_params with id
-      Loaded --> NodeSelected: node_selected event
-      NodeSelected --> Loaded: click different node
-      Loaded --> NotFound: result missing
-  ```
-
-  ## DAG Node Colors
-
-    * `:ok` / `"completed"` -- green (`#22c55e`)
-    * `:error` / `"failed"` -- red (`#ef4444`)
-    * `"running"` -- blue (`#3b82f6`)
-    * `"skipped"` -- yellow (`#eab308`)
-    * `"pending"` / default -- gray (`#9ca3af`)
-  """
+  @moduledoc false
 
   use Phoenix.LiveView
+
+  alias Phoenix.LiveView.JS
 
   import Ecto.Query
   import RuncomWeb.Helpers
@@ -37,7 +14,6 @@ defmodule RuncomWeb.Live.ResultDetailLive do
   @results_topic "runcom:results"
   @events_topic "runcom:events"
 
-  # Fields to preload from step_results (excludes :output to avoid fetching large compressed data)
   @step_result_fields [
     :id,
     :name,
@@ -50,6 +26,7 @@ defmodule RuncomWeb.Live.ResultDetailLive do
     :started_at,
     :completed_at,
     :error,
+    :output,
     :opts,
     :meta
   ]
@@ -85,20 +62,35 @@ defmodule RuncomWeb.Live.ResultDetailLive do
   end
 
   @impl true
-  def handle_params(%{"id" => id}, uri, socket) do
-    base_path =
-      uri
-      |> URI.parse()
-      |> Map.get(:path)
-      |> String.replace(~r"/result/.+$", "")
+  def handle_params(%{"id" => id} = params, uri, socket) do
+    path = uri |> URI.parse() |> Map.get(:path)
+    base_path = String.replace(path, ~r"/result/.+$", "")
+
+    tab = if params["tab"] in ~w(steps markdown asciinema), do: params["tab"], else: "steps"
+    id_changed? = socket.assigns.result_id != id
 
     socket =
       socket
       |> assign(:result_id, id)
       |> assign(:base_path, base_path)
-      |> load_result(id)
+      |> assign(:output_tab, tab)
+      |> assign(:patch_path, path)
 
-    {:noreply, socket}
+    socket = if id_changed?, do: load_result(socket, id), else: socket
+
+    expanded = parse_expanded_steps(params["steps"], socket.assigns.expanded_steps)
+    new_to_fetch = MapSet.difference(expanded, socket.assigns.expanded_steps)
+
+    socket =
+      socket
+      |> assign(:expanded_steps, expanded)
+      |> fetch_outputs_for_steps(new_to_fetch)
+
+    if connected?(socket) and is_nil(params["steps"]) and MapSet.size(expanded) > 0 do
+      {:noreply, push_patch(socket, to: patch_url(path, tab, expanded, []), replace: true)}
+    else
+      {:noreply, socket}
+    end
   end
 
   def handle_params(_params, _uri, socket) do
@@ -180,7 +172,7 @@ defmodule RuncomWeb.Live.ResultDetailLive do
               dryrun
             </span>
             <span class="text-sm text-base-content/60 font-mono" style="view-transition-name: result-duration">
-              {format_duration(result_field(@result, :duration_ms))}
+              {format_duration(wall_clock_duration(@result))}
             </span>
             <span class="text-sm text-base-content/60" style="view-transition-name: result-time">
               {format_time(result_field(@result, :started_at))}
@@ -205,7 +197,11 @@ defmodule RuncomWeb.Live.ResultDetailLive do
         </header>
 
         <div :if={@result} class="flex-1 overflow-y-auto p-4 space-y-4">
-          <div :if={result_field(@result, :error_message)} class="alert alert-error">
+          <div
+            :if={result_field(@result, :error_message)}
+            class="alert"
+            style="background-color: oklch(0.25 0.08 17); color: oklch(0.8 0.12 17); border-color: oklch(0.35 0.1 17);"
+          >
             <pre class="whitespace-pre-wrap font-mono text-sm">{result_field(@result, :error_message)}</pre>
           </div>
 
@@ -213,11 +209,9 @@ defmodule RuncomWeb.Live.ResultDetailLive do
             <div class="card-body p-4">
               <%!-- Output tabs --%>
               <div class="flex items-center gap-1 mb-3">
-                <button
+                <.link
                   :for={tab <- [{"steps", "Steps"}, {"markdown", "Markdown"}, {"asciinema", "Asciinema"}]}
-                  type="button"
-                  phx-click="set_output_tab"
-                  phx-value-tab={elem(tab, 0)}
+                  patch={patch_url(@patch_path, @output_tab, @expanded_steps, tab: elem(tab, 0))}
                   class={[
                     "px-3 py-1 text-xs font-medium rounded-full transition-colors",
                     if(@output_tab == elem(tab, 0),
@@ -227,7 +221,7 @@ defmodule RuncomWeb.Live.ResultDetailLive do
                   ]}
                 >
                   {elem(tab, 1)}
-                </button>
+                </.link>
               </div>
 
               <%!-- Steps tab --%>
@@ -235,8 +229,7 @@ defmodule RuncomWeb.Live.ResultDetailLive do
                 <div :if={@nodes != []} class="space-y-1">
                   <div :for={node <- @nodes} class="border border-base-300 rounded-lg overflow-hidden">
                     <button
-                      phx-click="toggle_step"
-                      phx-value-step-id={node["id"]}
+                      phx-click={JS.patch(patch_url(@patch_path, @output_tab, @expanded_steps, toggle: node["id"]))}
                       class={[
                         "w-full flex items-center justify-between p-3 transition-colors cursor-pointer text-left",
                         step_row_bg(node["data"]["status"])
@@ -336,7 +329,7 @@ defmodule RuncomWeb.Live.ResultDetailLive do
 
           <div :if={@nodes != []} class="card bg-base-200/50">
             <div class="card-body p-4">
-              <h2 class="card-title text-sm">DAG</h2>
+              <h2 class="card-title text-sm">Workflow Visualization</h2>
               <div style="height: 300px;">
                 <RuncomWeb.dag_viewer
                   id="result-dag"
@@ -364,43 +357,8 @@ defmodule RuncomWeb.Live.ResultDetailLive do
   end
 
   @impl true
-  def handle_event("toggle_step", %{"step-id" => id}, socket) do
-    expanded = socket.assigns.expanded_steps
-
-    socket =
-      if MapSet.member?(expanded, id) do
-        assign(socket, :expanded_steps, MapSet.delete(expanded, id))
-      else
-        socket
-        |> assign(:expanded_steps, MapSet.put(expanded, id))
-        |> maybe_fetch_step_output(id)
-      end
-
-    {:noreply, socket}
-  end
-
-  def handle_event("node_selected", %{"id" => id}, socket) do
-    expanded = socket.assigns.expanded_steps
-
-    socket =
-      if MapSet.member?(expanded, id) do
-        socket
-      else
-        socket
-        |> assign(:expanded_steps, MapSet.put(expanded, id))
-        |> maybe_fetch_step_output(id)
-      end
-
-    {:noreply, socket}
-  end
-
-  def handle_event("deselect", _params, socket) do
-    {:noreply, assign(socket, :expanded_steps, MapSet.new())}
-  end
-
-  def handle_event("set_output_tab", %{"tab" => tab}, socket) do
-    {:noreply, assign(socket, :output_tab, tab)}
-  end
+  def handle_event("node_selected", _params, socket), do: {:noreply, socket}
+  def handle_event("deselect", _params, socket), do: {:noreply, socket}
 
   defp load_result(socket, id) do
     mod = socket.assigns.store_mod
@@ -410,8 +368,7 @@ defmodule RuncomWeb.Live.ResultDetailLive do
       {:ok, result} ->
         result = preload_step_results(result, opts)
         {nodes, edges} = result_to_graph(result)
-        full_step_results = load_full_step_results(result, opts)
-        rc = build_runcom_from_result(result, full_step_results)
+        rc = build_runcom_from_result(result)
         markdown = format_markdown(rc)
         markdown_html = render_markdown(markdown)
         asciicast = format_asciicast(rc)
@@ -444,13 +401,6 @@ defmodule RuncomWeb.Live.ResultDetailLive do
     repo = RuncomEcto.repo!(normalize_store_args_flat(store_opts), Runcom.Store)
     step_results_query = from(sr in StepResult, order_by: sr.order, select: ^@step_result_fields)
     repo.preload(result, step_results: step_results_query)
-  end
-
-  defp load_full_step_results(result, store_opts) do
-    repo = RuncomEcto.repo!(normalize_store_args_flat(store_opts), Runcom.Store)
-
-    from(sr in StepResult, where: sr.result_id == ^result.id, order_by: sr.order)
-    |> repo.all()
   end
 
   defp fetch_outputs_for_steps(socket, step_names) do
@@ -595,11 +545,31 @@ defmodule RuncomWeb.Live.ResultDetailLive do
   end
 
   defp annotate_halt_wait(nodes, sr_by_name, stored_edges, ordered_names) do
+    alias Runcom.Formatter.Helpers
+
     successors = build_successor_map(stored_edges, ordered_names)
 
     Enum.map(nodes, fn node ->
       if node["data"]["halt"] do
-        wait_ms = compute_halt_wait(node["id"], successors, sr_by_name)
+        halt_sr = sr_by_name[node["id"]]
+
+        wait_ms =
+          with %{completed_at: %DateTime{} = completed} <- halt_sr do
+            successor_starts =
+              successors
+              |> Map.get(node["id"], [])
+              |> Enum.reduce([], fn name, acc ->
+                case sr_by_name[name] do
+                  %{started_at: %DateTime{} = started} -> [started | acc]
+                  _ -> acc
+                end
+              end)
+
+            Helpers.halt_wait_ms(completed, successor_starts)
+          else
+            _ -> nil
+          end
+
         put_in(node, ["data", "wait_ms"], wait_ms)
       else
         node
@@ -615,21 +585,6 @@ defmodule RuncomWeb.Live.ResultDetailLive do
 
   defp build_successor_map(stored_edges, _ordered_names) do
     Enum.group_by(stored_edges, & &1["source"], & &1["target"])
-  end
-
-  defp compute_halt_wait(halt_name, successor_map, sr_by_name) do
-    successors = Map.get(successor_map, halt_name, [])
-    halt_sr = sr_by_name[halt_name]
-
-    with %{completed_at: %DateTime{} = completed} <- halt_sr do
-      successors
-      |> Enum.map(&sr_by_name[&1])
-      |> Enum.filter(&match?(%{started_at: %DateTime{}}, &1))
-      |> Enum.map(&DateTime.diff(&1.started_at, completed, :millisecond))
-      |> Enum.min(fn -> nil end)
-    else
-      _ -> nil
-    end
   end
 
   defp topsort_from_edges(names, []), do: names
@@ -695,8 +650,8 @@ defmodule RuncomWeb.Live.ResultDetailLive do
       status: parse_step_status(sr.status),
       duration_ms: sr.duration_ms,
       exit_code: sr.exit_code,
-      stdout: nil,
-      error: sr.error
+      error: sr.error,
+      output: sr.output
     }
   end
 
@@ -791,22 +746,26 @@ defmodule RuncomWeb.Live.ResultDetailLive do
   def step_status_color("pending"), do: "#9ca3af"
   def step_status_color(_), do: "#9ca3af"
 
-  defp build_runcom_from_result(result, full_step_results) do
+  defp build_runcom_from_result(result) do
     runbook_id = result_field(result, :runbook_id) || "unknown"
     step_results = result.step_results || []
     stored_edges = result_field(result, :edges) || []
-    output_by_name = Map.new(full_step_results, &{&1.name, &1.output})
 
     {steps, step_status} =
       Enum.reduce(step_results, {%{}, %{}}, fn sr, {steps_acc, status_acc} ->
         status_atom = parse_step_status(sr.status)
 
+        meta = sr.meta || %{}
+
         step_result = %Runcom.Step.Result{
           status: status_atom,
           duration_ms: sr.duration_ms,
           exit_code: sr.exit_code,
-          stdout: output_by_name[sr.name],
-          error: sr.error
+          error: sr.error,
+          output: sr.output,
+          started_at: sr.started_at,
+          completed_at: sr.completed_at,
+          halt: meta["halt"] == true
         }
 
         stored_opts =
@@ -896,4 +855,48 @@ defmodule RuncomWeb.Live.ResultDetailLive do
   rescue
     _ -> nil
   end
+
+  defp patch_url(path, tab, expanded, opts) do
+    tab = opts[:tab] || tab
+
+    expanded =
+      cond do
+        id = opts[:toggle] ->
+          if MapSet.member?(expanded, id),
+            do: MapSet.delete(expanded, id),
+            else: MapSet.put(expanded, id)
+
+        true ->
+          expanded
+      end
+
+    steps_csv = expanded |> MapSet.to_list() |> Enum.sort() |> Enum.join(",")
+
+    case steps_csv do
+      "" -> "#{path}?tab=#{tab}"
+      csv -> "#{path}?tab=#{tab}&steps=#{csv}"
+    end
+  end
+
+  defp wall_clock_duration(result) do
+    step_results = result.step_results || []
+
+    started_ats = for sr <- step_results, sr.started_at, do: sr.started_at
+    completed_ats = for sr <- step_results, sr.completed_at, do: sr.completed_at
+
+    case {started_ats, completed_ats} do
+      {[_ | _], [_ | _]} ->
+        earliest = Enum.min(started_ats, DateTime)
+        latest = Enum.max(completed_ats, DateTime)
+        DateTime.diff(latest, earliest, :millisecond)
+
+      _ ->
+        result_field(result, :duration_ms)
+    end
+  end
+
+  defp parse_expanded_steps(nil, default), do: default
+
+  defp parse_expanded_steps(csv, _default) when is_binary(csv),
+    do: csv |> String.split(",", trim: true) |> MapSet.new()
 end

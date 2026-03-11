@@ -5,7 +5,7 @@ defmodule Runcom.Sink.File do
   Writes all output to file. Does not preserve tag information.
   """
 
-  defstruct [:path, :io_device]
+  defstruct [:path, :io_device, secrets: []]
 
   @doc """
   Creates a new file sink for the given path.
@@ -27,13 +27,13 @@ defimpl Runcom.Sink, for: Runcom.Sink.File do
     %{sink | io_device: io}
   end
 
-  def write(%{io_device: io} = sink, {:stdout, data}) do
-    IO.binwrite(io, data)
+  def write(%{io_device: io, secrets: secrets} = sink, {:stdout, data}) do
+    IO.binwrite(io, Runcom.Redactor.redact(data, secrets))
     sink
   end
 
-  def write(%{io_device: io} = sink, {:stderr, data}) do
-    IO.binwrite(io, data)
+  def write(%{io_device: io, secrets: secrets} = sink, {:stderr, data}) do
+    IO.binwrite(io, Runcom.Redactor.redact(data, secrets))
     sink
   end
 
@@ -69,6 +69,12 @@ defimpl Runcom.Sink, for: Runcom.Sink.File do
     ext = Path.extname(sink.path)
     base = Path.basename(sink.path, ext)
     sanitized = Runcom.Sink.Helpers.sanitize_step_name(step_name)
-    %{sink | path: Path.join(dir, "#{base}_#{sanitized}#{ext}"), io_device: nil}
+
+    %{
+      sink
+      | path: Path.join(dir, "#{base}_#{sanitized}#{ext}"),
+        io_device: nil,
+        secrets: sink.secrets
+    }
   end
 end

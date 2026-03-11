@@ -898,6 +898,8 @@ defmodule Runcom do
          step_order
        ) do
     sink = step_sink || create_step_sink(rc.id, name)
+    secrets = collect_secret_values(rc)
+    sink = %{sink | secrets: secrets}
     sink = Sink.open(sink)
 
     resolved_opts = resolve_deferred_values(rc, opts)
@@ -975,11 +977,13 @@ defmodule Runcom do
         {:error, reason} -> Runcom.Step.Result.error(error: reason)
       end
 
+    {sink, res} = write_result_to_sink(sink, res)
+
     res = add_timing(res, started_at, completed_at, duration_ms, step_order)
 
     # Apply framework callbacks
     res = apply_assert(res, step.assert_fn)
-    res = apply_post(res, step.post_fn)
+    res = apply_post(res, step.post_fn, sink)
 
     status = if res.status == :error, do: :error, else: :ok
 
@@ -1061,13 +1065,39 @@ defmodule Runcom do
 
   defp apply_assert(res, _assert_fn), do: res
 
-  defp apply_post(%Runcom.Step.Result{status: :ok} = res, post_fn) when is_function(post_fn) do
-    %{res | output: post_fn.(res.output)}
+  defp apply_post(%Runcom.Step.Result{status: :ok} = res, post_fn, sink)
+       when is_function(post_fn) do
+    {:ok, output} = Sink.read(sink)
+    %{res | output: post_fn.(output)}
   rescue
     e -> %{res | status: :error, error: "post callback raised: #{Exception.message(e)}"}
   end
 
-  defp apply_post(res, _post_fn), do: res
+  defp apply_post(res, _post_fn, _sink), do: res
+
+  defp write_result_to_sink(sink, %{output: output} = res)
+       when is_binary(output) and output != "" do
+    sink = Sink.write(sink, output <> "\n")
+    {sink, %{res | output: nil}}
+  end
+
+  defp write_result_to_sink(sink, res), do: {sink, res}
+
+  defp collect_secret_values(rc) do
+    rc.assigns
+    |> Map.get(:__secrets__, %{})
+    |> Enum.flat_map(fn
+      {_name, value} when is_binary(value) and value != "" ->
+        [value]
+
+      {_name, fun} when is_function(fun, 0) ->
+        value = fun.()
+        if is_binary(value) and value != "", do: [value], else: []
+
+      _ ->
+        []
+    end)
+  end
 
   defp serialize_edges(edges) do
     Enum.map(edges, fn {from, to, condition} ->
@@ -1092,6 +1122,8 @@ defmodule Runcom do
 
   defp resolve_value(rc, values) when is_list(values),
     do: Enum.map(values, &resolve_value(rc, &1))
+
+  defp resolve_value(_rc, value) when is_struct(value), do: value
 
   defp resolve_value(rc, values) when is_map(values),
     do: Map.new(values, fn {k, v} -> {k, resolve_value(rc, v)} end)

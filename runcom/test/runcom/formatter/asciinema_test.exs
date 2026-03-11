@@ -252,7 +252,7 @@ defmodule Runcom.Formatter.AsciinemaTest do
       assert cast =~ "$ echo hello"
     end
 
-    test "shows module name for non-Command steps", %{test: test_name} do
+    test "shows step-specific command for non-Command steps", %{test: test_name} do
       rc =
         Runcom.new(to_string(test_name))
         |> RC.Debug.add("debug", message: "hello")
@@ -261,7 +261,7 @@ defmodule Runcom.Formatter.AsciinemaTest do
 
       cast = Asciinema.format(completed)
 
-      assert cast =~ "$ Debug"
+      assert cast =~ "$ hello"
     end
   end
 

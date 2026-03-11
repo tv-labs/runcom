@@ -70,8 +70,6 @@ defmodule Runcom.CommandRunner do
     stderr_sink = Keyword.fetch!(opts, :stderr_sink)
 
     started_at = DateTime.utc_now()
-
-    # Create a temporary file for stderr
     stderr_file = create_temp_file()
 
     try do
@@ -113,14 +111,13 @@ defmodule Runcom.CommandRunner do
             0
         end)
 
+      completed_at = DateTime.utc_now()
+      duration_ms = DateTime.diff(completed_at, started_at, :millisecond)
+
       # Read stderr from the temp file and stream to sink
       stream_file_to_sink(stderr_file, stderr_sink)
 
-      {:ok, stdout} = Sink.stdout(stdout_sink)
       {:ok, stderr} = Sink.stderr(stderr_sink)
-
-      completed_at = DateTime.utc_now()
-      duration_ms = DateTime.diff(completed_at, started_at, :millisecond)
 
       status = if(exit_code == 0, do: :ok, else: :error)
 
@@ -128,10 +125,7 @@ defmodule Runcom.CommandRunner do
         Result.new(
           status: status,
           exit_code: exit_code,
-          stdout: stdout,
-          stderr: stderr,
-          output: if(stdout != "", do: String.trim(stdout)),
-          error: if(status == :error and stderr != "", do: String.trim(stderr)),
+          error: if(status == :error, do: String.trim(stderr)),
           started_at: started_at,
           completed_at: completed_at,
           duration_ms: duration_ms

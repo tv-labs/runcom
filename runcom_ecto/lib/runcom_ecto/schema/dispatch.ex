@@ -1,4 +1,12 @@
 defmodule RuncomEcto.Schema.Dispatch do
+  @moduledoc """
+  Ecto schema for a runbook dispatch.
+
+  A dispatch represents a single request to execute a runbook across one
+  or more target nodes. Progress counters (`:nodes_acked`, `:nodes_completed`,
+  `:nodes_failed`) are updated as agents report back.
+  """
+
   use Ecto.Schema
   import Ecto.Changeset
 

@@ -417,45 +417,23 @@ defmodule RuncomEcto.Store do
     since = Keyword.fetch!(opts, :since)
     bucket = Keyword.get(opts, :bucket, "hour")
 
-    # Use a raw SQL query to avoid Ecto's parameter splitting
-    # between SELECT and GROUP BY fragments
-    {filter_sql, filter_params, _next_idx} = build_run_rate_filters(opts, since, 3)
+    query =
+      from(r in Result,
+        join: d in Dispatch, on: d.id == r.dispatch_id,
+        where: r.started_at >= ^since,
+        select: %{
+          bucket: fragment("date_trunc(?, ?)", ^bucket, r.started_at) |> selected_as(:bucket),
+          runbook_id: d.runbook_id,
+          count: count(r.id)
+        },
+        group_by: [selected_as(:bucket), d.runbook_id],
+        order_by: selected_as(:bucket)
+      )
 
-    sql = """
-    SELECT date_trunc($1, started_at) AS bucket, runbook_id, COUNT(id) AS count
-    FROM runcom_results
-    WHERE started_at >= $2 #{filter_sql}
-    GROUP BY 1, 2
-    ORDER BY 1
-    """
+    query = maybe_filter_joined_dispatch(query, :runbook_id, opts[:runbook_id])
+    query = maybe_filter(query, :node_id, opts[:node_id])
 
-    params = [bucket, since] ++ filter_params
-    result = Ecto.Adapters.SQL.query!(repo, sql, params)
-
-    rows =
-      Enum.map(result.rows, fn [bucket_dt, runbook_id, count] ->
-        %{bucket: bucket_dt, runbook_id: runbook_id, count: count}
-      end)
-
-    {:ok, rows}
-  end
-
-  defp build_run_rate_filters(opts, _since, start_idx) do
-    {sql, params, idx} = {"", [], start_idx}
-
-    {sql, params, idx} =
-      case opts[:runbook_id] do
-        nil -> {sql, params, idx}
-        val -> {sql <> " AND runbook_id = $#{idx}", params ++ [val], idx + 1}
-      end
-
-    {sql, params, _idx} =
-      case opts[:node_id] do
-        nil -> {sql, params, idx}
-        val -> {sql <> " AND node_id = $#{idx}", params ++ [val], idx + 1}
-      end
-
-    {sql, params, idx}
+    {:ok, repo.all(query)}
   end
 
   @doc """
@@ -477,21 +455,26 @@ defmodule RuncomEcto.Store do
 
     query =
       from(r in Result,
+        join: d in Dispatch, on: d.id == r.dispatch_id,
         where: r.started_at >= ^since and not is_nil(r.duration_ms),
-        group_by: r.runbook_id,
+        group_by: d.runbook_id,
         select: %{
-          runbook_id: r.runbook_id,
+          runbook_id: d.runbook_id,
           avg_ms: fragment("ROUND(AVG(?))", r.duration_ms),
           p50_ms:
             fragment("ROUND(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY ?))", r.duration_ms),
+          p90_ms:
+            fragment("ROUND(PERCENTILE_CONT(0.9) WITHIN GROUP (ORDER BY ?))", r.duration_ms),
           p95_ms:
             fragment("ROUND(PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY ?))", r.duration_ms),
+          p99_ms:
+            fragment("ROUND(PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY ?))", r.duration_ms),
           max_ms: max(r.duration_ms),
           count: count(r.id)
         },
         order_by: [desc: count(r.id)]
       )
-      |> maybe_filter(:runbook_id, opts[:runbook_id])
+      |> maybe_filter_joined_dispatch(:runbook_id, opts[:runbook_id])
       |> maybe_filter(:node_id, opts[:node_id])
 
     {:ok, repo.all(query)}
@@ -514,10 +497,11 @@ defmodule RuncomEcto.Store do
 
     query =
       from(r in Result,
+        join: d in Dispatch, on: d.id == r.dispatch_id,
         where: r.started_at >= ^since,
-        group_by: r.runbook_id,
+        group_by: d.runbook_id,
         select: %{
-          runbook_id: r.runbook_id,
+          runbook_id: d.runbook_id,
           total: count(r.id),
           completed: fragment("COUNT(*) FILTER (WHERE ? = 'completed')", r.status),
           failed: fragment("COUNT(*) FILTER (WHERE ? = ANY(?))", r.status, ^@failure_statuses),
@@ -525,7 +509,7 @@ defmodule RuncomEcto.Store do
         },
         order_by: [desc: count(r.id)]
       )
-      |> maybe_filter(:runbook_id, opts[:runbook_id])
+      |> maybe_filter_joined_dispatch(:runbook_id, opts[:runbook_id])
       |> maybe_filter(:node_id, opts[:node_id])
 
     {:ok, repo.all(query)}
@@ -549,10 +533,10 @@ defmodule RuncomEcto.Store do
 
     query =
       from(sr in StepResult,
-        join: r in Result,
-        on: sr.result_id == r.id,
+        join: r in Result, on: sr.result_id == r.id,
+        join: d in Dispatch, on: d.id == r.dispatch_id,
         where:
-          r.runbook_id == ^runbook_id and
+          d.runbook_id == ^runbook_id and
             r.started_at >= ^since and
             sr.status == "ok" and
             not is_nil(sr.duration_ms),
@@ -562,8 +546,12 @@ defmodule RuncomEcto.Store do
           avg_ms: fragment("ROUND(AVG(?))", sr.duration_ms),
           p50_ms:
             fragment("ROUND(PERCENTILE_CONT(0.5) WITHIN GROUP (ORDER BY ?))", sr.duration_ms),
+          p90_ms:
+            fragment("ROUND(PERCENTILE_CONT(0.9) WITHIN GROUP (ORDER BY ?))", sr.duration_ms),
           p95_ms:
             fragment("ROUND(PERCENTILE_CONT(0.95) WITHIN GROUP (ORDER BY ?))", sr.duration_ms),
+          p99_ms:
+            fragment("ROUND(PERCENTILE_CONT(0.99) WITHIN GROUP (ORDER BY ?))", sr.duration_ms),
           max_ms: max(sr.duration_ms),
           count: count(sr.id)
         },
@@ -603,7 +591,7 @@ defmodule RuncomEcto.Store do
   end
 
   @step_result_fields ~w(name order status module exit_code duration_ms attempts
-    started_at completed_at output output_ref error changed opts meta)a
+    started_at completed_at output output_ref error opts meta)a
 
   # Normalize step_results from map format %{name => result} to list of maps with :name key
   defp normalize_step_results(attrs) when is_map(attrs) do
@@ -634,6 +622,11 @@ defmodule RuncomEcto.Store do
 
   defp maybe_filter(query, :status, value), do: where(query, [r], r.status == ^value)
   defp maybe_filter(query, :dispatch_id, value), do: where(query, [r], r.dispatch_id == ^value)
+
+  defp maybe_filter_joined_dispatch(query, :runbook_id, nil), do: query
+
+  defp maybe_filter_joined_dispatch(query, :runbook_id, value),
+    do: where(query, [_r, d], d.runbook_id == ^value)
 
   defp maybe_search(query, nil), do: query
   defp maybe_search(query, ""), do: query

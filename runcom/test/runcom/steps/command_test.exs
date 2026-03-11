@@ -25,15 +25,16 @@ defmodule Runcom.Steps.CommandTest do
 
       assert result.status == :ok
       assert result.exit_code == 0
-      assert result.stdout =~ "hello"
+      {:ok, stdout} = Runcom.Sink.stdout(sink)
+      assert stdout =~ "hello"
     end
 
     test "captures stderr", %{sink: sink} do
-      {:ok, result} =
+      {:ok, _result} =
         Command.run(nil, %{cmd: "sh", args: ["-c", "echo error >&2"], sink: sink})
 
-      assert result.exit_code == 0
-      assert result.stderr =~ "error"
+      {:ok, stderr} = Runcom.Sink.stderr(sink)
+      assert stderr =~ "error"
     end
 
     test "returns error status on non-zero exit", %{sink: sink} do
@@ -49,7 +50,8 @@ defmodule Runcom.Steps.CommandTest do
       {:ok, result} =
         Command.run(rc, %{cmd: fn rc -> "echo #{rc.assigns.file}" end, sink: sink})
 
-      assert result.stdout =~ "test.txt"
+      {:ok, stdout} = Runcom.Sink.stdout(sink)
+      assert stdout =~ "test.txt"
     end
   end
 

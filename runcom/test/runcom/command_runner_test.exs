@@ -20,7 +20,8 @@ defmodule Runcom.CommandRunnerTest do
         )
 
       assert result.exit_code == 0
-      assert result.stdout =~ "hello"
+      {:ok, stdout} = Runcom.Sink.stdout(stdout_sink)
+      assert stdout =~ "hello"
     end
 
     test "captures stderr", %{stdout_sink: stdout_sink, stderr_sink: stderr_sink} do
@@ -33,7 +34,8 @@ defmodule Runcom.CommandRunnerTest do
         )
 
       assert result.exit_code == 0
-      assert result.stderr =~ "error"
+      {:ok, stderr} = Runcom.Sink.stderr(stderr_sink)
+      assert stderr =~ "error"
     end
 
     test "returns non-zero exit code on failure", %{
@@ -61,7 +63,8 @@ defmodule Runcom.CommandRunnerTest do
           stderr_sink: stderr_sink
         )
 
-      assert result.stdout =~ "test_value"
+      {:ok, stdout} = Runcom.Sink.stdout(stdout_sink)
+      assert stdout =~ "test_value"
     end
 
     test "supports working directory", %{
@@ -78,7 +81,8 @@ defmodule Runcom.CommandRunnerTest do
           stderr_sink: stderr_sink
         )
 
-      assert String.trim(result.stdout) == tmp_dir
+      {:ok, stdout} = Runcom.Sink.stdout(stdout_sink)
+      assert String.trim(stdout) == tmp_dir
     end
   end
 end

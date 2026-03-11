@@ -17,7 +17,7 @@
     "{mix,.formatter}.exs",
     "{config,test}/**/*.{ex,exs}",
     "{config,lib,test}/**/*.ex",
-    "**/*.{sh,bash}"
+    "{lib,test,config}/**/*.{sh,bash}"
   ],
   bash: [
     indent_style: :spaces,

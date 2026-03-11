@@ -391,6 +391,7 @@ defmodule Runcom.Orchestrator do
       runbook_assigns: state.runbook.assigns,
       runbook_facts: state.runbook.facts,
       runbook_sink: state.runbook.sink,
+      runbook_steps: state.runbook.steps,
       mode: state.mode,
       step_order: state.current_step_index + 1,
       secret_store: state.secret_store
@@ -419,13 +420,16 @@ defmodule Runcom.Orchestrator do
     end
 
     sink = Sink.resolve_secrets(sink, resolver)
+    secrets = collect_secret_values(ctx.secret_store)
+    sink = %{sink | secrets: secrets}
     sink = Sink.open(sink)
 
     # Build a minimal rc for deferred value resolution
     rc_for_deferred = %Runcom{
       id: ctx.runbook_id,
       assigns: ctx.runbook_assigns,
-      facts: ctx.runbook_facts
+      facts: ctx.runbook_facts,
+      steps: ctx.runbook_steps
     }
 
     # Resolve deferred values, apply schema defaults, and resolve secrets
@@ -501,17 +505,16 @@ defmodule Runcom.Orchestrator do
     # Normalize raw result into a Result struct
     res =
       case result do
+        :ok -> Runcom.Step.Result.ok()
         {:ok, %Runcom.Step.Result{} = res} -> res
         {:error, reason} -> Runcom.Step.Result.error(error: reason)
       end
 
-    sink = write_result_to_sink(sink, res)
+    {sink, res} = write_result_to_sink(sink, res)
 
     res = add_timing(res, started_at, completed_at, duration_ms, ctx.step_order)
-
-    # Apply framework callbacks
     res = apply_assert(res, step.assert_fn)
-    res = apply_post(res, step.post_fn)
+    res = apply_post(res, step.post_fn, sink)
 
     status = if res.status == :error, do: :error, else: :ok
 
@@ -525,9 +528,6 @@ defmodule Runcom.Orchestrator do
   end
 
   defp update_step_result(state, step_name, {status, result, sink}) do
-    secrets = collect_secret_values(state.secret_store)
-    result = redact_result(result, secrets)
-
     sink = safe_close_sink(sink)
 
     step = state.runbook.steps[step_name]
@@ -542,6 +542,7 @@ defmodule Runcom.Orchestrator do
 
     errors =
       if step_status == :error do
+        secrets = collect_secret_values(state.secret_store)
         Map.put(state.runbook.errors, step_name, Redactor.redact(result.error, secrets))
       else
         state.runbook.errors
@@ -573,18 +574,6 @@ defmodule Runcom.Orchestrator do
     end)
   end
 
-  defp redact_result(result, []), do: result
-
-  defp redact_result(result, secrets) do
-    %{
-      result
-      | stdout: Redactor.redact(result.stdout, secrets),
-        stderr: Redactor.redact(result.stderr, secrets),
-        output: Redactor.redact(result.output, secrets),
-        error: Redactor.redact(result.error, secrets)
-    }
-  end
-
   defp finish_execution(state, opts \\ []) do
     Logger.info("[Orchestrator] finish_execution for #{state.runbook.id}")
     override_status = Keyword.get(opts, :status)
@@ -600,7 +589,6 @@ defmodule Runcom.Orchestrator do
     rc = %{state.runbook | status: final_status}
     state = %{state | runbook: rc, status: final_status}
 
-    # Emit runbook stop telemetry
     emit_runbook_stop(state)
 
     # Manage checkpoint based on final status
@@ -744,13 +732,20 @@ defmodule Runcom.Orchestrator do
 
   defp apply_assert(res, _assert_fn), do: res
 
-  defp apply_post(%Runcom.Step.Result{status: :ok} = res, post_fn) when is_function(post_fn) do
-    %{res | output: post_fn.(res.output)}
+  defp apply_post(%Runcom.Step.Result{status: :ok} = res, post_fn, sink)
+       when is_function(post_fn) do
+    case Sink.read(sink) do
+      {:ok, output} ->
+        %{res | output: post_fn.(output)}
+
+      {:error, reason} ->
+        %{res | status: :error, error: "sink read failed: #{inspect(reason)}"}
+    end
   rescue
     e -> %{res | status: :error, error: "post callback raised: #{Exception.message(e)}"}
   end
 
-  defp apply_post(res, _post_fn), do: res
+  defp apply_post(res, _post_fn, _sink), do: res
 
   defp serialize_edges(edges) do
     Enum.map(edges, fn {from, to, condition} ->
@@ -859,11 +854,13 @@ defmodule Runcom.Orchestrator do
     }
   end
 
-  defp write_result_to_sink(sink, %{output: output}) when is_binary(output) and output != "" do
-    Sink.write(sink, output <> "\n")
+  defp write_result_to_sink(sink, %{output: output} = res)
+       when is_binary(output) and output != "" do
+    sink = Sink.write(sink, output <> "\n")
+    {sink, %{res | output: nil}}
   end
 
-  defp write_result_to_sink(sink, _res), do: sink
+  defp write_result_to_sink(sink, res), do: {sink, res}
 
   defp safe_close_sink(nil), do: nil
 

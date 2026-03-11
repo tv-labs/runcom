@@ -1,48 +1,5 @@
 defmodule RuncomWeb.Live.BuilderLive do
-  @moduledoc """
-  LiveView for the visual runbook builder.
-
-  Renders a three-panel layout:
-
-    * **Left sidebar** - Step library palette organized by category
-    * **Center canvas** - SvelteFlow DAG editor for wiring steps together
-    * **Right panel** - Properties editor for the selected node
-
-  ## Lifecycle
-
-  ```mermaid
-  stateDiagram-v2
-      [*] --> Mounted: mount/3
-      Mounted --> Index: handle_params(index)
-      Mounted --> Edit: handle_params(edit)
-      Index --> Editing: user adds nodes
-      Edit --> Editing: store loaded
-      Editing --> Saved: save event
-      Saved --> Editing: continue editing
-  ```
-
-  ## Persistence
-
-  The `BuilderPersist` client hook saves graph state (nodes, edges, runbook
-  name) to localStorage on every change. When the builder mounts without a
-  URL-specified runbook, the hook pushes a `"restore_state"` event to
-  rehydrate the previous session. This lets users close the tab and return
-  without losing work.
-
-  ## Events
-
-  The Svelte `DagViewer` component pushes these events:
-
-    * `"graph_changed"` - Nodes or edges modified by the user
-    * `"node_selected"` - A node was clicked in the canvas
-
-  The LiveView handles these additional events:
-
-    * `"update_meta"` - Update runbook name or assigns
-    * `"save"` - Assemble DSL source from graph and persist via store
-    * `"restore_state"` - Rehydrate graph from localStorage (via `BuilderPersist` hook)
-    * `"clear_builder"` - Reset graph and clear localStorage
-  """
+  @moduledoc false
 
   use Phoenix.LiveView
 

@@ -1,4 +1,5 @@
 defmodule RuncomWeb.Components.DefaultNodeRender do
+  @moduledoc false
   use Phoenix.Component
 
   attr :node, :any, required: true

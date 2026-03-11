@@ -1,10 +1,5 @@
 defmodule RuncomWeb.Live.MetricsLive do
-  @moduledoc """
-  Metrics page with server-rendered charts via Easel.
-
-  Displays run rates, timing distributions, success rates, and
-  step-level p95 timings — filterable by node, runbook, and time window.
-  """
+  @moduledoc false
 
   use Phoenix.LiveView
 
@@ -26,14 +21,13 @@ defmodule RuncomWeb.Live.MetricsLive do
     {store_mod, store_opts} = Runcom.Store.impl()
     base_opts = normalize_store_args(store_opts) |> List.first()
 
-    runbooks = Runcom.Runbook.summaries()
     {:ok, nodes} = apply(store_mod, :list_nodes, [base_opts])
 
     socket =
       socket
       |> assign(:store_mod, store_mod)
       |> assign(:store_opts, store_opts)
-      |> assign(:runbooks, runbooks)
+      |> assign(:runbook_names, [])
       |> assign(:nodes, nodes)
       |> assign(:time_window, "24h")
       |> assign(:selected_runbook, nil)
@@ -99,7 +93,7 @@ defmodule RuncomWeb.Live.MetricsLive do
             <div class="w-56">
               <.autocomplete
                 id="runbook-filter"
-                options={[%{value: "", label: "All runbooks"}] ++ Enum.map(@runbooks, &%{value: &1.id, label: &1.name || &1.id})}
+                options={[%{value: "", label: "All runbooks"}] ++ Enum.map(@runbook_names, &%{value: &1, label: &1})}
                 placeholder="Filter by runbook..."
                 on_select="filter_runbook"
                 value={@selected_runbook}
@@ -205,43 +199,50 @@ defmodule RuncomWeb.Live.MetricsLive do
     since = compute_since(socket.assigns.time_window)
     mod = socket.assigns.store_mod
 
-    base_opts =
-      normalize_store_args(socket.assigns.store_opts)
+    unfiltered_opts =
+      socket.assigns.store_opts
+      |> normalize_store_args()
       |> List.first()
       |> Keyword.merge(since: since)
-      |> maybe_put(:runbook_id, socket.assigns.selected_runbook)
       |> maybe_put(:node_id, socket.assigns.node_filter)
+
+    base_opts = maybe_put(unfiltered_opts, :runbook_id, socket.assigns.selected_runbook)
 
     width = @chart_width
     height = @chart_height
 
-    # Run rate
+    # Unfiltered status_rates for the dropdown (now returns dispatch runbook names)
+    all_status_data =
+      case apply(mod, :status_rates, [unfiltered_opts]) do
+        {:ok, data} -> data
+        _ -> []
+      end
+
+    runbook_names = all_status_data |> Enum.map(& &1.runbook_id) |> Enum.sort()
+
     run_rate_data =
       case apply(mod, :run_rate, [base_opts]) do
         {:ok, data} -> data
         _ -> []
       end
 
-    # Timing stats
     timing_data =
       case apply(mod, :timing_stats, [base_opts]) do
         {:ok, data} -> data
         _ -> []
       end
 
-    # Status rates
     status_data =
-      case apply(mod, :status_rates, [base_opts]) do
-        {:ok, data} -> data
-        _ -> []
+      if socket.assigns.selected_runbook do
+        Enum.filter(all_status_data, &(&1.runbook_id == socket.assigns.selected_runbook))
+      else
+        all_status_data
       end
 
     # Step timing stats (only when runbook selected)
     step_data =
       if socket.assigns.selected_runbook do
-        step_opts = Keyword.put(base_opts, :runbook_id, socket.assigns.selected_runbook)
-
-        case apply(mod, :step_timing_stats, [step_opts]) do
+        case apply(mod, :step_timing_stats, [base_opts]) do
           {:ok, data} -> data
           _ -> []
         end
@@ -250,6 +251,7 @@ defmodule RuncomWeb.Live.MetricsLive do
       end
 
     socket
+    |> assign(:runbook_names, runbook_names)
     |> assign(:chart_width, width)
     |> assign(:chart_height, height)
     |> assign(:run_rate_canvas, build_run_rate_chart(run_rate_data, width, height))
@@ -369,89 +371,100 @@ defmodule RuncomWeb.Live.MetricsLive do
   defp build_duration_chart([], width, height), do: empty_chart("No timing data", width, height)
 
   defp build_duration_chart(data, width, height) do
-    padding_left = 120
-    padding_top = 10
-    chart_w = width - padding_left - 20
-    bar_h = min(24, (height - padding_top - 10) / max(length(data), 1) - 6)
-
-    max_p95 = data |> Enum.map(&to_number(&1.p95_ms)) |> Enum.max(fn -> 1 end) |> max(1)
-
-    canvas = Easel.new(width, height)
-
-    data
-    |> Enum.with_index()
-    |> Enum.reduce(canvas, fn {row, i}, acc ->
-      y = padding_top + i * (bar_h + 6)
-      avg_ms = to_number(row.avg_ms)
-      p95_ms = to_number(row.p95_ms)
-      avg_w = avg_ms / max_p95 * chart_w
-      p95_w = p95_ms / max_p95 * chart_w
-
-      label = truncate_label(row.runbook_id, 16)
-
-      acc
-      |> Easel.set_font("11px monospace")
-      |> Easel.set_fill_style("#a1a1aa")
-      |> Easel.set_text_align("right")
-      |> Easel.set_text_baseline("middle")
-      |> Easel.fill_text(label, padding_left - 8, round(y + bar_h / 2))
-      |> Easel.set_fill_style("rgba(99, 102, 241, 0.3)")
-      |> Easel.fill_rect(padding_left, round(y), round(p95_w), round(bar_h))
-      |> Easel.set_fill_style("#6366f1")
-      |> Easel.fill_rect(padding_left, round(y), round(avg_w), round(bar_h))
-      |> Easel.set_fill_style("#a1a1aa")
-      |> Easel.set_text_align("left")
-      |> Easel.set_font("10px monospace")
-      |> Easel.fill_text(
-        "avg #{format_ms(avg_ms)} / p95 #{format_ms(p95_ms)}",
-        round(padding_left + max(p95_w, avg_w) + 6),
-        round(y + bar_h / 2)
-      )
-    end)
-    |> Easel.render()
+    build_candlestick_chart(data, width, height, fn row -> row.runbook_id end)
   end
 
   defp build_step_chart([], width, height), do: empty_chart("Select a runbook", width, height)
 
   defp build_step_chart(data, width, height) do
-    padding_left = 120
-    padding_top = 10
-    chart_w = width - padding_left - 20
-    bar_h = min(24, (height - padding_top - 10) / max(length(data), 1) - 6)
+    build_candlestick_chart(data, width, height, fn row ->
+      to_string(row[:step_name] || row[:name])
+    end)
+  end
 
-    max_p95 = data |> Enum.map(&to_number(&1.p95_ms)) |> Enum.max(fn -> 1 end) |> max(1)
+  defp build_candlestick_chart(data, width, height, label_fn) do
+    padding_left = 60
+    padding_top = 20
+    padding_bottom = 80
+    padding_right = 20
+    chart_w = width - padding_left - padding_right
+    chart_h = height - padding_top - padding_bottom
+    n = length(data)
+    slot_w = chart_w / max(n, 1)
+    bar_w = max(round(slot_w * 0.4), 4)
+    tick_w = max(round(slot_w * 0.6), 8)
 
-    canvas = Easel.new(width, height)
+    max_val =
+      data
+      |> Enum.map(&to_number(&1.p99_ms))
+      |> Enum.max(fn -> 1 end)
+      |> max(1)
+
+    baseline_y = padding_top + chart_h
+
+    canvas =
+      Easel.new(width, height)
+      |> draw_axes(padding_left, chart_w, chart_h, padding_top)
+      |> draw_y_labels_duration(max_val, padding_left, chart_h, 5, padding_top)
 
     data
     |> Enum.with_index()
     |> Enum.reduce(canvas, fn {row, i}, acc ->
-      y = padding_top + i * (bar_h + 6)
-      avg_ms = to_number(row.avg_ms)
-      p95_ms = to_number(row.p95_ms)
-      avg_w = avg_ms / max_p95 * chart_w
-      p95_w = p95_ms / max_p95 * chart_w
+      p50 = to_number(row.p50_ms)
+      p90 = to_number(row.p90_ms)
+      p95 = to_number(row.p95_ms)
+      p99 = to_number(row.p99_ms)
 
-      label = truncate_label(to_string(row.step_name), 16)
+      cx = round(padding_left + i * slot_w + slot_w / 2)
+      y_p50 = round(baseline_y - p50 / max_val * chart_h)
+      y_p90 = round(baseline_y - p90 / max_val * chart_h)
+      y_p95 = round(baseline_y - p95 / max_val * chart_h)
+      y_p99 = round(baseline_y - p99 / max_val * chart_h)
+      half_bar = round(bar_w / 2)
+      half_tick = round(tick_w / 2)
+
+      label = truncate_label(label_fn.(row), 12)
 
       acc
-      |> Easel.set_font("11px monospace")
-      |> Easel.set_fill_style("#a1a1aa")
-      |> Easel.set_text_align("right")
-      |> Easel.set_text_baseline("middle")
-      |> Easel.fill_text(label, padding_left - 8, round(y + bar_h / 2))
-      |> Easel.set_fill_style("rgba(245, 158, 11, 0.3)")
-      |> Easel.fill_rect(padding_left, round(y), round(p95_w), round(bar_h))
-      |> Easel.set_fill_style("#f59e0b")
-      |> Easel.fill_rect(padding_left, round(y), round(avg_w), round(bar_h))
+      # Solid blue bar from baseline to p95
+      |> Easel.set_fill_style("#3b82f6")
+      |> Easel.fill_rect(cx - half_bar, y_p95, bar_w, baseline_y - y_p95)
+      # Black wick line connecting p50 through p99
+      |> Easel.set_stroke_style("#000000")
+      |> Easel.set_line_width(3)
+      |> Easel.begin_path()
+      |> Easel.move_to(cx, y_p99)
+      |> Easel.line_to(cx, y_p50)
+      |> Easel.stroke()
+      # Green tick at p99
+      |> Easel.set_stroke_style("#22c55e")
+      |> Easel.set_line_width(2)
+      |> Easel.begin_path()
+      |> Easel.move_to(cx - half_tick, y_p99)
+      |> Easel.line_to(cx + half_tick, y_p99)
+      |> Easel.stroke()
+      # Yellow tick at p90
+      |> Easel.set_stroke_style("#eab308")
+      |> Easel.begin_path()
+      |> Easel.move_to(cx - half_tick, y_p90)
+      |> Easel.line_to(cx + half_tick, y_p90)
+      |> Easel.stroke()
+      # Red tick at p50
+      |> Easel.set_stroke_style("#ef4444")
+      |> Easel.begin_path()
+      |> Easel.move_to(cx - half_tick, y_p50)
+      |> Easel.line_to(cx + half_tick, y_p50)
+      |> Easel.stroke()
+      # Rotated x-axis label
+      |> Easel.save()
+      |> Easel.translate(cx, baseline_y + 8)
+      |> Easel.rotate(:math.pi() / 4)
+      |> Easel.set_font("10px monospace")
       |> Easel.set_fill_style("#a1a1aa")
       |> Easel.set_text_align("left")
-      |> Easel.set_font("10px monospace")
-      |> Easel.fill_text(
-        "avg #{format_ms(avg_ms)} / p95 #{format_ms(p95_ms)}",
-        round(padding_left + max(p95_w, avg_w) + 6),
-        round(y + bar_h / 2)
-      )
+      |> Easel.set_text_baseline("top")
+      |> Easel.fill_text(label, 0, 0)
+      |> Easel.restore()
     end)
     |> Easel.render()
   end
@@ -470,21 +483,25 @@ defmodule RuncomWeb.Live.MetricsLive do
     |> Easel.render()
   end
 
-  defp draw_axes(canvas, padding, chart_w, chart_h) do
+  defp draw_axes(canvas, padding, chart_w, chart_h, top \\ nil) do
+    top = top || padding
+
     canvas
     |> Easel.set_stroke_style("#3f3f46")
     |> Easel.set_line_width(1)
     |> Easel.begin_path()
-    |> Easel.move_to(padding, padding)
-    |> Easel.line_to(padding, padding + chart_h)
-    |> Easel.line_to(padding + chart_w, padding + chart_h)
+    |> Easel.move_to(padding, top)
+    |> Easel.line_to(padding, top + chart_h)
+    |> Easel.line_to(padding + chart_w, top + chart_h)
     |> Easel.stroke()
   end
 
-  defp draw_y_labels(canvas, max_val, padding, chart_h, ticks) do
+  defp draw_y_labels(canvas, max_val, padding, chart_h, ticks, top \\ nil) do
+    top = top || padding
+
     Enum.reduce(0..ticks, canvas, fn i, acc ->
       val = round(max_val / ticks * i)
-      y = padding + chart_h - chart_h / ticks * i
+      y = top + chart_h - chart_h / ticks * i
 
       acc
       |> Easel.set_font("10px monospace")
@@ -492,6 +509,27 @@ defmodule RuncomWeb.Live.MetricsLive do
       |> Easel.set_text_align("right")
       |> Easel.set_text_baseline("middle")
       |> Easel.fill_text(to_string(val), padding - 6, round(y))
+    end)
+  end
+
+  defp draw_y_labels_duration(canvas, max_val, padding, chart_h, ticks, top) do
+
+    Enum.reduce(0..ticks, canvas, fn i, acc ->
+      val = round(max_val / ticks * i)
+      y = top + chart_h - chart_h / ticks * i
+
+      label =
+        cond do
+          val >= 1000 -> "#{Float.round(val / 1000, 1)}s"
+          true -> "#{val}ms"
+        end
+
+      acc
+      |> Easel.set_font("10px monospace")
+      |> Easel.set_fill_style("#71717a")
+      |> Easel.set_text_align("right")
+      |> Easel.set_text_baseline("middle")
+      |> Easel.fill_text(label, padding - 6, round(y))
     end)
   end
 
@@ -521,15 +559,6 @@ defmodule RuncomWeb.Live.MetricsLive do
       str
     end
   end
-
-  defp format_ms(ms) when is_float(ms), do: format_ms(round(ms))
-
-  defp format_ms(ms) when is_integer(ms) and ms >= 1000 do
-    "#{Float.round(ms / 1000, 1)}s"
-  end
-
-  defp format_ms(ms) when is_integer(ms), do: "#{ms}ms"
-  defp format_ms(_), do: "-"
 
   defp to_number(nil), do: 0
   defp to_number(%Decimal{} = d), do: Decimal.to_float(d)

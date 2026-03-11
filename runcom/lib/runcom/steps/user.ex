@@ -57,8 +57,42 @@ defmodule Runcom.Steps.User do
   @impl true
   def run(rc, %{sink: sink} = opts) do
     family = rc.facts.distro_family
-    commands = build_commands(opts, family)
 
+    case opts.state do
+      :present -> ensure_present(opts, family, sink)
+      :absent -> ensure_absent(opts, family, sink)
+    end
+  end
+
+  defp ensure_present(opts, family, sink) do
+    if user_exists?(opts.name, sink) do
+      {:ok, Result.ok(output: "User '#{opts.name}' already exists")}
+    else
+      run_commands(build_commands(opts, family), sink)
+    end
+  end
+
+  defp ensure_absent(opts, family, sink) do
+    if user_exists?(opts.name, sink) do
+      run_commands(build_commands(opts, family), sink)
+    else
+      {:ok, Result.ok(output: "User '#{opts.name}' already absent")}
+    end
+  end
+
+  defp user_exists?(name, sink) do
+    case CommandRunner.run(
+           cmd: "id",
+           args: [name],
+           stdout_sink: sink,
+           stderr_sink: sink
+         ) do
+      {:ok, %{exit_code: 0}} -> true
+      _ -> false
+    end
+  end
+
+  defp run_commands(commands, sink) do
     Enum.reduce_while(commands, nil, fn {cmd, args}, _acc ->
       case CommandRunner.run(cmd: cmd, args: args, stdout_sink: sink, stderr_sink: sink) do
         {:ok, %{status: :ok}} = result -> {:cont, result}

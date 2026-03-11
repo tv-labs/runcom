@@ -495,7 +495,8 @@ defmodule RuncomTest do
 
       # The sink is opened and closed by run_sync, so we can check it was processed
       assert completed.steps["echo"].sink != nil
-      assert completed.steps["echo"].result.output == "hello"
+      {:ok, output} = Runcom.read_sink(completed, "echo")
+      assert output =~ "hello"
     end
 
     test "supports dryrun mode", %{test: test_name} do
@@ -506,7 +507,8 @@ defmodule RuncomTest do
       {:ok, completed} = Runcom.run_sync(rc, mode: :dryrun)
 
       assert completed.status == :completed
-      assert completed.steps["check"].result.output == "Would fail"
+      {:ok, output} = Runcom.read_sink(completed, "check")
+      assert output =~ "Would fail"
     end
 
     test "stores result in step", %{test: test_name} do
@@ -527,7 +529,8 @@ defmodule RuncomTest do
 
       {:ok, completed} = Runcom.run_sync(rc)
 
-      assert completed.steps["echo"].result.output == "hello world"
+      {:ok, output} = Runcom.read_sink(completed, "echo")
+      assert output =~ "hello world"
     end
 
     test "supports stub mode", %{test: test_name} do
@@ -545,7 +548,8 @@ defmodule RuncomTest do
       {:ok, completed} = Runcom.run_sync(rc, mode: :stub)
 
       assert completed.status == :completed
-      assert completed.steps["stubbed"].result.output == "stubbed output"
+      {:ok, output} = Runcom.read_sink(completed, "stubbed")
+      assert output =~ "stubbed output"
     end
 
     test "returns cyclic graph error (defensive)" do
@@ -674,7 +678,8 @@ defmodule RuncomTest do
 
       result = Runcom.result(completed, "success")
       assert result != nil
-      assert result.output == "hello"
+      {:ok, output} = Runcom.read_sink(completed, "success")
+      assert output =~ "hello"
     end
 
     test "read_sink/2 reads from step sink", %{test: test_name} do

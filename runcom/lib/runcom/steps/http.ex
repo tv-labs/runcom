@@ -63,18 +63,17 @@ defmodule Runcom.Steps.Http do
     req_opts = if req.body, do: Keyword.put(req_opts, :body, req.body), else: req_opts
 
     case Req.request(req_opts) do
-      {:ok, %Req.Response{status: status, body: body}} ->
+      {:ok, %Req.Response{status: status, headers: headers, body: body}} ->
         completed_at = DateTime.utc_now()
         duration_ms = DateTime.diff(completed_at, started_at, :millisecond)
 
-        body_str = if is_binary(body), do: body, else: inspect(body)
+        output = format_response(req.method, req.url, status, headers, body)
 
         case check_status(status, opts[:status_code]) do
           :ok ->
             {:ok,
              Result.ok(
-               output: body_str,
-               exit_code: 0,
+               output: output,
                started_at: started_at,
                completed_at: completed_at,
                duration_ms: duration_ms
@@ -84,7 +83,7 @@ defmodule Runcom.Steps.Http do
             {:ok,
              Result.error(
                error: msg,
-               output: body_str,
+               output: output,
                exit_code: 1,
                started_at: started_at,
                completed_at: completed_at,
@@ -132,5 +131,20 @@ defmodule Runcom.Steps.Http do
     if status in expected,
       do: :ok,
       else: {:error, "Unexpected status #{status} (expected one of #{inspect(expected)})"}
+  end
+
+  defp format_response(method, url, status, headers, body) do
+    method_str = method |> to_string() |> String.upcase()
+    body_str = if is_binary(body), do: body, else: inspect(body)
+
+    header_lines =
+      Enum.map_join(headers, "\n", fn {name, values} ->
+        Enum.map_join(List.wrap(values), "\n", fn v -> "#{name}: #{v}" end)
+      end)
+
+    lines = ["#{method_str} #{url}", "HTTP #{status}", header_lines]
+    lines = if body_str != "", do: lines ++ ["", body_str], else: lines
+
+    Enum.join(lines, "\n")
   end
 end

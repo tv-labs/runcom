@@ -7,16 +7,30 @@ defmodule RuncomEcto.Migrations do
 
   ## Usage
 
-      defmodule MyApp.Repo.Migrations.AddRuncom do
+  Always pin to an explicit `:version` so that upgrading RuncomEcto doesn't
+  retroactively change an existing migration. When a new version is released,
+  create a separate migration for it.
+
+      # First migration
+      defmodule MyApp.Repo.Migrations.AddRuncomV1 do
         use Ecto.Migration
 
         def up, do: RuncomEcto.Migrations.up(version: 1)
         def down, do: RuncomEcto.Migrations.down(version: 1)
       end
 
+      # When V2 is released, add a new migration
+      defmodule MyApp.Repo.Migrations.AddRuncomV2 do
+        use Ecto.Migration
+
+        def up, do: RuncomEcto.Migrations.up(version: 2)
+        def down, do: RuncomEcto.Migrations.down(version: 2)
+      end
+
   ## Options
 
-    * `:version` - the target migration version (default: `latest_version/0`)
+    * `:version` - (**required in practice**) the target migration version.
+      Defaults to `latest_version/0`, but you should always specify it explicitly.
     * `:prefix` - the database schema prefix (default: `"public"`)
   """
 

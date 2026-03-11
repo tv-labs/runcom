@@ -16,7 +16,7 @@ defmodule Runcom.Sink.Null do
       Sink.stderr(sink)  # {:ok, ""}
   """
 
-  defstruct []
+  defstruct secrets: []
 
   @doc """
   Creates a new null sink.

@@ -1,10 +1,5 @@
 defmodule RuncomWeb.Live.DispatchLive do
-  @moduledoc """
-  Dispatch page for configuring and sending runbook executions to agents.
-
-  Allows selecting a runbook (with DAG preview), targeting specific nodes,
-  overriding variables, and injecting secrets before dispatching.
-  """
+  @moduledoc false
 
   use Phoenix.LiveView
 

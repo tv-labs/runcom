@@ -1,11 +1,5 @@
 defmodule RuncomWeb.Live.DispatchShowLive do
-  @moduledoc """
-  Dispatch detail page showing per-node result cards.
-
-  Displays the overall dispatch status and a card for each target node.
-  Cards link to the full result detail page when a result exists.
-  Subscribes to PubSub topics for live updates.
-  """
+  @moduledoc false
 
   use Phoenix.LiveView
 

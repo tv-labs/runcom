@@ -91,10 +91,7 @@ defmodule RuncomWeb.Live.ResultDetailLiveIntegrationTest do
     test "toggling a step shows its details", %{conn: conn, result: result} do
       {:ok, view, _html} = live(conn, "/dashboard/result/#{result.id}")
 
-      html =
-        view
-        |> element(~s{button[phx-value-step-id="download"]})
-        |> render_click()
+      html = render_patch(view, "/dashboard/result/#{result.id}?tab=steps&steps=download")
 
       assert html =~ "fetched 10MB" or html =~ "Output" or html =~ "No output"
     end
@@ -103,15 +100,11 @@ defmodule RuncomWeb.Live.ResultDetailLiveIntegrationTest do
       {:ok, view, _html} = live(conn, "/dashboard/result/#{result.id}")
 
       # Expand download
-      view
-      |> element(~s{button[phx-value-step-id="download"]})
-      |> render_click()
+      render_patch(view, "/dashboard/result/#{result.id}?tab=steps&steps=download")
 
       # Expand install — download should remain expanded
       html =
-        view
-        |> element(~s{button[phx-value-step-id="install"]})
-        |> render_click()
+        render_patch(view, "/dashboard/result/#{result.id}?tab=steps&steps=download,install")
 
       # Both chevrons should be rotated
       assert html =~ "rotate-90"
@@ -123,14 +116,11 @@ defmodule RuncomWeb.Live.ResultDetailLiveIntegrationTest do
       {:ok, view, _html} = live(conn, "/dashboard/result/#{result.id}")
 
       # Expand both
-      view |> element(~s{button[phx-value-step-id="download"]}) |> render_click()
-      view |> element(~s{button[phx-value-step-id="install"]}) |> render_click()
+      render_patch(view, "/dashboard/result/#{result.id}?tab=steps&steps=download,install")
 
       # Collapse download
       html =
-        view
-        |> element(~s{button[phx-value-step-id="download"]})
-        |> render_click()
+        render_patch(view, "/dashboard/result/#{result.id}?tab=steps&steps=install")
 
       # Only install should remain expanded
       assert length(Regex.scan(~r/rotate-90/, html)) == 1
@@ -221,7 +211,7 @@ defmodule RuncomWeb.Live.ResultDetailLiveIntegrationTest do
     test "switches to markdown tab", %{conn: conn, result: result} do
       {:ok, view, _html} = live(conn, "/dashboard/result/#{result.id}")
 
-      html = render_click(view, "set_output_tab", %{"tab" => "markdown"})
+      html = render_patch(view, "/dashboard/result/#{result.id}?tab=markdown")
 
       # Markdown tab content shown
       assert html =~ "markdown" or html =~ "No markdown output"

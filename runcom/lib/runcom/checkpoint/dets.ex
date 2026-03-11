@@ -288,7 +288,9 @@ defmodule Runcom.Checkpoint.DETS do
 
     merged_steps =
       Map.merge(fresh.steps, checkpointed_steps, fn _name, fresh_step, cp_step ->
-        if cp_step.result, do: %{fresh_step | result: cp_step.result}, else: fresh_step
+        if cp_step.result,
+          do: %{fresh_step | result: cp_step.result, sink: cp_step.sink},
+          else: fresh_step
       end)
 
     %{

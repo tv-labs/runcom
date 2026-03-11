@@ -56,14 +56,18 @@ defmodule Runcom.Formatter.Asciinema do
 
   @behaviour Runcom.Formatter
 
+  alias Runcom.Formatter.AsciinemaRenderer
+  alias Runcom.Formatter.Helpers
   alias Runcom.Redactor
   alias Runcom.Sink
+
+  require Logger
 
   @default_cols 120
   @default_rows 40
   @chars_per_second 50_000
   @chunk_delay 0.001
-  @max_step_duration 0.5
+  @min_step_duration 0.05
 
   @impl true
   @spec format(Runcom.t()) :: String.t()
@@ -202,7 +206,19 @@ defmodule Runcom.Formatter.Asciinema do
         events =
           stream_step_events(step, status, offset, secrets, chars_per_second, step_duration)
 
-        {events, offset + step_duration}
+        halt_wait = Helpers.halt_wait_ms(rc, step_name)
+
+        {halt_events, halt_duration} =
+          if halt_wait do
+            scaled = halt_wait / 1000.0 |> max(@min_step_duration)
+            end_time = offset + step_duration
+            msg = "⏸ halted · resumed after #{Helpers.format_duration_ms(halt_wait)}\r\n"
+            {[[end_time, "o", msg]], scaled}
+          else
+            {[], 0.0}
+          end
+
+        {Stream.concat(events, halt_events), offset + step_duration + halt_duration}
       else
         {[], offset}
       end
@@ -223,7 +239,7 @@ defmodule Runcom.Formatter.Asciinema do
           0.1
       end
 
-    min(raw, @max_step_duration)
+    max(raw, @min_step_duration)
   end
 
   defp stream_step_events(step, status, start_time, secrets, chars_per_second, step_duration) do
@@ -240,167 +256,92 @@ defmodule Runcom.Formatter.Asciinema do
   end
 
   defp stream_step_output(step, start_time, end_time, secrets, chars_per_second) do
-    command = extract_command(step)
-    step_duration = end_time - start_time
+    %{command: command, output: output} = render_step(step, secrets)
 
     redacted_command = if command, do: Redactor.redact(command, secrets), else: nil
 
     # Calculate prompt timing
     prompt_duration =
       if redacted_command do
-        String.length("$ #{redacted_command}\r\n") / chars_per_second
+        prompt = "$ " <> normalize_line_endings(redacted_command) <> "\r\n"
+        String.length(prompt) / chars_per_second
       else
         0.0
       end
 
-    content_start = start_time + prompt_duration
-    content_duration = max(0.0, step_duration - prompt_duration - 0.01)
+    content_start = min(start_time + prompt_duration, end_time)
+    content_duration = max(0.0, end_time - content_start - 0.01)
 
     # Build prompt event stream
     prompt_stream =
       if redacted_command do
-        [[start_time, "o", "$ #{redacted_command}\r\n"]]
+        prompt = "$ " <> normalize_line_endings(redacted_command) <> "\r\n"
+        [[start_time, "o", prompt]]
       else
         []
       end
 
     # Build content stream with timing distributed over remaining duration
-    content_stream = stream_output_chunks(step, content_start, content_duration, secrets)
+    content_stream =
+      cond do
+        step.sink ->
+          stream_sink_chunks(step.sink, content_start, content_duration)
+
+        is_binary(output) and output != "" ->
+          [[content_start, "o", ensure_trailing_newline(normalize_line_endings(output))]]
+
+        true ->
+          []
+      end
 
     Stream.concat([prompt_stream, content_stream])
   end
 
-  defp extract_command(%{name: name, module: module, opts: opts}) do
-    case module do
-      Runcom.Steps.Bash ->
-        extract_bash_command(opts) || name
+  defp render_step(%{module: module, opts: opts} = step, secrets) do
+    context = %{
+      result: step.result,
+      status: step.result && step.result.status,
+      secrets: secrets
+    }
 
-      Runcom.Steps.Command ->
-        extract_system_command(opts) || name
-
-      module ->
-        module.__name__()
-    end
-  end
-
-  defp extract_bash_command(opts) do
-    script =
-      cond do
-        is_binary(opts[:script]) ->
-          String.trim(opts[:script])
-
-        is_function(opts[:script]) ->
-          extract_fn_script(opts[:script])
-
-        is_binary(opts[:file]) ->
-          "bash #{opts[:file]}"
-
-        is_binary(opts[:definition]) ->
-          opts[:definition]
-
-        true ->
-          nil
-      end
-
-    truncate_command(script)
-  end
-
-  defp truncate_command(nil), do: nil
-
-  defp truncate_command(script) do
-    lines =
-      script
-      |> String.split("\n")
-      |> Enum.map(&String.trim/1)
-      |> Enum.reject(&(&1 == ""))
-
-    case lines do
-      [single] -> single
-      [first | _] -> "#{first} ..."
-      [] -> nil
-    end
-  end
-
-  defp extract_fn_script(script_fn) do
-    rc = %Runcom{id: "cast", assigns: %{}}
-
-    case script_fn.(rc) do
-      s when is_binary(s) -> String.trim(s)
-      _ -> nil
-    end
+    step_struct = struct(module, Helpers.atomize_keys(opts))
+    AsciinemaRenderer.render(step_struct, context)
   rescue
-    _ -> nil
+    e ->
+      Logger.warning(
+        "Asciinema render_step failed for #{inspect(module)}: #{Exception.message(e)}"
+      )
+
+      output =
+        case step.result do
+          %{output: o} when is_binary(o) and o != "" -> o
+          _ -> nil
+        end
+
+      %{command: step.name, output: output}
   end
 
-  defp extract_system_command(opts) do
-    cmd = Map.get(opts, :cmd)
-    args = Map.get(opts, :args, [])
-
-    cond do
-      cmd && args != [] -> "#{cmd} #{Enum.join(args, " ")}"
-      cmd -> to_string(cmd)
-      true -> nil
-    end
-  end
-
-  defp stream_output_chunks(%{sink: nil} = step, content_start, content_duration, secrets) do
-    # Fall back to result fields if no sink
-    stream_fallback_output(step, content_start, content_duration, secrets)
-  end
-
-  defp stream_output_chunks(%{sink: sink} = step, content_start, content_duration, secrets) do
+  defp stream_sink_chunks(sink, content_start, content_duration) do
     chunk_stream = Sink.stream_chunks(sink)
-
-    # Count chunks to calculate time per chunk (peek the stream)
-    # Since we can't know count without consuming, use a reasonable default delay
     chunk_delay = min(0.05, content_duration / 10)
 
     chunk_stream
     |> Stream.with_index()
     |> Stream.map(fn {{_tag, data}, index} ->
-      redacted = Redactor.redact(data, secrets)
-      output = normalize_line_endings(redacted)
+      output = normalize_line_endings(data)
       time = content_start + index * chunk_delay
       [time, "o", output]
     end)
-  rescue
-    # If streaming fails, fall back to result fields
-    _ -> stream_fallback_output(step, content_start, content_duration, secrets)
-  end
-
-  defp stream_fallback_output(step, content_start, content_duration, secrets) do
-    result = step.result
-    stdout = if result, do: result.stdout, else: nil
-    stderr = if result, do: result.stderr, else: nil
-
-    stdout_lines = if stdout && stdout != "", do: split_to_lines(stdout), else: []
-    stderr_lines = if stderr && stderr != "", do: split_to_lines(stderr), else: []
-
-    all_lines = stdout_lines ++ stderr_lines
-    line_count = length(all_lines)
-    line_delay = if line_count > 0, do: content_duration / line_count, else: 0.0
-
-    all_lines
-    |> Stream.with_index()
-    |> Stream.map(fn {line, index} ->
-      redacted = Redactor.redact(line, secrets)
-      output = normalize_line_endings(redacted)
-      time = content_start + index * line_delay
-      [time, "o", output]
-    end)
-  end
-
-  defp split_to_lines(content) do
-    content
-    |> String.trim_trailing()
-    |> String.split("\n")
-    |> Enum.map(&(&1 <> "\n"))
   end
 
   defp normalize_line_endings(text) do
     text
     |> String.replace("\r\n", "\n")
     |> String.replace("\n", "\r\n")
+  end
+
+  defp ensure_trailing_newline(text) do
+    if String.ends_with?(text, "\r\n"), do: text, else: text <> "\r\n"
   end
 
   defp stream_exit_event(rc) do

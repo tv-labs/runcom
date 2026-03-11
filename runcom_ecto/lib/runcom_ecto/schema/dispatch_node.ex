@@ -1,4 +1,12 @@
 defmodule RuncomEcto.Schema.DispatchNode do
+  @moduledoc """
+  Ecto schema for a single node within a dispatch.
+
+  Each row tracks the execution status of one target node. Step progress
+  counters are updated as the agent executes steps. The optional `:result_id`
+  links to the full `RuncomEcto.Schema.Result` once execution completes.
+  """
+
   use Ecto.Schema
   import Ecto.Changeset
 

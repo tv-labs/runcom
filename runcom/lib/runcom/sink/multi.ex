@@ -11,7 +11,7 @@ defmodule Runcom.Sink.Multi do
       ])
   """
 
-  defstruct sinks: []
+  defstruct sinks: [], secrets: []
 
   @type t :: %__MODULE__{sinks: [Runcom.Sink.t()]}
 
@@ -29,8 +29,13 @@ defimpl Runcom.Sink, for: Runcom.Sink.Multi do
 
   require Logger
 
-  def open(%{sinks: sinks} = multi) do
-    %{multi | sinks: Enum.map(sinks, &Sink.open/1)}
+  def open(%{sinks: sinks, secrets: secrets} = multi) do
+    sinks =
+      sinks
+      |> Enum.map(fn sink -> %{sink | secrets: secrets} end)
+      |> Enum.map(&Sink.open/1)
+
+    %{multi | sinks: sinks}
   end
 
   def write(%{sinks: []} = multi, _data), do: multi

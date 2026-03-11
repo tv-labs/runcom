@@ -78,6 +78,16 @@ defmodule Runcom.StepTest do
       %StepNode{name: name, module: module, opts: opts}
     end
 
+    defp make_sink(label) do
+      path =
+        Path.join(
+          System.tmp_dir!(),
+          "runcom_test_#{label}_#{System.unique_integer([:positive])}.dets"
+        )
+
+      Runcom.Sink.DETS.new(path: path)
+    end
+
     test "emits all steps including those without results" do
       steps = %{
         "ok_step" => %{step_node("ok_step", TestStep) | result: Result.ok(order: 1, exit_code: 0)},
@@ -117,6 +127,11 @@ defmodule Runcom.StepTest do
       now = DateTime.utc_now()
       later = DateTime.add(now, 5, :second)
 
+      sink = make_sink("fields_test")
+      sink = Runcom.Sink.open(sink)
+      Runcom.Sink.write(sink, {:stdout, "hello"})
+      sink = Runcom.Sink.close(sink)
+
       steps = %{
         "full" => %{
           step_node("full", TestStep)
@@ -127,9 +142,9 @@ defmodule Runcom.StepTest do
                 duration_ms: 5000,
                 attempts: 2,
                 started_at: now,
-                completed_at: later,
-                output: "hello"
-              )
+                completed_at: later
+              ),
+            sink: sink
         }
       }
 
@@ -145,21 +160,22 @@ defmodule Runcom.StepTest do
       assert result.error == nil
     end
 
-    test "falls back to stdout when output is nil" do
+    test "output is read from sink" do
+      sink = make_sink("sink_output_test")
+      sink = Runcom.Sink.open(sink)
+      Runcom.Sink.write(sink, {:stdout, "from sink"})
+      sink = Runcom.Sink.close(sink)
+
       steps = %{
-        "stdout_only" => %{
-          step_node("stdout_only", TestStep)
-          | result:
-              Result.ok(
-                order: 1,
-                output: nil,
-                stdout: "from stdout"
-              )
+        "with_sink" => %{
+          step_node("with_sink", TestStep)
+          | result: Result.ok(order: 1),
+            sink: sink
         }
       }
 
       [result] = Runcom.Step.serialize(build_runbook(:completed, steps))
-      assert result.output == "from stdout"
+      assert result.output == "from sink"
     end
 
     test "meta correctly captures assert, post, and retry" do

@@ -33,7 +33,8 @@ defmodule Runcom.Steps.BashTest do
       {:ok, result} = Bash.run(nil, %{file: script, sink: sink})
 
       assert result.status == :ok
-      assert result.stdout =~ "from file"
+      {:ok, stdout} = Runcom.Sink.stdout(sink)
+      assert stdout =~ "from file"
     end
 
     test "passes arguments to script", %{tmp_dir: tmp_dir, sink: sink} do
@@ -41,10 +42,11 @@ defmodule Runcom.Steps.BashTest do
       File.write!(script, "#!/bin/bash\necho \"arg1=$1 arg2=$2\"")
       File.chmod!(script, 0o755)
 
-      {:ok, result} = Bash.run(nil, %{file: script, args: ["hello", "world"], sink: sink})
+      {:ok, _result} = Bash.run(nil, %{file: script, args: ["hello", "world"], sink: sink})
 
-      assert result.stdout =~ "arg1=hello"
-      assert result.stdout =~ "arg2=world"
+      {:ok, stdout} = Runcom.Sink.stdout(sink)
+      assert stdout =~ "arg1=hello"
+      assert stdout =~ "arg2=world"
     end
 
     test "passes environment variables to script", %{tmp_dir: tmp_dir, sink: sink} do
@@ -52,9 +54,10 @@ defmodule Runcom.Steps.BashTest do
       File.write!(script, "#!/bin/bash\necho \"MY_VAR=$MY_VAR\"")
       File.chmod!(script, 0o755)
 
-      {:ok, result} = Bash.run(nil, %{file: script, env: [{"MY_VAR", "test_value"}], sink: sink})
+      {:ok, _result} = Bash.run(nil, %{file: script, env: [{"MY_VAR", "test_value"}], sink: sink})
 
-      assert result.stdout =~ "MY_VAR=test_value"
+      {:ok, stdout} = Runcom.Sink.stdout(sink)
+      assert stdout =~ "MY_VAR=test_value"
     end
 
     test "returns error status on non-zero exit", %{tmp_dir: tmp_dir, sink: sink} do
@@ -76,33 +79,38 @@ defmodule Runcom.Steps.BashTest do
   end
 
   describe "run/2 with script mode" do
-    test "executes inline script via Bash interpreter" do
-      {:ok, result} = Bash.run(nil, %{script: "echo hello"})
+    @describetag :step_sink
+
+    test "executes inline script via Bash interpreter", %{sink: sink} do
+      {:ok, result} = Bash.run(nil, %{script: "echo hello", sink: sink})
 
       assert result.status == :ok
-      assert result.output == "hello"
       assert result.exit_code == 0
+      {:ok, stdout} = Runcom.Sink.stdout(sink)
+      assert String.trim(stdout) == "hello"
     end
 
-    test "captures multi-line script output" do
-      {:ok, result} = Bash.run(nil, %{script: "echo line1\necho line2"})
+    test "captures multi-line script output", %{sink: sink} do
+      {:ok, result} = Bash.run(nil, %{script: "echo line1\necho line2", sink: sink})
 
       assert result.status == :ok
-      assert result.output == "line1\nline2"
+      {:ok, stdout} = Runcom.Sink.stdout(sink)
+      assert String.trim(stdout) == "line1\nline2"
     end
 
-    test "returns error for failed script" do
-      {:ok, result} = Bash.run(nil, %{script: "exit 1"})
+    test "returns error for failed script", %{sink: sink} do
+      {:ok, result} = Bash.run(nil, %{script: "exit 1", sink: sink})
 
       assert result.status == :error
       assert result.exit_code == 1
     end
 
-    test "runs with interpolated script values" do
-      {:ok, result} = Bash.run(nil, %{script: "echo hello world"})
+    test "runs with interpolated script values", %{sink: sink} do
+      {:ok, result} = Bash.run(nil, %{script: "echo hello world", sink: sink})
 
       assert result.status == :ok
-      assert result.output == "hello world"
+      {:ok, stdout} = Runcom.Sink.stdout(sink)
+      assert String.trim(stdout) == "hello world"
     end
   end
 

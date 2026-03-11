@@ -19,7 +19,7 @@ defmodule Runcom.Sink.DETS do
       {:ok, "hello error world"} = Runcom.Sink.read(sink)
   """
 
-  defstruct path: nil, table: nil
+  defstruct path: nil, table: nil, secrets: []
 
   @doc """
   Create a new DETS sink.
@@ -46,14 +46,16 @@ defimpl Runcom.Sink, for: Runcom.Sink.DETS do
 
   def write(%DETS{table: nil} = sink, _data), do: sink
 
-  def write(%DETS{table: table} = sink, {:stdout, data}) do
+  def write(%DETS{table: table, secrets: secrets} = sink, {:stdout, data}) do
+    data = Runcom.Redactor.redact(data, secrets)
     counter = update_counter(table)
     :dets.insert(table, {{:chunk, counter}, {:stdout, data}})
     :dets.sync(table)
     sink
   end
 
-  def write(%DETS{table: table} = sink, {:stderr, data}) do
+  def write(%DETS{table: table, secrets: secrets} = sink, {:stderr, data}) do
+    data = Runcom.Redactor.redact(data, secrets)
     counter = update_counter(table)
     :dets.insert(table, {{:chunk, counter}, {:stderr, data}})
     :dets.sync(table)
@@ -64,7 +66,18 @@ defimpl Runcom.Sink, for: Runcom.Sink.DETS do
     write(sink, {:stdout, data})
   end
 
-  def read(%DETS{table: nil}), do: {:ok, ""}
+  def read(%DETS{table: nil} = sink) do
+    with_table(sink, fn table ->
+      chunks = get_chunks(table)
+
+      output =
+        chunks
+        |> Enum.map(&elem(&1, 1))
+        |> IO.iodata_to_binary()
+
+      {:ok, output}
+    end)
+  end
 
   def read(%DETS{table: table}) do
     chunks = get_chunks(table)
@@ -77,7 +90,19 @@ defimpl Runcom.Sink, for: Runcom.Sink.DETS do
     {:ok, output}
   end
 
-  def stdout(%DETS{table: nil}), do: {:ok, ""}
+  def stdout(%DETS{table: nil} = sink) do
+    with_table(sink, fn table ->
+      chunks = get_chunks(table)
+
+      output =
+        chunks
+        |> Enum.filter(&match?({:stdout, _}, &1))
+        |> Enum.map(&elem(&1, 1))
+        |> IO.iodata_to_binary()
+
+      {:ok, output}
+    end)
+  end
 
   def stdout(%DETS{table: table}) do
     chunks = get_chunks(table)
@@ -91,7 +116,19 @@ defimpl Runcom.Sink, for: Runcom.Sink.DETS do
     {:ok, output}
   end
 
-  def stderr(%DETS{table: nil}), do: {:ok, ""}
+  def stderr(%DETS{table: nil} = sink) do
+    with_table(sink, fn table ->
+      chunks = get_chunks(table)
+
+      output =
+        chunks
+        |> Enum.filter(&match?({:stderr, _}, &1))
+        |> Enum.map(&elem(&1, 1))
+        |> IO.iodata_to_binary()
+
+      {:ok, output}
+    end)
+  end
 
   def stderr(%DETS{table: table}) do
     chunks = get_chunks(table)
@@ -139,7 +176,15 @@ defimpl Runcom.Sink, for: Runcom.Sink.DETS do
     dir = Path.dirname(path)
     base = Path.basename(path, ".dets")
     sanitized = Runcom.Sink.Helpers.sanitize_step_name(step_name)
-    %{sink | path: Path.join(dir, "#{base}_#{sanitized}.dets"), table: nil}
+    # unique_integer avoids collisions when multiple steps share the same sanitized name
+    unique = System.unique_integer([:positive])
+
+    %{
+      sink
+      | path: Path.join(dir, "#{base}_#{sanitized}_#{unique}.dets"),
+        table: nil,
+        secrets: sink.secrets
+    }
   end
 
   defp update_counter(table) do
@@ -151,6 +196,24 @@ defimpl Runcom.Sink, for: Runcom.Sink.DETS do
       [] ->
         :dets.insert(table, {:counter, 1})
         1
+    end
+  end
+
+  defp with_table(%DETS{path: nil}, _fun), do: {:ok, ""}
+
+  defp with_table(%DETS{path: path}, fun) do
+    path_charlist = String.to_charlist(path)
+
+    case :dets.open_file(path_charlist, type: :set) do
+      {:ok, table} ->
+        try do
+          fun.(table)
+        after
+          :dets.close(table)
+        end
+
+      {:error, _reason} ->
+        {:ok, ""}
     end
   end
 

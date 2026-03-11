@@ -1,4 +1,5 @@
 defmodule RuncomWeb.Components.Autocomplete do
+  @moduledoc false
   use Phoenix.Component
 
   attr :id, :string, required: true

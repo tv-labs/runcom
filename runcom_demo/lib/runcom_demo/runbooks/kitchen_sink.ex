@@ -18,32 +18,32 @@ defmodule RuncomDemo.Runbooks.KitchenSink do
       |     |     |      |      |     ensure-deploy         |
       |     |     |      |      |        -user        write-config-block
       └─────┴─────┘      |      |           |               |
-             |            |      |           |               |
-          collect ────────┘      |           |               |
-             |                   |           |               |
-        auth_check               |           |               |
-             |                   |           |               |
+             |            |     |           |               |
+          collect ────────┘     |           |               |
+             |                  |           |               |
+        auth_check              |           |               |
+             |                  |           |               |
       ┌──────┴──────┐           |           |               |
-      |             |            |           |               |
+      |             |           |           |               |
    write_report   render_html   |           |               |
-      |             |            |           |               |
+      |             |           |           |               |
       └──────┬──────┘           |           |               |
-             |                   |           |               |
-         verify_files            |           |               |
-             |                   |           |               |
-         node_gate               |           |               |
-             |                   |           |               |
-         post_gate               |           |               |
-             |                   |           |               |
-         wait_marker             |           |               |
-             |                   |           |               |
-         brief_pause             |           |               |
-             |                   |           |               |
-         http-check              |           |               |
-             |                   |           |               |
-         cleanup                 |           |               |
-             |                   |           |               |
-           done                  |           |               |
+             |                  |           |               |
+         verify_files           |           |               |
+             |                  |           |               |
+         node_gate              |           |               |
+             |                  |           |               |
+         post_gate              |           |               |
+             |                  |           |               |
+         wait_marker            |           |               |
+             |                  |           |               |
+         brief_pause            |           |               |
+             |                  |           |               |
+         http-check             |           |               |
+             |                  |           |               |
+         cleanup                |           |               |
+             |                  |           |               |
+           done                 |           |               |
   ```
 
   ## Parameters
@@ -259,12 +259,6 @@ defmodule RuncomDemo.Runbooks.KitchenSink do
       method: :get,
       status_code: 200,
       timeout: 10_000
-    )
-    |> RCBash.add("cleanup",
-      script: fn rc -> "rm -rf '#{rc.assigns.work_dir}' && echo 'cleaned up'" end
-    )
-    |> Debug.add("done",
-      message: &"Kitchen sink #{&1.assigns.run_id} complete"
     )
   end
 

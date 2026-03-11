@@ -40,14 +40,53 @@ defmodule Runcom.Steps.Group do
   @impl true
   def run(rc, %{sink: sink} = opts) do
     family = rc.facts.distro_family
-    {cmd, args} = build_command(opts, family)
 
-    CommandRunner.run(
-      cmd: cmd,
-      args: args,
-      stdout_sink: sink,
-      stderr_sink: sink
-    )
+    case opts.state do
+      :present -> ensure_present(opts, family, sink)
+      :absent -> ensure_absent(opts, family, sink)
+    end
+  end
+
+  defp ensure_present(opts, family, sink) do
+    if group_exists?(opts.name, sink) do
+      {:ok, Result.ok(output: "Group '#{opts.name}' already exists")}
+    else
+      {cmd, args} = build_command(opts, family)
+
+      CommandRunner.run(
+        cmd: cmd,
+        args: args,
+        stdout_sink: sink,
+        stderr_sink: sink
+      )
+    end
+  end
+
+  defp ensure_absent(opts, family, sink) do
+    if group_exists?(opts.name, sink) do
+      {cmd, args} = build_command(opts, family)
+
+      CommandRunner.run(
+        cmd: cmd,
+        args: args,
+        stdout_sink: sink,
+        stderr_sink: sink
+      )
+    else
+      {:ok, Result.ok(output: "Group '#{opts.name}' already absent")}
+    end
+  end
+
+  defp group_exists?(name, sink) do
+    case CommandRunner.run(
+           cmd: "getent",
+           args: ["group", name],
+           stdout_sink: sink,
+           stderr_sink: sink
+         ) do
+      {:ok, %{exit_code: 0}} -> true
+      _ -> false
+    end
   end
 
   @impl true

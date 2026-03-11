@@ -198,11 +198,11 @@ defmodule Runcom.RunbookIntegrationTest do
       assert completed.facts.os in [:linux, :darwin, :freebsd, :windows]
       assert completed.facts.arch in [:x86_64, :aarch64, :arm, :riscv64]
 
-      os_result = Runcom.result(completed, "os")
-      assert os_result.output == to_string(completed.facts.os)
+      {:ok, os_output} = Runcom.read_sink(completed, "os")
+      assert String.trim(os_output) == to_string(completed.facts.os)
 
-      arch_result = Runcom.result(completed, "arch")
-      assert arch_result.output == to_string(completed.facts.arch)
+      {:ok, arch_output} = Runcom.read_sink(completed, "arch")
+      assert String.trim(arch_output) == to_string(completed.facts.arch)
 
       {:ok, stdout} = Runcom.read_stdout(completed, "echo_arch")
       assert stdout =~ to_string(completed.facts.arch)
@@ -325,10 +325,10 @@ defmodule Runcom.RunbookIntegrationTest do
       {:ok, completed} = Runcom.run_sync(rc, mode: :dryrun)
 
       assert completed.status == :completed
-      result = Runcom.result(completed, "install")
-      assert result.output =~ "apt-get"
-      assert result.output =~ "install"
-      assert result.output =~ "nginx"
+      {:ok, output} = Runcom.read_sink(completed, "install")
+      assert output =~ "apt-get"
+      assert output =~ "install"
+      assert output =~ "nginx"
     end
 
     test "Brew step in dryrun mode shows what would execute", %{test: test_name} do
@@ -341,14 +341,14 @@ defmodule Runcom.RunbookIntegrationTest do
 
       assert completed.status == :completed
 
-      result1 = Runcom.result(completed, "install")
-      assert result1.output =~ "brew"
-      assert result1.output =~ "install"
-      assert result1.output =~ "wget"
+      {:ok, output1} = Runcom.read_sink(completed, "install")
+      assert output1 =~ "brew"
+      assert output1 =~ "install"
+      assert output1 =~ "wget"
 
-      result2 = Runcom.result(completed, "install_cask")
-      assert result2.output =~ "--cask"
-      assert result2.output =~ "visual-studio-code"
+      {:ok, output2} = Runcom.read_sink(completed, "install_cask")
+      assert output2 =~ "--cask"
+      assert output2 =~ "visual-studio-code"
     end
 
     test "Systemd step in dryrun mode shows what would execute", %{test: test_name} do
@@ -359,10 +359,10 @@ defmodule Runcom.RunbookIntegrationTest do
       {:ok, completed} = Runcom.run_sync(rc, mode: :dryrun)
 
       assert completed.status == :completed
-      result = Runcom.result(completed, "restart")
-      assert result.output =~ "systemctl"
-      assert result.output =~ "restart"
-      assert result.output =~ "nginx"
+      {:ok, output} = Runcom.read_sink(completed, "restart")
+      assert output =~ "systemctl"
+      assert output =~ "restart"
+      assert output =~ "nginx"
     end
 
     test "Reboot step in dryrun mode shows what would execute", %{test: test_name} do
@@ -373,9 +373,10 @@ defmodule Runcom.RunbookIntegrationTest do
       {:ok, completed} = Runcom.run_sync(rc, mode: :dryrun)
 
       assert completed.status == :completed
+      {:ok, output} = Runcom.read_sink(completed, "reboot")
+      assert output =~ "reboot"
+      assert output =~ "60s"
       result = Runcom.result(completed, "reboot")
-      assert result.output =~ "reboot"
-      assert result.output =~ "60s"
       assert result.halt == true
     end
   end
@@ -429,6 +430,81 @@ defmodule Runcom.RunbookIntegrationTest do
 
       refute stdout1 =~ "step 2"
       refute stdout2 =~ "step 1"
+    end
+  end
+
+  describe "step retries" do
+    test "retries a failing step until it succeeds", %{tmp_dir: tmp_dir, test: test_name} do
+      counter = Path.join(tmp_dir, "attempt_counter.txt")
+
+      rc =
+        Runcom.new(to_string(test_name))
+        |> RC.Command.add("flaky",
+          cmd: "sh",
+          args: [
+            "-c",
+            "count=$(cat #{counter} 2>/dev/null || echo 0); count=$((count + 1)); echo $count > #{counter}; if [ $count -lt 3 ]; then echo fail >&2; exit 1; fi; echo success"
+          ],
+          retry: %{max: 5, delay: 10}
+        )
+
+      {:ok, completed} = Runcom.run_sync(rc)
+
+      assert completed.status == :completed
+      assert Runcom.ok?(completed, "flaky")
+
+      result = Runcom.result(completed, "flaky")
+      assert result.attempts == 3
+    end
+
+    test "exhausts retries and fails", %{tmp_dir: tmp_dir, test: test_name} do
+      counter = Path.join(tmp_dir, "attempt_counter.txt")
+
+      rc =
+        Runcom.new(to_string(test_name))
+        |> RC.Command.add("always_fail",
+          cmd: "sh",
+          args: [
+            "-c",
+            "count=$(cat #{counter} 2>/dev/null || echo 0); count=$((count + 1)); echo $count > #{counter}; exit 1"
+          ],
+          retry: %{max: 3, delay: 10}
+        )
+
+      {:error, completed} = Runcom.run_sync(rc)
+
+      assert completed.status == :failed
+      assert Runcom.error?(completed, "always_fail")
+
+      result = Runcom.result(completed, "always_fail")
+      assert result.attempts == 3
+
+      # Verify all 3 attempts actually ran
+      assert File.read!(counter) |> String.trim() == "3"
+    end
+
+    test "retry with downstream steps", %{tmp_dir: tmp_dir, test: test_name} do
+      counter = Path.join(tmp_dir, "attempt_counter.txt")
+
+      rc =
+        Runcom.new(to_string(test_name))
+        |> RC.Debug.add("setup", message: "ready")
+        |> RC.Command.add("flaky",
+          cmd: "sh",
+          args: [
+            "-c",
+            "count=$(cat #{counter} 2>/dev/null || echo 0); count=$((count + 1)); echo $count > #{counter}; if [ $count -lt 2 ]; then exit 1; fi; echo recovered"
+          ],
+          retry: %{max: 3, delay: 10}
+        )
+        |> RC.Debug.add("after", message: "completed")
+
+      {:ok, completed} = Runcom.run_sync(rc)
+
+      assert completed.status == :completed
+      assert Runcom.ok?(completed, "setup")
+      assert Runcom.ok?(completed, "flaky")
+      assert Runcom.ok?(completed, "after")
     end
   end
 

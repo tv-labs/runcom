@@ -1,24 +1,5 @@
 defmodule RuncomWeb.Live.DashboardLive do
-  @moduledoc """
-  Main dashboard LiveView with two view modes: "dispatch" and "node".
-
-  All filter state flows through URL params exclusively. Every user interaction
-  calls `push_patch`. `handle_params` is the single entry point that reads
-  params, sets assigns, and loads data. No `handle_event` directly mutates
-  filter assigns.
-
-  Uses LiveView streams with keyset pagination (cursor-based, not offset-based).
-
-  ## URL Shape
-
-      /dashboard?view=dispatch&status=failed&search=probe&nodes=agent-nyc-001,agent-lax-002
-
-  ## PubSub
-
-  On connection, subscribes to `"runcom:results"` and `"runcom:events"`.
-  Incoming `{:result, _}` messages are handled differently depending on the
-  current view mode.
-  """
+  @moduledoc false
 
   use Phoenix.LiveView
 

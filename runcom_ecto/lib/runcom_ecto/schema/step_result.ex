@@ -24,15 +24,14 @@ defmodule RuncomEcto.Schema.StepResult do
     field :exit_code, :integer
     field :duration_ms, :integer
     field :attempts, :integer, default: 1
-    field :started_at, :utc_datetime_usec
-    field :completed_at, :utc_datetime_usec
     field :output, CompressedBinary
     field :output_ref, :map
     field :error, :string
-    field :changed, :boolean
     field :opts, :map, default: %{}
     field :meta, :map, default: %{}
 
+    field :started_at, :utc_datetime_usec
+    field :completed_at, :utc_datetime_usec
     timestamps type: :utc_datetime_usec, updated_at: false
   end
 
@@ -54,7 +53,6 @@ defmodule RuncomEcto.Schema.StepResult do
       :output,
       :output_ref,
       :error,
-      :changed,
       :opts,
       :meta
     ])

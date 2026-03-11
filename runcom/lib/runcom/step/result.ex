@@ -12,8 +12,6 @@ defmodule Runcom.Step.Result do
     * `:completed_at` - UTC timestamp when step finished
     * `:duration_ms` - Execution time in milliseconds
     * `:attempts` - Number of execution attempts (including retries)
-    * `:stdout` - Captured stdout from command execution
-    * `:stderr` - Captured stderr from command execution
     * `:output` - Step output (may be transformed by `:post` option)
     * `:exit_code` - Process exit code (0 = success for commands)
     * `:error` - Error message or exception when status is `:error`
@@ -32,8 +30,6 @@ defmodule Runcom.Step.Result do
           completed_at: DateTime.t() | nil,
           duration_ms: non_neg_integer() | nil,
           attempts: pos_integer() | nil,
-          stdout: term(),
-          stderr: term(),
           output: term(),
           exit_code: integer() | nil,
           error: term(),
@@ -47,8 +43,6 @@ defmodule Runcom.Step.Result do
     :completed_at,
     :duration_ms,
     :attempts,
-    :stdout,
-    :stderr,
     :output,
     :exit_code,
     :error,
@@ -72,6 +66,7 @@ defmodule Runcom.Step.Result do
   def ok(fields \\ []) do
     fields
     |> Keyword.put(:status, :ok)
+    |> Keyword.put(:exit_code, 0)
     |> new()
   end
 

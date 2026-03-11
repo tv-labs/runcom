@@ -11,6 +11,28 @@ defmodule RuncomWeb.Router do
         runcom_builder "/builder"
         runcom_dashboard "/dashboard"
       end
+
+  ## Routes
+
+  `runcom_builder/2` mounts:
+
+    * `GET /path` — New runbook builder
+    * `GET /path/:id` — Edit existing runbook
+
+  `runcom_dashboard/2` mounts:
+
+    * `GET /path` — Results table with filters
+    * `GET /path/result/:id` — Result detail with DAG viewer
+    * `GET /path/dispatch` — Dispatch configuration page
+    * `GET /path/dispatch/:dispatch_id` — Dispatch detail with per-node results
+    * `GET /path/metrics` — Run rate, timing, and success rate charts
+
+  ## Dashboard Options
+
+    * `:node_search_component` — LiveComponent for node search (default: `RuncomWeb.Components.DefaultNodeSearch`)
+    * `:render_node_component` — Component for rendering node cards (default: `RuncomWeb.Components.DefaultNodeRender`)
+    * `:dispatcher` — Module implementing dispatch logic (e.g., `RuncomRmq.Server.Dispatcher`)
+    * `:pubsub` — PubSub server for real-time updates
   """
 
   @doc """

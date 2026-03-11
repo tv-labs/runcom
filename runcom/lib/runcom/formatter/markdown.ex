@@ -49,8 +49,11 @@ defmodule Runcom.Formatter.Markdown do
 
   @behaviour Runcom.Formatter
 
+  alias Runcom.Formatter.Helpers
+  alias Runcom.Formatter.MarkdownRenderer
   alias Runcom.Redactor
-  alias Runcom.Sink
+
+  require Logger
 
   @impl true
   @spec format(Runcom.t()) :: String.t()
@@ -84,7 +87,7 @@ defmodule Runcom.Formatter.Markdown do
       [format_header(rc) <> "\n"],
 
       # Summary section
-      [format_summary(rc, order, secrets)],
+      [format_summary(rc, order, secrets) <> "\n---\n"],
 
       # Variables section (may be empty)
       stream_variables(rc, secrets),
@@ -108,7 +111,9 @@ defmodule Runcom.Formatter.Markdown do
     |> Stream.map(fn {step_name, index} ->
       step = rc.steps[step_name]
       status = rc.step_status[step_name]
-      format_step(rc, step, status, index, total_steps, secrets) <> "\n"
+      halt_wait = Helpers.halt_wait_ms(rc, step_name)
+      separator = if index < total_steps, do: "\n---\n", else: ""
+      format_step(rc, step, status, index, total_steps, secrets, halt_wait) <> "\n" <> separator
     end)
   end
 
@@ -275,135 +280,78 @@ defmodule Runcom.Formatter.Markdown do
     """
   end
 
-  defp format_step(rc, step, status, index, total_steps, secrets) do
+  defp format_step(_rc, step, status, index, total_steps, secrets, halt_wait) do
     status_icon = step_status_icon(status)
+
+    header = "\n## Step: #{step.name} (#{index}/#{total_steps}) #{status_icon}\n\n"
+    body = render_step(step, status, secrets, halt_wait)
+
+    header <> body
+  end
+
+  defp render_step(%{module: module, opts: opts} = step, status, secrets, halt_wait) do
+    context = %{
+      result: step.result,
+      status: status,
+      secrets: secrets,
+      step_node: step,
+      halt_wait_ms: halt_wait
+    }
+
+    step_struct = struct(module, Helpers.atomize_keys(opts))
+    MarkdownRenderer.render(step_struct, context)
+  rescue
+    e ->
+      Logger.warning(
+        "Markdown render_step failed for #{inspect(module)}: #{Exception.message(e)}"
+      )
+
+      fallback_step_body(step, status, secrets)
+  end
+
+  defp fallback_step_body(step, status, secrets) do
     result = step.result
 
     meta = [
       "**Status:** #{status}",
-      "**Module:** #{inspect(step.module)}"
+      "**Module:** `#{inspect(step.module)}`"
     ]
 
     meta =
-      if result && result.duration_ms do
-        meta ++ ["**Duration:** #{result.duration_ms}ms"]
-      else
-        meta
+      if result && result.duration_ms,
+        do: meta ++ ["**Duration:** #{result.duration_ms}ms"],
+        else: meta
+
+    meta_section = Enum.join(meta, "\\\n") <> "\n"
+
+    output =
+      case result do
+        %{output: o} when is_binary(o) and o != "" ->
+          "\n### Output\n\n```\n#{String.trim(o)}\n```\n"
+
+        _ ->
+          nil
       end
 
-    meta =
-      if result && result.exit_code do
-        meta ++ ["**Exit code:** #{result.exit_code}"]
-      else
-        meta
+    error =
+      case result do
+        %{error: e} when is_binary(e) and e != "" ->
+          error_text = Redactor.redact(e, secrets)
+          "\n### Error\n\n```\n#{error_text}\n```\n"
+
+        _ ->
+          nil
       end
 
-    meta =
-      if result && result.attempts && result.attempts > 1 do
-        meta ++ ["**Attempts:** #{result.attempts}"]
-      else
-        meta
-      end
-
-    header =
-      "\n## Step: #{step.name} (#{index}/#{total_steps}) #{status_icon}\n\n" <>
-        Enum.join(meta, "\\\n") <> "\n"
-
-    output = format_step_output(rc, step, result, secrets)
-
-    if output do
-      header <> output
-    else
-      header
-    end
-  end
-
-  defp format_step_output(rc, step, result, secrets) do
-    # Try to read from sink first
-    stdout = read_step_stdout(rc, step)
-    stderr = read_step_stderr(rc, step)
-
-    # Fall back to result fields if sink is empty
-    stdout = if empty?(stdout), do: result && result.stdout, else: stdout
-    stderr = if empty?(stderr), do: result && result.stderr, else: stderr
-
-    # Redact secrets from output
-    stdout = Redactor.redact(stdout, secrets)
-    stderr = Redactor.redact(stderr, secrets)
-
-    stdout_section =
-      if not empty?(stdout) do
-        """
-
-        ### Output
-
-        ```
-        #{String.trim(to_string(stdout))}
-        ```
-        """
-      end
-
-    stderr_section =
-      if not empty?(stderr) do
-        """
-
-        ### Errors
-
-        ```
-        #{String.trim(to_string(stderr))}
-        ```
-        """
-      end
-
-    error_section =
-      if result && result.error && result.error != "" do
-        error_text = Redactor.redact(format_error(result.error), secrets)
-
-        """
-
-        ### Error
-
-        ```
-        #{error_text}
-        ```
-        """
-      end
-
-    [stdout_section, stderr_section, error_section]
+    [meta_section, output, error]
     |> Enum.reject(&is_nil/1)
-    |> case do
-      [] -> nil
-      sections -> Enum.join(sections, "")
-    end
-  end
-
-  defp read_step_stdout(_rc, %{sink: nil}), do: nil
-
-  defp read_step_stdout(_rc, %{sink: sink}) do
-    case Sink.stdout(sink) do
-      {:ok, content} -> content
-      _ -> nil
-    end
-  end
-
-  defp read_step_stderr(_rc, %{sink: nil}), do: nil
-
-  defp read_step_stderr(_rc, %{sink: sink}) do
-    case Sink.stderr(sink) do
-      {:ok, content} -> content
-      _ -> nil
-    end
+    |> Enum.join("")
   end
 
   defp format_error(error) when is_binary(error), do: error
   defp format_error(error) when is_exception(error), do: Exception.message(error)
   defp format_error(error) when is_atom(error), do: to_string(error)
   defp format_error(error), do: inspect(error)
-
-  defp empty?(nil), do: true
-  defp empty?(""), do: true
-  defp empty?(s) when is_binary(s), do: String.trim(s) == ""
-  defp empty?(_), do: false
 
   defp status_icon(:completed), do: "✓"
   defp status_icon(:failed), do: "✗"

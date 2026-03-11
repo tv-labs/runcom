@@ -432,16 +432,7 @@ defimpl RuncomWeb.StepRenderer, for: Runcom.Steps.Debug do
   end
 
   defp render_details(assigns) do
-    props =
-      case assigns.step.message do
-        msg when is_binary(msg) -> [%{label: "message", value: msg}]
-        _ -> []
-      end
-
-    assigns = Map.put(assigns, :props, props)
-
     ~H"""
-    <.detail_props props={@props} />
     <.framework_details framework_opts={@framework_opts} />
     """
   end
@@ -491,7 +482,7 @@ defimpl RuncomWeb.StepRenderer, for: Runcom.Steps.EExTemplate do
       []
       |> put_prop("dest", assigns.step.dest)
       |> put_prop("file", assigns.step.file)
-      |> put_template(assigns.step.template)
+      |> put_template(assigns.step.template, assigns.step.dest)
 
     assigns = Map.put(assigns, :props, props)
 
@@ -522,11 +513,6 @@ defimpl RuncomWeb.StepRenderer, for: Runcom.Steps.EExTemplate do
     do: acc ++ [%{label: label, value: value}]
 
   defp put_prop(acc, _, _), do: acc
-
-  defp put_template(acc, tmpl) when is_binary(tmpl),
-    do: acc ++ [%{label: "template", value: tmpl}]
-
-  defp put_template(acc, _), do: acc
 end
 
 defimpl RuncomWeb.StepRenderer, for: Runcom.Steps.File do
@@ -1083,7 +1069,7 @@ defimpl RuncomWeb.StepRenderer, for: Runcom.Steps.Lineinfile do
     props =
       []
       |> put_prop("path", assigns.step.path)
-      |> put_prop("line", assigns.step.line)
+      |> put_code("line", assigns.step.line, assigns.step.path)
       |> put_prop("state", to_str(assigns.step.state))
       |> put_prop("regexp", assigns.step.regexp)
       |> put_prop("insertafter", assigns.step.insertafter)
@@ -1163,7 +1149,7 @@ defimpl RuncomWeb.StepRenderer, for: Runcom.Steps.Blockinfile do
     props =
       []
       |> put_prop("path", assigns.step.path)
-      |> put_prop("block", assigns.step.block)
+      |> put_code("block", assigns.step.block, assigns.step.path)
       |> put_prop("state", to_str(assigns.step.state))
       |> put_prop("marker begin", assigns.step.marker_begin)
       |> put_prop("marker end", assigns.step.marker_end)
@@ -1549,7 +1535,7 @@ defimpl RuncomWeb.StepRenderer, for: Runcom.Steps.Http do
       []
       |> put_prop("method", assigns.step.method |> to_string() |> String.upcase())
       |> put_prop("url", assigns.step.url)
-      |> put_body(assigns.step.body)
+      |> put_body(assigns.step.body, assigns.step.headers)
       |> put_headers(assigns.step.headers)
       |> put_status(assigns.step.status_code)
       |> put_prop("timeout", format_ms(assigns.step.timeout))
@@ -1584,10 +1570,25 @@ defimpl RuncomWeb.StepRenderer, for: Runcom.Steps.Http do
 
   defp put_prop(acc, _, _), do: acc
 
-  defp put_body(acc, body) when is_binary(body) and body != "",
-    do: acc ++ [%{label: "body", value: body, type: :code, language: "json"}]
+  defp put_body(acc, body, headers) when is_binary(body) and body != "" do
+    body = Runcom.Formatter.Helpers.truncate_body(body)
+    language = content_type_language(headers)
+    acc ++ [%{label: "body", value: body, type: :code, language: language}]
+  end
 
-  defp put_body(acc, _), do: acc
+  defp put_body(acc, _, _), do: acc
+
+  defp content_type_language(headers) when is_list(headers) do
+    Enum.find_value(headers, fn
+      {k, v} when is_binary(k) and is_binary(v) ->
+        if String.downcase(k) == "content-type" and String.contains?(v, "json"), do: "json"
+
+      _ ->
+        nil
+    end)
+  end
+
+  defp content_type_language(_), do: nil
 
   defp put_headers(acc, headers) when is_list(headers) and headers != [] do
     formatted = Enum.map_join(headers, "\n", fn {k, v} -> "#{k}: #{v}" end)

@@ -33,7 +33,7 @@ defmodule Runcom.MixProject do
 
   defp deps do
     [
-      {:bash, "~> 0.3"},
+      {:bash, ">= 0.3.4"},
       {:ex_cmd, "~> 0.12"},
       {:req, "~> 0.5"},
       {:telemetry, "~> 1.0"},
@@ -92,6 +92,7 @@ defmodule Runcom.MixProject do
       extras: ["README.md"],
       source_ref: "v#{@version}",
       source_url: @source_url,
+      source_url_pattern: "#{@source_url}/blob/v#{@version}/runcom/%{path}#L%{line}",
       before_closing_body_tag: %{html: @mermaid_js},
       groups_for_modules: [
         Steps: ~r/^Runcom\.Steps?\.?/,

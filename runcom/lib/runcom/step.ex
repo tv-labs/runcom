@@ -82,6 +82,8 @@ defmodule Runcom.Step do
   ```
   """
 
+  require Logger
+
   alias Runcom.Step.Result
 
   @doc "Validate options before execution"
@@ -183,11 +185,11 @@ defmodule Runcom.Step do
           attempts: result && result.attempts,
           started_at: result && result.started_at,
           completed_at: result && result.completed_at,
-          output: result && (result.output || result.stdout),
+          output: read_step_output(step),
           output_ref: output_ref,
           output_remote: output_remote,
           error: result && format_error(result.error),
-          opts: sanitize_for_json(opts),
+          opts: sanitize_for_json(resolve_deferred(runbook, opts)),
           meta: %{
             has_assert: step.assert_fn != nil,
             has_post: step.post_fn != nil,
@@ -217,6 +219,15 @@ defmodule Runcom.Step do
 
   defp serialize_ref(refs) when is_list(refs), do: Enum.map(refs, &serialize_ref/1)
 
+  defp read_step_output(%{sink: sink}) when not is_nil(sink) do
+    case Runcom.Sink.read(sink) do
+      {:ok, output} when output != "" -> String.trim(output)
+      _ -> nil
+    end
+  end
+
+  defp read_step_output(_step), do: nil
+
   defp step_status(nil, %{status: status}) when status in [:failed, :completed], do: "skipped"
   defp step_status(nil, _runbook), do: "pending"
   defp step_status(%{status: status}, _runbook), do: to_string(status)
@@ -224,6 +235,28 @@ defmodule Runcom.Step do
   defp format_error(nil), do: nil
   defp format_error(error) when is_binary(error), do: error
   defp format_error(error), do: inspect(error)
+
+  defp resolve_deferred(rc, opts) when is_map(opts) do
+    Map.new(opts, fn {k, v} -> {k, resolve_deferred_value(rc, v)} end)
+  end
+
+  defp resolve_deferred_value(rc, value) when is_function(value, 1) do
+    value.(rc)
+  rescue
+    e ->
+      Logger.warning("Failed to resolve deferred value: #{Exception.message(e)}")
+      nil
+  end
+
+  defp resolve_deferred_value(rc, values) when is_list(values),
+    do: Enum.map(values, &resolve_deferred_value(rc, &1))
+
+  defp resolve_deferred_value(_rc, %{__struct__: _} = value), do: value
+
+  defp resolve_deferred_value(rc, values) when is_map(values),
+    do: Map.new(values, fn {k, v} -> {k, resolve_deferred_value(rc, v)} end)
+
+  defp resolve_deferred_value(_rc, value), do: value
 
   @doc """
   Converts an arbitrary Elixir term into a JSON-safe value.

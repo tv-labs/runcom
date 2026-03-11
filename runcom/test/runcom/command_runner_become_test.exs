@@ -35,7 +35,8 @@ defmodule Runcom.CommandRunnerBecomeTest do
         )
 
       assert result.exit_code == 0
-      assert result.stdout =~ "hello"
+      {:ok, stdout} = Runcom.Sink.stdout(stdout_sink)
+      assert stdout =~ "hello"
     end
 
     test "supports become_method: :su",
@@ -65,7 +66,8 @@ defmodule Runcom.CommandRunnerBecomeTest do
         )
 
       assert result.exit_code == 0
-      assert result.stdout =~ "direct"
+      {:ok, stdout} = Runcom.Sink.stdout(stdout_sink)
+      assert stdout =~ "direct"
     end
   end
 

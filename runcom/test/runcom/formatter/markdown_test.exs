@@ -81,7 +81,7 @@ defmodule Runcom.Formatter.MarkdownTest do
       assert markdown =~ "## Step: step1 (1/2) ✓"
       assert markdown =~ "## Step: step2 (2/2) ✓"
       assert markdown =~ "**Status:** ok"
-      assert markdown =~ "**Module:** Runcom.Steps.Debug"
+      assert markdown =~ "**Module:** `Runcom.Steps.Debug`"
     end
 
     test "formats failed step with error icon", %{test: test_name} do

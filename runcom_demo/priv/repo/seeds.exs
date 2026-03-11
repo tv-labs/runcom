@@ -464,11 +464,26 @@ results = [
   }
 ]
 
-IO.puts("Seeding execution results...")
+IO.puts("Seeding dispatches and execution results...")
 
-for attrs <- results do
-  {:ok, _} = Store.save_result(attrs)
-  IO.puts("  Created result: #{attrs.runbook_id} on #{attrs.node_id} (#{attrs.status})")
-end
+# Group results by runbook_id, create a dispatch per runbook, link results
+results
+|> Enum.group_by(& &1.runbook_id)
+|> Enum.each(fn {runbook_id, runbook_results} ->
+  {:ok, dispatch} =
+    Store.create_dispatch(%{
+      runbook_id: runbook_id,
+      status: "completed",
+      started_at: runbook_results |> Enum.map(& &1.started_at) |> Enum.min(DateTime),
+      completed_at: runbook_results |> Enum.map(&(&1[:completed_at] || &1.started_at)) |> Enum.max(DateTime)
+    })
+
+  IO.puts("  Created dispatch: #{runbook_id} (#{dispatch.id})")
+
+  for attrs <- runbook_results do
+    {:ok, _} = Store.save_result(Map.put(attrs, :dispatch_id, dispatch.id))
+    IO.puts("    Created result: #{attrs.runbook_id} on #{attrs.node_id} (#{attrs.status})")
+  end
+end)
 
 IO.puts("Seeding complete!")

@@ -1,4 +1,5 @@
 defmodule RuncomWeb.Components.DefaultNodeSearch do
+  @moduledoc false
   use Phoenix.LiveComponent
 
   import RuncomWeb.Components.Autocomplete

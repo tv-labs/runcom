@@ -311,6 +311,7 @@
     fitViewOptions={{ padding: 0.2 }}
     nodesDraggable={!readonly}
     nodesConnectable={!readonly}
+    nodesFocusable={false}
     elementsSelectable={true}
   >
     <AutoFit trigger={fitViewTrigger} />
@@ -433,6 +434,13 @@
                 </div>
               {/each}
             </div>
+          </div>
+        {/if}
+
+        {#if selectedNode.data.details_html?.length}
+          <div class="detail-section detail-rendered">
+            <!-- details_html is rendered server-side by StepRenderer via Phoenix.HTML.Safe and is trusted -->
+            {@html selectedNode.data.details_html}
           </div>
         {/if}
 
@@ -693,5 +701,25 @@
   }
   :global(.svelte-flow.dark) ~ .detail-panel .detail-substep-module {
     color: #6b7280;
+  }
+  .detail-rendered :global(div) {
+    font-size: 12px;
+    line-height: 1.5;
+  }
+  .detail-rendered :global(pre) {
+    font-size: 10px;
+    font-family: ui-monospace, 'SF Mono', monospace;
+    background: rgba(0,0,0,0.04);
+    padding: 4px 6px;
+    border-radius: 4px;
+    white-space: pre-wrap;
+    max-height: 120px;
+    overflow-y: auto;
+  }
+  :global(.svelte-flow.dark) ~ .detail-panel .detail-rendered :global(pre) {
+    background: rgba(255,255,255,0.06);
+  }
+  .detail-rendered :global(span) {
+    font-size: 11px;
   }
 </style>

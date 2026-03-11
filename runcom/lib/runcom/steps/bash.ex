@@ -38,48 +38,36 @@ defmodule Runcom.Steps.Bash do
     group(:runtime_env, exclusive: true)
   end
 
-  alias Runcom.CommandRunner
-
   @impl true
-  def run(_rc, %{file: file, sink: sink} = opts) do
-    args = Map.get(opts, :args, [])
-
-    CommandRunner.run(
-      cmd: "bash",
-      args: [file | args],
-      env: Map.get(opts, :env, []),
-      stdout_sink: sink,
-      stderr_sink: sink
-    )
-  end
-
-  def run(_rc, %{script: script} = opts) do
+  def run(_rc, opts) do
     sink = opts[:sink]
-    session_opts = Map.take(opts, ~w[env env_include env_exclude]a)
 
-    case Bash.run(script, session_opts) do
-      {status, result, _session} when status in [:ok, :error, :exit] ->
-        stdout = Bash.stdout(result) || ""
-        stderr = Bash.stderr(result) || ""
-        exit_code = Bash.exit_code(result)
+    session_opts =
+      opts
+      |> Map.take(~w[args env env_include env_exclude]a)
+      |> normalize_env()
+      |> Map.to_list()
+      |> Keyword.put(:stderr_into, fn data -> Runcom.Sink.write(sink, data) end)
+      |> Keyword.put(:stdout_into, fn data -> Runcom.Sink.write(sink, data) end)
 
-        if sink do
-          sink = if stdout != "", do: Runcom.Sink.write(sink, stdout), else: sink
-          if stderr != "", do: Runcom.Sink.write(sink, {:stderr, stderr})
-        end
+    {status, result, _session} = do_run(opts, session_opts)
+    exit_code = Bash.exit_code(result)
 
-        if exit_code == 0 do
-          {:ok, Result.ok(output: String.trim(stdout), exit_code: 0)}
-        else
-          {:ok,
-           Result.error(
-             output: String.trim(stdout),
-             error: String.trim(stderr),
-             exit_code: exit_code
-           )}
-        end
+    if status == :ok and exit_code == 0 do
+      {:ok, Result.ok()}
+    else
+      {:ok, Result.error(exit_code: exit_code)}
     end
   end
+
+  defp do_run(%{file: file}, opts), do: Bash.run_file(file, opts)
+  defp do_run(%{script: script}, opts), do: Bash.run(script, opts)
+
+  defp normalize_env(%{env: env} = opts) when is_list(env) do
+    %{opts | env: Map.new(env)}
+  end
+
+  defp normalize_env(opts), do: opts
 
   @impl true
   def dryrun(_rc, %{file: file}) do

@@ -99,6 +99,20 @@ defmodule Runcom.Sink.DETSTest do
       assert %DETS{table: nil} = closed
     end
 
+    test "read, stdout, stderr work on a closed sink", %{path: path} do
+      sink =
+        DETS.new(path: path)
+        |> Sink.open()
+
+      Sink.write(sink, {:stdout, "out\n"})
+      Sink.write(sink, {:stderr, "err\n"})
+      closed = Sink.close(sink)
+
+      assert {:ok, "out\nerr\n"} = Sink.read(closed)
+      assert {:ok, "out\n"} = Sink.stdout(closed)
+      assert {:ok, "err\n"} = Sink.stderr(closed)
+    end
+
     test "data persists after close and reopen", %{path: path} do
       sink =
         DETS.new(path: path)

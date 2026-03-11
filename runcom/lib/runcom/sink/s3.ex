@@ -39,7 +39,8 @@ defmodule Runcom.Sink.S3 do
             endpoint_url: nil,
             req_options: [],
             part_size: @default_part_size,
-            agent: nil
+            agent: nil,
+            secrets: []
 
   @type t :: %__MODULE__{
           bucket: String.t(),

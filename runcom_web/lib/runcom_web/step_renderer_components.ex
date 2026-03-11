@@ -23,7 +23,7 @@ defmodule RuncomWeb.StepRendererComponents do
     <div :if={@props != []} class="text-xs space-y-1">
       <div :for={prop <- @props}>
         <span class="font-semibold text-base-content/60 shrink-0">{prop.label}</span>
-        <div :if={prop[:type] == :code} class="mt-0.5 prose prose-sm max-w-none [&_pre]:!bg-base-300 [&_pre]:!p-1.5 [&_pre]:!m-0 [&_pre]:!rounded [&_code]:!text-xs [&_pre]:max-h-32 [&_pre]:overflow-y-auto">
+        <div :if={prop[:type] == :code} class="mt-0.5 prose prose-sm max-w-none [&_pre]:!p-1.5 [&_pre]:!m-0 [&_pre]:!rounded [&_code]:!text-xs [&_pre]:max-h-32 [&_pre]:overflow-y-auto">
           {Phoenix.HTML.raw(highlight_code(prop.value, prop[:language]))}
         </div>
         <div :if={prop[:type] != :code} class="flex gap-2">
@@ -41,6 +41,24 @@ defmodule RuncomWeb.StepRendererComponents do
     lang = language || "text"
     MDEx.to_html!("```#{lang}\n#{value}\n```")
   end
+
+  @doc """
+  Appends a code prop to the accumulator.
+  """
+  def put_code(acc, _label, nil, _path), do: acc
+
+  def put_code(acc, label, value, path) when is_binary(value),
+    do: acc ++ [%{label: label, value: value, type: :code, language: path}]
+
+  def put_code(acc, _, _, _), do: acc
+
+  @doc """
+  Appends a template code prop to the accumulator.
+  """
+  def put_template(acc, tmpl, dest) when is_binary(tmpl),
+    do: acc ++ [%{label: "template", value: tmpl, type: :code, language: dest}]
+
+  def put_template(acc, _, _), do: acc
 
   attr :framework_opts, :map, required: true
 
