@@ -38,7 +38,7 @@ completed step — skipping finished work without re-evaluating it.
 
 ```elixir
 defmodule MyApp.Runbooks.Deploy do
-  use Runcom.Runbook
+  use Runcom.Runbook, name: "deploy"
 
   require Runcom.Steps.GetUrl, as: GetUrl
   require Runcom.Steps.Unarchive, as: Unarchive
@@ -48,9 +48,6 @@ defmodule MyApp.Runbooks.Deploy do
   schema do
     field :version, :string
   end
-
-  @impl true
-  def name, do: "deploy"
 
   @impl true
   def build(params) do
@@ -158,7 +155,7 @@ Five sinks ship with Runcom:
 
 Sinks never accumulate output in memory. The DETS sink writes each chunk to
 disk immediately. The File sink appends to a file handle. S3 uploads parts in
-5mb buffers.This matters when steps produce large output — a verbose build log 
+5mb buffers. This matters when steps produce large output — a verbose build log 
 streams through the sink without growing the process heap.
 
 ## Packages
@@ -227,8 +224,8 @@ Create a migration for the runcom tables:
 defmodule MyApp.Repo.Migrations.AddRuncom do
   use Ecto.Migration
 
-  def up, do: RuncomEcto.Migrations.up()
-  def down, do: RuncomEcto.Migrations.down()
+  def up, do: RuncomEcto.Migrations.up(version: 1)
+  def down, do: RuncomEcto.Migrations.down(version: 1)
 end
 ```
 
@@ -238,8 +235,8 @@ Mount the dashboard and builder in your router:
 # lib/my_app_web/router.ex
 import RuncomWeb.Router
 
-scope "/" do
-  pipe_through :browser
+scope "/admin" do
+  pipe_through [:browser, :admin_auth]
 
   runcom_dashboard "/runcom",
     dispatcher: RuncomRmq.Server.Dispatcher,
@@ -268,12 +265,9 @@ Define a runbook:
 
 ```elixir
 defmodule MyApp.Runbooks.DiskCleanup do
-  use Runcom.Runbook
+  use Runcom.Runbook, name: "disk_cleanup"
 
   require Runcom.Steps.Command, as: Command
-
-  @impl true
-  def name, do: "disk_cleanup"
 
   @impl true
   def build(_params) do

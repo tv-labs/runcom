@@ -45,13 +45,18 @@ def deps do
 end
 ```
 
-## Server Setup
+---
 
-Add `RuncomRmq.Server` to your supervision tree. It starts three children:
+## Server
 
-- **SyncConsumer** -- Broadway pipeline handling RPC sync requests from agents
-- **EventConsumer** -- Broadway pipeline persisting execution events to `Runcom.Store` and broadcasting to PubSub
-- **Dispatcher** -- GenServer for dispatching runbook execution to agent nodes
+The server runs alongside your Phoenix app (or any OTP app with a store and
+PubSub). It receives events from agents, persists results, broadcasts to
+PubSub for live UI updates, and dispatches runbook execution commands to
+agents.
+
+### Setup
+
+Add `RuncomRmq.Server` to your supervision tree:
 
 ```elixir
 # Minimal -- reads store and pubsub from application config:
@@ -65,6 +70,46 @@ Add `RuncomRmq.Server` to your supervision tree. It starts three children:
   sync_queue: "runcom.sync.request",
   event_queue: "runcom.events"}
 ```
+
+### Children
+
+| Child | Type | Purpose |
+|-------|------|---------|
+| `SyncConsumer` | Broadway | Handles RPC sync requests from agents. Compares agent manifests against the server's runbook registry and replies with bytecode bundles for stale/missing runbooks. |
+| `EventConsumer` | Broadway | Ingests execution results and step events. Persists results via `Runcom.Store`, upserts node `last_seen_at` timestamps, updates dispatch tracking, and broadcasts to PubSub. |
+| `Dispatcher` | GenServer | Sends runbook execution commands to agent nodes via RPC. Publishes to each node's named queue and waits for an ack reply. |
+
+### PubSub Topics
+
+Events are broadcast on dispatch-scoped topics:
+
+- **`"runcom:events:{dispatch_id}"`** -- all events for a specific dispatch.
+  Payloads are tagged `{:result, map}` or `{:step_event, map}`.
+
+Subscribe in a LiveView:
+
+```elixir
+Phoenix.PubSub.subscribe(pubsub, "runcom:events:#{dispatch_id}")
+
+def handle_info({:result, result}, socket), do: ...
+def handle_info({:step_event, event}, socket), do: ...
+```
+
+### Dispatching
+
+Send a runbook execution command to specific agent nodes:
+
+```elixir
+RuncomRmq.Server.Dispatcher.dispatch("deploy", nodes,
+  dispatch_id: dispatch_id,
+  assigns: %{version: "1.4.0"}
+)
+# => [{"agent-east-1", :acked}, {"agent-west-1", :acked}]
+```
+
+Each node map must contain `:node_id` and `:queue` keys. Nodes are dispatched
+in parallel -- each opens a short-lived AMQP channel that is closed after the
+ack (or timeout), preventing queue leaks.
 
 ### Broadway Tuning
 
@@ -98,16 +143,19 @@ Add `RuncomRmq.Server` to your supervision tree. It starts three children:
 | `:event_queue` | `"runcom.events"` | Queue for event ingestion |
 | `:sync_consumer` | `[]` | SyncConsumer Broadway tuning |
 | `:event_consumer` | `[]` | EventConsumer Broadway tuning |
-| `:dispatcher` | `[]` | Dispatcher options |
+| `:dispatcher` | `[]` | Dispatcher options (e.g. `ack_timeout`) |
 
-## Client Setup
+---
 
-Add `RuncomRmq.Client` to your agent's supervision tree. It starts:
+## Client
 
-- **RunbookCache** -- ETS cache of runbook structs and hashes
-- **Sync** -- GenServer performing periodic RPC sync against the server
-- **EventPublisher** -- Attaches to Runcom telemetry and publishes events
-- **DispatchConsumer** -- (optional) Broadway consumer for dispatch commands
+The client runs on each remote agent node. It caches runbooks locally,
+publishes execution telemetry back to the server, consumes dispatch commands,
+and consumes dispatch commands.
+
+### Setup
+
+Add `RuncomRmq.Client` to your agent's supervision tree:
 
 ```elixir
 {RuncomRmq.Client,
@@ -116,9 +164,57 @@ Add `RuncomRmq.Client` to your agent's supervision tree. It starts:
   sync_queue: "runcom.sync.request",
   event_queue: "runcom.events",
   dispatch_queue: "runcom.dispatch.agent-east-1",
-  dispatch_handler: {MyAgent.Executor, :dispatch},
-  sync_interval: 30_000}
+  dispatch_handler: {MyAgent, :handle_dispatch}}
 ```
+
+### Children
+
+| Child | Type | Purpose |
+|-------|------|---------|
+| `RunbookCache` | GenServer + ETS | Local cache of runbook structs, hashes, and bytecodes. Enables fast lookups and manifest generation for sync. |
+| `Sync` | GenServer | Fetches individual runbooks from the server via RPC when the `DispatchConsumer` encounters a cache miss. |
+| `EventPublisher` | GenServer | Attaches to Runcom telemetry and publishes step/result events to the server's event queue as persistent AMQP messages. |
+| `DispatchConsumer` | GenServer | *(optional)* Consumes dispatch commands from the node's named queue, resolves runbook bytecode, and calls the configured handler. Only started when `:dispatch_queue` and `:dispatch_handler` are both provided. |
+
+### Dispatch Handler Callback
+
+When a dispatch command arrives, the `DispatchConsumer` resolves the runbook
+module and bytecodes, then calls your handler with an enriched message map:
+
+```elixir
+defmodule MyAgent do
+  def handle_dispatch(message) do
+    # message keys:
+    #   :runbook       - resolved %Runcom{} struct, ready to execute
+    #   :runbook_id    - e.g. "deploy-v1"
+    #   :dispatch_id   - UUID for this dispatch batch
+    #   :assigns       - variable overrides from the dispatcher
+
+    Runcom.run_async(message.runbook,
+      mode: :run,
+      dispatch_id: message.dispatch_id
+    )
+  end
+end
+```
+
+The handler is called inside the `DispatchConsumer` process. If it raises,
+the exception is caught, logged with a full stacktrace, and a
+`[:runcom, :run, :exception]` telemetry event is emitted.
+
+### Telemetry Events Forwarded
+
+The `EventPublisher` captures and forwards these telemetry events to the server:
+
+| Event | Published As |
+|-------|-------------|
+| `[:runcom, :run, :stop]` | `:result` -- full execution result with step outputs |
+| `[:runcom, :step, :start]` | `:step_event` -- step started |
+| `[:runcom, :step, :stop]` | `:step_event` -- step completed |
+| `[:runcom, :step, :exception]` | `:step_event` -- step failed |
+
+Step outputs are truncated to `:output_truncate_bytes` (default 64KB) before
+publishing.
 
 ### Client Options
 
@@ -128,32 +224,45 @@ Add `RuncomRmq.Client` to your agent's supervision tree. It starts:
 | `:node_id` | *required* | Agent identifier string |
 | `:sync_queue` | *required* | Server sync queue name |
 | `:event_queue` | *required* | Server event queue name |
-| `:sync_interval` | `300_000` (5 min) | Milliseconds between sync cycles |
 | `:dispatch_queue` | `nil` | Node-specific queue for dispatch commands |
 | `:dispatch_handler` | `nil` | `{module, function}` callback for dispatch |
+| `:output_truncate_bytes` | `65_536` | Max bytes of step output per event message |
 | `:cache_name` | `RunbookCache` | Cache GenServer name |
+| `:name` | `RuncomRmq.Client` | Supervisor registration name |
 
-## Dispatching
-
-Send a runbook execution command to specific agent nodes:
-
-```elixir
-RuncomRmq.Server.Dispatcher.dispatch("deploy", ["agent-east-1", "agent-west-1"],
-  params: %{version: "1.4.0"}
-)
-# => [{"agent-east-1", :acked}, {"agent-west-1", :acked}]
-```
+---
 
 ## Sync Protocol
 
-Agents periodically send their local runbook manifest (name -> hash) to the
-server via RPC. The server diffs against `Runcom.Runbook.summaries/0` and replies
-with bytecode bundles for new/updated runbooks and delete instructions for
-removed ones.
+Agents fetch runbooks on-demand when a dispatch command references a runbook
+that is missing or stale in the local cache. The `Sync` GenServer opens a
+fresh AMQP channel, publishes an RPC request to the server's sync queue, and
+waits for a reply containing bytecode bundles.
+
+The `SyncConsumer` on the server side handles two request types:
+
+- **`%{fetch: runbook_id}`** -- returns a single runbook's bytecode bundle
+- **`%{manifest: %{id => hash, ...}}`** -- diffs against the server registry
+  and returns updates/deletes
 
 ## Event Flow
 
-The `EventPublisher` attaches to `:telemetry` events emitted by `Runcom.Orchestrator`
-and publishes them to the event queue. On the server side, `EventConsumer` batches
-events, persists results/nodes via `Runcom.Store`, and broadcasts to PubSub for
-real-time UI updates.
+```mermaid
+sequenceDiagram
+    participant Step as Step Task
+    participant Tel as :telemetry
+    participant EP as EventPublisher
+    participant RMQ as RabbitMQ
+    participant EC as EventConsumer
+    participant Store as Runcom.Store
+    participant PS as PubSub
+    participant LV as LiveView
+
+    Step->>Tel: [:runcom, :step, :stop]
+    Tel->>EP: handle_telemetry_event/4
+    EP->>RMQ: AMQP.Basic.publish (persistent)
+    RMQ->>EC: Broadway consume + batch
+    EC->>Store: save_result / upsert_node
+    EC->>PS: broadcast("runcom:events:{dispatch_id}")
+    PS->>LV: {:result, ...} / {:step_event, ...}
+```
