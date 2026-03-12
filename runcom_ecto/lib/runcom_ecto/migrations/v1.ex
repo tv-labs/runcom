@@ -106,6 +106,7 @@ defmodule RuncomEcto.Migrations.V1 do
       add :completed_at, :utc_datetime_usec
       add :duration_ms, :integer
       add :assigns, :jsonb, default: "{}"
+      add :actor, :jsonb
       add :secret_names, {:array, :string}, default: []
 
       timestamps type: :utc_datetime_usec

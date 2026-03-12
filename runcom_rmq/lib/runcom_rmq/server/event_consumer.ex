@@ -122,7 +122,6 @@ defmodule RuncomRmq.Server.EventConsumer do
           result_attrs
       end
 
-    maybe_upsert_node(result_attrs, store_mod, store_opts)
     broadcast(pubsub, result_attrs.dispatch_id, {:result, broadcast_payload})
   end
 
@@ -134,15 +133,6 @@ defmodule RuncomRmq.Server.EventConsumer do
   defp handle_event(event, _store_mod, _store_opts, _pubsub) do
     Logger.warning("EventConsumer received unknown event type: #{inspect(event)}")
   end
-
-  defp maybe_upsert_node(%{node_id: node_id}, store_mod, store_opts)
-       when is_binary(node_id) and node_id != "" do
-    if function_exported?(store_mod, :upsert_node, 3) do
-      store_mod.upsert_node(node_id, %{last_seen_at: DateTime.utc_now()}, store_opts)
-    end
-  end
-
-  defp maybe_upsert_node(_attrs, _store_mod, _store_opts), do: :ok
 
   defp broadcast(nil, _dispatch_id, _message), do: :ok
 

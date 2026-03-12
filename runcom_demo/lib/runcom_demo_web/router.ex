@@ -29,7 +29,14 @@ defmodule RuncomDemoWeb.Router do
 
     runcom_dashboard("/dashboard",
       dispatcher: RuncomRmq.Server.Dispatcher,
-      pubsub: RuncomDemo.PubSub
+      pubsub: RuncomDemo.PubSub,
+      actor: &RuncomDemoWeb.Router.demo_actor/1
     )
+  end
+
+  @doc false
+  def demo_actor(_conn) do
+    {surname, slug} = Enum.random([{"Shmoe", "schmoe"}, {"Billy-bob", "billy-bob"}])
+    %{name: "Joe " <> surname, email: "joe-#{slug}@example.com"}
   end
 end

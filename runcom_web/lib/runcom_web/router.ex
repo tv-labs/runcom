@@ -33,6 +33,8 @@ defmodule RuncomWeb.Router do
     * `:render_node_component` — Component for rendering node cards (default: `RuncomWeb.Components.DefaultNodeRender`)
     * `:dispatcher` — Module implementing dispatch logic (e.g., `RuncomRmq.Server.Dispatcher`)
     * `:pubsub` — PubSub server for real-time updates
+    * `:actor` — `(Plug.Conn.t() -> map() | nil)` extracts actor info at session creation for audit trails
+    * `:actor_renderer` — module implementing `RuncomWeb.Actor` behaviour (default: `RuncomWeb.Actor.Default`)
     * `:csp_nonce_assign_key` — CSP nonce key(s) for securing asset tags (nil, atom, or map)
     * `:socket_path` — Phoenix socket path, defaults to `"/live"`
     * `:transport` — Socket transport, `"websocket"` or `"longpoll"`, defaults to `"websocket"`
@@ -43,6 +45,8 @@ defmodule RuncomWeb.Router do
     :render_node_component,
     :dispatcher,
     :pubsub,
+    :actor,
+    :actor_renderer,
     :csp_nonce_assign_key,
     :socket_path,
     :transport
@@ -175,10 +179,18 @@ defmodule RuncomWeb.Router do
   @doc false
   def __session__(conn, prefix, runcom_config, csp_key, socket_path, transport) do
     csp_nonces = expand_csp_nonces(conn, csp_key)
+    actor_fn = runcom_config[:actor]
+    actor = if actor_fn, do: actor_fn.(conn)
+
+    config =
+      runcom_config
+      |> Keyword.delete(:csp_nonce_assign_key)
+      |> Keyword.delete(:actor)
 
     %{
       "prefix" => prefix,
-      "runcom_config" => Keyword.delete(runcom_config, :csp_nonce_assign_key),
+      "runcom_config" => config,
+      "actor" => actor,
       "csp_nonces" => csp_nonces,
       "live_path" => socket_path,
       "live_transport" => transport

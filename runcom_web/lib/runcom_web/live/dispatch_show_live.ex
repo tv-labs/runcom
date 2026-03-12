@@ -167,6 +167,7 @@ defmodule RuncomWeb.Live.DispatchShowLive do
             <span class="text-sm text-base-content/60">
               {format_time(@dispatch.started_at)}
             </span>
+            <.actor_component module={@actor_renderer} actor={@dispatch.actor} />
           </div>
         </header>
 

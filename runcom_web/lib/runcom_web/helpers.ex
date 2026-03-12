@@ -59,6 +59,16 @@ defmodule RuncomWeb.Helpers do
     end
   end
 
+  attr :module, :atom, required: true
+  attr :actor, :map, default: nil
+  attr :context, :atom, default: :large
+
+  def actor_component(%{actor: nil} = assigns), do: ~H""
+
+  def actor_component(assigns) do
+    assigns.module.render(assigns)
+  end
+
   attr :completed, :integer, required: true
   attr :failed, :integer, required: true
   attr :total, :integer, required: true

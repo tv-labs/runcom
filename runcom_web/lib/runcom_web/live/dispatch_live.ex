@@ -275,7 +275,8 @@ defmodule RuncomWeb.Live.DispatchLive do
         %{
           runbook_id: runbook_id,
           started_at: now,
-          assigns: runbook_assigns
+          assigns: runbook_assigns,
+          actor: socket.assigns.actor
         },
         store_opts
       )

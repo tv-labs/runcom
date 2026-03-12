@@ -1,9 +1,10 @@
 defmodule RuncomRmq.Client.RunbookCache do
   @moduledoc """
-  ETS-backed local cache for runbooks received from the server.
+  Persistent-term backed local cache for runbooks received from the server.
 
-  Stores `{runbook_id, hash, module, %Runcom{}}` tuples in an ETS table, enabling
-  fast local lookups and manifest generation for sync operations.
+  Stores runbook entries as persistent terms keyed by `{cache_name, runbook_id}`,
+  enabling zero-copy reads. Writes are serialized through a GenServer to maintain
+  index consistency.
 
   ```mermaid
   stateDiagram-v2
@@ -28,47 +29,43 @@ defmodule RuncomRmq.Client.RunbookCache do
   @spec start_link(keyword()) :: GenServer.on_start()
   def start_link(opts \\ []) do
     name = Keyword.get(opts, :name, __MODULE__)
-    GenServer.start_link(__MODULE__, opts, name: name)
+    GenServer.start_link(__MODULE__, name, name: name)
   end
 
   @doc """
   Returns a manifest mapping each cached runbook ID to its hash.
-
-  Reads directly from ETS — does not go through the GenServer.
   """
   @spec manifest(GenServer.server()) :: %{id() => hash()}
   def manifest(cache \\ __MODULE__) do
-    :ets.foldl(
-      fn {id, hash, _mod, _runbook, _bytecodes}, acc -> Map.put(acc, id, hash) end,
-      %{},
-      cache
-    )
+    for id <- index(cache),
+        entry = :persistent_term.get({cache, id}, nil),
+        entry != nil,
+        into: %{} do
+      {hash, _mod, _runbook, _bytecodes} = entry
+      {id, hash}
+    end
   end
 
   @doc """
   Retrieves a runbook by its ID from the cache.
-
-  Reads directly from ETS — does not go through the GenServer.
   """
   @spec get(GenServer.server(), id()) :: {:ok, Runcom.t()} | {:error, :not_found}
   def get(cache \\ __MODULE__, id) do
-    case :ets.lookup(cache, id) do
-      [{^id, _hash, _mod, runbook, _bytecodes}] -> {:ok, runbook}
-      [] -> {:error, :not_found}
+    case :persistent_term.get({cache, id}, nil) do
+      {_hash, _mod, runbook, _bytecodes} -> {:ok, runbook}
+      nil -> {:error, :not_found}
     end
   end
 
   @doc """
   Retrieves a runbook, its hash, module, and bytecodes by ID from the cache.
-
-  Reads directly from ETS — does not go through the GenServer.
   """
   @spec get_with_hash(GenServer.server(), id()) ::
           {:ok, {hash(), module(), Runcom.t(), [{module(), binary()}]}} | {:error, :not_found}
   def get_with_hash(cache \\ __MODULE__, id) do
-    case :ets.lookup(cache, id) do
-      [{^id, hash, mod, runbook, bytecodes}] -> {:ok, {hash, mod, runbook, bytecodes}}
-      [] -> {:error, :not_found}
+    case :persistent_term.get({cache, id}, nil) do
+      {_hash, _mod, _runbook, _bytecodes} = entry -> {:ok, entry}
+      nil -> {:error, :not_found}
     end
   end
 
@@ -90,35 +87,48 @@ defmodule RuncomRmq.Client.RunbookCache do
 
   @doc """
   Returns all cached runbooks as a list of `{id, hash, mod, runbook, bytecodes}` tuples.
-
-  Reads directly from ETS — does not go through the GenServer.
   """
   @spec list(GenServer.server()) :: [{id(), hash(), module(), Runcom.t(), [{module(), binary()}]}]
   def list(cache \\ __MODULE__) do
-    :ets.tab2list(cache)
+    for id <- index(cache),
+        entry = :persistent_term.get({cache, id}, nil),
+        entry != nil do
+      {hash, mod, runbook, bytecodes} = entry
+      {id, hash, mod, runbook, bytecodes}
+    end
+  end
+
+  defp index(cache) do
+    :persistent_term.get({cache, :__index__}, MapSet.new())
   end
 
   @impl GenServer
-  def init(opts) do
-    name = Keyword.get(opts, :name, __MODULE__)
-    table = :ets.new(name, [:set, :protected, :named_table, read_concurrency: true])
-    {:ok, %{table: table}}
+  def init(name) do
+    {:ok, %{name: name, ids: MapSet.new()}}
   end
 
   @impl GenServer
-  def handle_call({:put, id, hash, mod, runbook, bytecodes}, _from, %{table: table} = state) do
-    :ets.insert(table, {id, hash, mod, runbook, bytecodes})
-    {:reply, :ok, state}
+  def handle_call({:put, id, hash, mod, runbook, bytecodes}, _from, state) do
+    :persistent_term.put({state.name, id}, {hash, mod, runbook, bytecodes})
+    ids = MapSet.put(state.ids, id)
+    :persistent_term.put({state.name, :__index__}, ids)
+    {:reply, :ok, %{state | ids: ids}}
   end
 
-  def handle_call({:delete, id}, _from, %{table: table} = state) do
-    :ets.delete(table, id)
-    {:reply, :ok, state}
+  def handle_call({:delete, id}, _from, state) do
+    :persistent_term.erase({state.name, id})
+    ids = MapSet.delete(state.ids, id)
+    :persistent_term.put({state.name, :__index__}, ids)
+    {:reply, :ok, %{state | ids: ids}}
   end
 
   @impl GenServer
-  def terminate(_reason, %{table: table}) do
-    :ets.delete(table)
+  def terminate(_reason, state) do
+    for id <- state.ids do
+      :persistent_term.erase({state.name, id})
+    end
+
+    :persistent_term.erase({state.name, :__index__})
     :ok
   end
 end

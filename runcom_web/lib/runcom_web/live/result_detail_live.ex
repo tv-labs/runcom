@@ -47,6 +47,7 @@ defmodule RuncomWeb.Live.ResultDetailLive do
       |> assign(:expanded_steps, MapSet.new())
       |> assign(:base_path, "")
       |> assign(:dispatch_id, nil)
+      |> assign(:dispatch_actor, nil)
       |> assign(:output_tab, "steps")
       |> assign(:markdown_output, nil)
       |> assign(:markdown_html, nil)
@@ -189,6 +190,7 @@ defmodule RuncomWeb.Live.ResultDetailLive do
             <span class="text-sm text-base-content/60" style="view-transition-name: result-time">
               {format_time(result_field(@result, :started_at))}
             </span>
+            <.actor_component module={@actor_renderer} actor={@dispatch_actor} />
           </div>
         </header>
 
@@ -449,6 +451,10 @@ defmodule RuncomWeb.Live.ResultDetailLive do
         |> assign(:edges, edges)
         |> assign(:expanded_steps, failed_steps)
         |> assign(:dispatch_id, result_field(result, :dispatch_id))
+        |> assign(
+          :dispatch_actor,
+          load_dispatch_actor(mod, opts, result_field(result, :dispatch_id))
+        )
         |> assign(:markdown_output, markdown)
         |> assign(:markdown_html, markdown_html)
         |> assign(:asciicast_data, asciicast)
@@ -459,6 +465,15 @@ defmodule RuncomWeb.Live.ResultDetailLive do
         socket
         |> put_flash(:error, "Result not found")
         |> assign(:result, nil)
+    end
+  end
+
+  defp load_dispatch_actor(_mod, _opts, nil), do: nil
+
+  defp load_dispatch_actor(mod, opts, dispatch_id) do
+    case apply(mod, :get_dispatch, [dispatch_id | normalize_store_args(opts)]) do
+      {:ok, dispatch} -> dispatch.actor
+      _ -> nil
     end
   end
 

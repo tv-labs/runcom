@@ -198,6 +198,7 @@ defmodule RuncomWeb.Live.DashboardLive do
                 <tr>
                   <th>Dispatch</th>
                   <th>Runbook</th>
+                  <th>Actor</th>
                   <th>Status</th>
                   <th>Progress</th>
                   <th>Duration</th>
@@ -213,6 +214,9 @@ defmodule RuncomWeb.Live.DashboardLive do
                 >
                   <td class="text-base-content/70 font-mono text-xs">{short_id(dispatch.id)}</td>
                   <td class="font-medium">{dispatch.runbook_id}</td>
+                  <td>
+                    <.actor_component module={@actor_renderer} actor={dispatch.actor} context={:small} />
+                  </td>
                   <td>
                     <span class={["badge badge-sm", status_badge_class(dispatch.status)]}>
                       {dispatch.status}

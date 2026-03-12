@@ -169,26 +169,38 @@ defmodule Runcom.CodeSync do
   # Computed at compile time from the build environment so the set is
   # baked into the beam file and works correctly inside mix releases.
   @stdlib_apps (
-    otp_root = to_string(:code.root_dir())
+                 otp_root = to_string(:code.root_dir())
 
-    otp =
-      :code.get_path()
-      |> Enum.filter(&String.starts_with?(to_string(&1), otp_root))
-      |> Enum.map(fn path ->
-        path |> to_string() |> Path.dirname() |> Path.basename() |> String.split("-") |> hd() |> String.to_atom()
-      end)
+                 otp =
+                   :code.get_path()
+                   |> Enum.filter(&String.starts_with?(to_string(&1), otp_root))
+                   |> Enum.map(fn path ->
+                     path
+                     |> to_string()
+                     |> Path.dirname()
+                     |> Path.basename()
+                     |> String.split("-")
+                     |> hd()
+                     |> String.to_atom()
+                   end)
 
-    elixir_root = :code.lib_dir(:elixir) |> to_string() |> Path.dirname()
+                 elixir_root = :code.lib_dir(:elixir) |> to_string() |> Path.dirname()
 
-    elixir =
-      :code.get_path()
-      |> Enum.filter(&String.starts_with?(to_string(&1), elixir_root))
-      |> Enum.map(fn path ->
-        path |> to_string() |> Path.dirname() |> Path.basename() |> String.split("-") |> hd() |> String.to_atom()
-      end)
+                 elixir =
+                   :code.get_path()
+                   |> Enum.filter(&String.starts_with?(to_string(&1), elixir_root))
+                   |> Enum.map(fn path ->
+                     path
+                     |> to_string()
+                     |> Path.dirname()
+                     |> Path.basename()
+                     |> String.split("-")
+                     |> hd()
+                     |> String.to_atom()
+                   end)
 
-    MapSet.new(otp ++ elixir)
-  )
+                 MapSet.new(otp ++ elixir)
+               )
 
   defp builtin?(module) when is_atom(module) do
     case Application.get_application(module) do

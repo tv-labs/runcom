@@ -9,8 +9,20 @@ defmodule RuncomDemo.CodeSyncBundleTest do
 
   alias Runcom.CodeSync
 
-  @elixir_stdlib_modules [Kernel, Enum, Map, List, String, Access, Module,
-                          System, Regex, RuntimeError, Exception, String.Chars]
+  @elixir_stdlib_modules [
+    Kernel,
+    Enum,
+    Map,
+    List,
+    String,
+    Access,
+    Module,
+    System,
+    Regex,
+    RuntimeError,
+    Exception,
+    String.Chars
+  ]
   @erlang_modules [:erlang, :lists, :os, :re, :crypto, :binary]
 
   describe "bundle includes builtin step modules" do

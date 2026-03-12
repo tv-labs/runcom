@@ -28,23 +28,35 @@ defmodule RuncomEcto.Store do
   @step_result_fields ~w(name order status module exit_code duration_ms attempts
     started_at completed_at output output_ref error opts meta)a
 
-  @result_upsert_fields [
-    :status,
-    :mode,
-    :started_at,
-    :completed_at,
-    :duration_ms,
-    :error_message,
-    :edges,
-    :updated_at
-  ]
+  defp result_upsert_query do
+    from(r in Result,
+      update: [
+        set: [
+          status: fragment("EXCLUDED.status"),
+          mode: fragment("EXCLUDED.mode"),
+          started_at: fragment("EXCLUDED.started_at"),
+          completed_at: fragment("EXCLUDED.completed_at"),
+          duration_ms: fragment("EXCLUDED.duration_ms"),
+          edges: fragment("EXCLUDED.edges"),
+          updated_at: fragment("EXCLUDED.updated_at"),
+          error_message:
+            fragment(
+              "CASE WHEN EXCLUDED.error_message IS NOT NULL THEN COALESCE(?.error_message || E'\\n', '') || EXCLUDED.error_message ELSE ?.error_message END",
+              r,
+              r
+            )
+        ]
+      ]
+    )
+  end
 
   @doc """
   Inserts or updates an execution result record.
 
   When a result already exists for the same `(dispatch_id, node_id)` pair
   (e.g. a halted run that was resumed), the existing row is updated in place
-  and its step results are upserted by name.
+  and its step results are upserted by name. The `error_message` field is
+  concatenated (newline-separated) so that errors from prior runs are preserved.
   """
   @impl true
   @spec save_result(map(), keyword()) :: {:ok, Result.t()} | {:error, term()}
@@ -55,7 +67,7 @@ defmodule RuncomEcto.Store do
     multi =
       Ecto.Multi.new()
       |> Ecto.Multi.insert(:result, Result.changeset(%Result{}, result_attrs),
-        on_conflict: {:replace, @result_upsert_fields},
+        on_conflict: result_upsert_query(),
         conflict_target: [:dispatch_id, :node_id],
         returning: true
       )
@@ -612,7 +624,7 @@ defmodule RuncomEcto.Store do
 
         {_count, inserted} =
           repo.insert_all(StepResult, rows,
-            on_conflict: {:replace, @step_result_fields -- [:name]},
+            on_conflict: {:replace, @step_result_fields -- [:inserted_at, :name]},
             conflict_target: [:result_id, :name],
             returning: true
           )
