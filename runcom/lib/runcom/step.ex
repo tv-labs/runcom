@@ -71,11 +71,11 @@ defmodule Runcom.Step do
   ```mermaid
   stateDiagram-v2
       [*] --> Validate: validate(opts)
-      Validate --> Run: :ok
-      Validate --> Error: {:error, reason}
-      Run --> Complete: {:ok, result}
-      Run --> Retry: {:error, _} [retries left]
-      Run --> Error: {:error, _} [no retries]
+      Validate --> Run: ok
+      Validate --> Error: error
+      Run --> Complete: ok result
+      Run --> Retry: error (retries left)
+      Run --> Error: error (no retries)
       Retry --> Run: after delay
       Complete --> [*]
       Error --> [*]
