@@ -22,10 +22,11 @@ defmodule Runcom.Steps.Reboot do
 
   ## How It Works
 
-  1. Spawns a detached shell process: `nohup sh -c 'sleep N && shutdown -r now' &`
-  2. Returns `{:ok, %Result{halt: true}}` to signal Orchestrator
-  3. Orchestrator writes checkpoint and stops execution
-  4. System reboots
+  1. Calls `Orchestrator.await_halt/1` — halts scheduling, drains in-flight
+     tasks, and writes a durable checkpoint before returning
+  2. Spawns a detached shell process: `nohup sh -c 'sleep N && shutdown -r now' &`
+  3. Returns `{:ok, %Result{halt: true}}` to signal Orchestrator
+  4. System reboots after the delay
   5. On next boot, `Runcom.resume/2` continues from the next step
   """
 
@@ -41,9 +42,11 @@ defmodule Runcom.Steps.Reboot do
   import Bash.Sigil
 
   alias Runcom.CommandRunner
+  alias Runcom.Orchestrator
 
   @impl true
-  def run(_rc, %{sink: sink, delay: delay, message: message}) do
+  def run(rc, %{sink: sink, delay: delay, message: message}) do
+    Orchestrator.await_halt(rc.id)
     cmd = build_detached_command(delay, message)
 
     case CommandRunner.run(

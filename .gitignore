@@ -2,7 +2,7 @@
 /runcom/_build/
 /runcom_web/_build/
 /runcom_demo/_build/
-/runcom_demo/agent/_build/
+/runcom_demo_agent/_build/
 /runcom_ecto/_build/
 /runcom_rmq/_build/
 
@@ -10,7 +10,7 @@
 /runcom/cover/
 /runcom_web/cover/
 /runcom_demo/cover/
-/runcom_demo/agent/cover/
+/runcom_demo_agent/cover/
 /runcom_ecto/cover/
 /runcom_rmq/cover/
 
@@ -18,7 +18,7 @@
 /runcom/deps/
 /runcom_web/deps/
 /runcom_demo/deps/
-/runcom_demo/agent/deps/
+/runcom_demo_agent/deps/
 /runcom_ecto/deps/
 /runcom_rmq/deps/
 
@@ -26,7 +26,7 @@
 /runcom/doc/
 /runcom_web/doc/
 /runcom_demo/doc/
-/runcom_demo/agent/doc/
+/runcom_demo_agent/doc/
 /runcom_ecto/doc/
 /runcom_rmq/doc/
 
@@ -43,7 +43,7 @@ erl_crash.dump
 /runcom/tmp/
 /runcom_web/tmp/
 /runcom_demo/tmp/
-/runcom_demo/agent/tmp/
+/runcom_demo_agent/tmp/
 /runcom_ecto/tmp/
 /runcom_rmq/tmp/
 
@@ -53,7 +53,7 @@ runcom*.tar
 # Ignore assets that are produced by build tools.
 /runcom_web/priv/static/assets/
 /runcom_demo/priv/static/assets/
-/runcom_demo/agent/priv/static/assets/
+/runcom_demo_agent/priv/static/assets/
 
 # Ignore digested assets cache.
 /runcom_web/priv/static/cache_manifest.json
@@ -63,5 +63,5 @@ runcom*.tar
 npm-debug.log
 /runcom_web/assets/node_modules/
 /runcom_demo/assets/node_modules/
-/runcom_demo/agent/assets/node_modules/
+/runcom_demo_agent/assets/node_modules/
 

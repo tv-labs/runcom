@@ -40,6 +40,7 @@ defmodule RuncomRmq.Server.Dispatcher do
 
     * `:dispatch_id` -- UUID for this dispatch batch (required)
     * `:assigns` -- map of variable overrides
+    * `:secrets` -- map of `%{name => binary_value}` to send to agents
   """
   @spec dispatch(String.t(), [map()], keyword()) :: [{String.t(), :acked | {:error, term()}}]
   def dispatch(runbook_id, nodes, opts \\ []) do
@@ -56,18 +57,37 @@ defmodule RuncomRmq.Server.Dispatcher do
     {:ok, state}
   end
 
+  @doc """
+  Builds the dispatch message map from a runbook ID and options.
+
+  Extracts `:dispatch_id`, `:assigns`, and `:secrets` from `opts`,
+  resolves the runbook hash, and returns the message map that will be
+  encoded and sent over the wire to agents.
+
+  Secret values that are zero-arity functions are resolved eagerly
+  on the server before encoding — functions cannot be sent over the wire.
+  """
+  @spec build_message(String.t(), keyword()) :: map()
+  def build_message(runbook_id, opts) do
+    %{
+      dispatch_id: Keyword.fetch!(opts, :dispatch_id),
+      runbook_id: runbook_id,
+      runbook_hash: fetch_runbook_hash(runbook_id),
+      assigns: Keyword.get(opts, :assigns, %{}),
+      secrets: resolve_secrets(Keyword.get(opts, :secrets, %{}))
+    }
+  end
+
+  defp resolve_secrets(secrets) do
+    Map.new(secrets, fn
+      {name, fun} when is_function(fun, 0) -> {name, fun.()}
+      {name, value} when is_binary(value) -> {name, value}
+    end)
+  end
+
   @impl GenServer
   def handle_call({:dispatch, runbook_id, nodes, opts}, _from, state) do
-    dispatch_id = Keyword.fetch!(opts, :dispatch_id)
-    assigns = Keyword.get(opts, :assigns, %{})
-    runbook_hash = fetch_runbook_hash(runbook_id)
-
-    message = %{
-      dispatch_id: dispatch_id,
-      runbook_id: runbook_id,
-      runbook_hash: runbook_hash,
-      assigns: assigns
-    }
+    message = build_message(runbook_id, opts)
 
     results =
       nodes

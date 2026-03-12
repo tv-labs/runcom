@@ -4,14 +4,17 @@ defmodule Runcom.CodeSyncTest do
   alias Runcom.CodeSync
 
   describe "bundle/1" do
-    test "returns empty bytecode list for built-in steps only" do
+    test "includes bytecode for built-in step modules" do
       rc =
         Runcom.new("builtin-only", sink: nil)
         |> Runcom.add("cmd", Runcom.Steps.Command, %{cmd: "echo hi", sink: nil})
 
-      assert {:ok, {payload, []}} = CodeSync.bundle(rc)
+      assert {:ok, {payload, bytecodes}} = CodeSync.bundle(rc)
       assert is_binary(payload)
       assert :erlang.binary_to_term(payload) == rc
+
+      bundled = Enum.map(bytecodes, &elem(&1, 0))
+      assert Runcom.Steps.Command in bundled
     end
 
     test "includes bytecode for custom step modules" do
@@ -27,7 +30,7 @@ defmodule Runcom.CodeSyncTest do
       assert Runcom.TestCustomStep in bundled_modules
     end
 
-    test "returns error when custom module bytecode is not found" do
+    test "skips unknown modules with no application" do
       rc = %Runcom{
         id: "missing-mod",
         steps: %{
@@ -39,7 +42,10 @@ defmodule Runcom.CodeSyncTest do
         }
       }
 
-      assert {:error, {:bytecode_not_found, NoSuchModule.DoesNotExist}} = CodeSync.bundle(rc)
+      # Unknown modules have no application, so builtin? returns true and they're skipped
+      assert {:ok, {_payload, bytecodes}} = CodeSync.bundle(rc)
+      bundled = Enum.map(bytecodes, &elem(&1, 0))
+      refute NoSuchModule.DoesNotExist in bundled
     end
 
     test "deduplicates modules used in multiple steps" do
@@ -64,9 +70,9 @@ defmodule Runcom.CodeSyncTest do
       assert [] = CodeSync.resolve_deps([])
     end
 
-    test "skips built-in step modules" do
+    test "includes built-in step modules" do
       result = CodeSync.resolve_deps([Runcom.Steps.Command])
-      assert result == []
+      assert Runcom.Steps.Command in result
     end
 
     test "skips erlang modules" do

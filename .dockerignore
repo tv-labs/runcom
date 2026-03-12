@@ -1,0 +1,7 @@
+**/_build
+**/.elixir_ls
+**/.lexical
+**/.expert
+**/.claude
+**/node_modules
+**/.git

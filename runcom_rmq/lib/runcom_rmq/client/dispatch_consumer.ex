@@ -152,6 +152,8 @@ defmodule RuncomRmq.Client.DispatchConsumer do
       {:ok, {mod, bytecodes}} ->
         assigns = normalize_assigns(message[:assigns] || message["assigns"] || %{})
         runbook = rebuild_with_assigns(mod, assigns, bytecodes)
+        secrets = message[:secrets] || message["secrets"] || %{}
+        runbook = inject_secrets(runbook, secrets)
 
         enriched =
           Map.merge(message, %{
@@ -237,6 +239,14 @@ defmodule RuncomRmq.Client.DispatchConsumer do
       key = if is_binary(k), do: String.to_atom(k), else: k
       {key, v}
     end
+  end
+
+  defp inject_secrets(runbook, secrets) when map_size(secrets) == 0, do: runbook
+
+  defp inject_secrets(runbook, secrets) do
+    Enum.reduce(secrets, runbook, fn {name, value}, rc ->
+      Runcom.secret(rc, name, value)
+    end)
   end
 
   defp call_handler(message, {module, function}) do

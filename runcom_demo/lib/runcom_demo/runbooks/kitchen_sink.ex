@@ -95,8 +95,8 @@ defmodule RuncomDemo.Runbooks.KitchenSink do
     |> Runcom.assign(:run_id, run_id)
     |> Runcom.assign(:work_dir, work_dir)
     |> Runcom.assign(:fail_on_node, fail_on_node)
-    |> Runcom.secret(:api_token, fn -> System.get_env("RUNCOM_API_TOKEN") || "demo-token" end)
-    |> Runcom.secret(:deploy_key, fn -> System.get_env("RUNCOM_DEPLOY_KEY") || "demo-key" end)
+    |> Runcom.secret(:api_token, fn -> "foo" end)
+    |> Runcom.secret(:deploy_key, fn -> "secret" end)
     |> Debug.add("start",
       message: &"Kitchen sink #{&1.assigns.run_id} starting"
     )

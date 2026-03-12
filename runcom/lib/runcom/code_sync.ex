@@ -2,10 +2,10 @@ defmodule Runcom.CodeSync do
   @moduledoc """
   Assembles bytecode bundles for distributing runbooks to remote agents.
 
-  When a runbook uses custom step modules (anything not under `Runcom.Steps.*`),
-  those modules must be shipped alongside the serialized runbook so the remote
-  VM can execute them. This module handles serialization, hashing, bytecode
-  extraction, and dependency resolution for that workflow.
+  Assembles bytecode for all step modules used in a runbook — both custom and
+  built-in — so that remote agents always run the same version as the server.
+  This module handles serialization, hashing, bytecode extraction, and
+  dependency resolution for that workflow.
 
   ## Bundle Format
 
@@ -41,11 +41,10 @@ defmodule Runcom.CodeSync do
   """
 
   @doc """
-  Serializes a runbook and extracts bytecode for all reachable custom modules.
+  Serializes a runbook and extracts bytecode for all reachable modules.
 
-  Built-in steps (under `Runcom.Steps.*`) are assumed to already exist on the
-  remote VM. All other modules referenced by custom steps are bundled based
-  on the `__deps__/0` manifest provided by `Runcom.CodeSync.Tracer`.
+  Includes both custom step modules and built-in `Runcom.*` modules so that
+  agents receive updated bytecode when the server's `runcom` package changes.
 
   Returns `{:ok, {struct_binary, [{module, bytecode}]}}` on success, or
   `{:error, {:bytecode_not_found, module}}` if a module's object code
@@ -68,7 +67,6 @@ defmodule Runcom.CodeSync do
     root_modules =
       (step_modules ++ closure_modules)
       |> Enum.uniq()
-      |> Enum.reject(&builtin?/1)
 
     all_modules = resolve_deps(root_modules)
 
@@ -168,21 +166,35 @@ defmodule Runcom.CodeSync do
 
   defp closure_module(_), do: []
 
-  @builtin_prefixes ~w(Elixir.Runcom.Steps. Elixir.Runcom.Step Elixir.Runcom.StepNode Elixir.Runcom.Result)
+  # Computed at compile time from the build environment so the set is
+  # baked into the beam file and works correctly inside mix releases.
+  @stdlib_apps (
+    otp_root = to_string(:code.root_dir())
+
+    otp =
+      :code.get_path()
+      |> Enum.filter(&String.starts_with?(to_string(&1), otp_root))
+      |> Enum.map(fn path ->
+        path |> to_string() |> Path.dirname() |> Path.basename() |> String.split("-") |> hd() |> String.to_atom()
+      end)
+
+    elixir_root = :code.lib_dir(:elixir) |> to_string() |> Path.dirname()
+
+    elixir =
+      :code.get_path()
+      |> Enum.filter(&String.starts_with?(to_string(&1), elixir_root))
+      |> Enum.map(fn path ->
+        path |> to_string() |> Path.dirname() |> Path.basename() |> String.split("-") |> hd() |> String.to_atom()
+      end)
+
+    MapSet.new(otp ++ elixir)
+  )
 
   defp builtin?(module) when is_atom(module) do
-    not elixir_module?(module) or runcom_internal?(module)
-  end
-
-  defp elixir_module?(module) do
-    String.starts_with?(Atom.to_string(module), "Elixir.")
-  end
-
-  defp runcom_internal?(module) do
-    mod_str = Atom.to_string(module)
-
-    Enum.any?(@builtin_prefixes, &String.starts_with?(mod_str, &1)) or
-      mod_str == "Elixir.Runcom"
+    case Application.get_application(module) do
+      nil -> true
+      app -> app in @stdlib_apps
+    end
   end
 
   defp fetch_bytecodes([], acc), do: {:ok, Enum.reverse(acc)}

@@ -20,6 +20,7 @@ defmodule Runcom.Orchestrator do
       running --> completed: all_steps_done
       running --> failed: step_failed
       running --> halted: step_halted
+      running --> halted: await_halt
       completed --> [*]
       failed --> [*]
       halted --> running: resume
@@ -81,6 +82,7 @@ defmodule Runcom.Orchestrator do
     :on_failure,
     :artifact_dir,
     :dispatch_id,
+    :halt_from,
     callers: [],
     started_at: nil,
     status: :pending,
@@ -136,6 +138,21 @@ defmodule Runcom.Orchestrator do
   @spec get_runbook(GenServer.server()) :: Runcom.t()
   def get_runbook(server) do
     GenServer.call(server, :get_runbook)
+  end
+
+  @doc """
+  Requests a halt and blocks until the Orchestrator has checkpointed.
+
+  Called by steps (like `Reboot`) that need to guarantee the checkpoint is
+  durable before taking a destructive action. Sets the runbook status to
+  `:halted`, writes the checkpoint, and replies `:ok`.
+
+  The step should issue the destructive command after this returns, then
+  return `{:ok, %Result{halt: true}}` as usual.
+  """
+  @spec await_halt(String.t()) :: :ok
+  def await_halt(runbook_id) when is_binary(runbook_id) do
+    GenServer.call(via_tuple(runbook_id), :await_halt, :infinity)
   end
 
   defp via_tuple(id) do
@@ -222,6 +239,21 @@ defmodule Runcom.Orchestrator do
     {:reply, state.runbook, state}
   end
 
+  def handle_call(:await_halt, _from, %{status: :halted} = state) do
+    {:reply, :ok, state}
+  end
+
+  def handle_call(:await_halt, from, %{status: :running} = state) do
+    state = %{state | status: :halted, runbook: %{state.runbook | status: :halted}}
+
+    if monitored_task_count() <= 1 do
+      write_checkpoint(state)
+      {:reply, :ok, state}
+    else
+      {:noreply, %{state | halt_from: from}}
+    end
+  end
+
   @impl true
   def handle_info({ref, {:step_completed, step_name, result}}, state) when is_reference(ref) do
     Logger.info("[Orchestrator] step_completed: #{step_name}")
@@ -238,14 +270,18 @@ defmodule Runcom.Orchestrator do
       state.on_step_complete.(state.runbook, step_name, result)
     end
 
-    # Check for halt
-    case result do
-      {:ok, %{halt: true}, _sink} ->
+    state = maybe_reply_halt(state)
+
+    cond do
+      match?({:ok, %{halt: true}, _}, result) ->
         rc = %{state.runbook | status: :halted}
         state = %{state | runbook: rc, status: :halted}
         finish_execution(state, status: :halted)
 
-      _ ->
+      state.status == :halted ->
+        {:noreply, state}
+
+      true ->
         state = %{state | current_step_index: state.current_step_index + 1}
         execute_next_step(state)
     end
@@ -290,6 +326,25 @@ defmodule Runcom.Orchestrator do
     end
 
     :ok
+  end
+
+  defp maybe_reply_halt(%{halt_from: nil} = state), do: state
+
+  defp maybe_reply_halt(%{halt_from: from} = state) do
+    if monitored_task_count() <= 1 do
+      write_checkpoint(state)
+      GenServer.reply(from, :ok)
+      %{state | halt_from: nil}
+    else
+      state
+    end
+  end
+
+  defp monitored_task_count do
+    case Process.info(self(), :monitors) do
+      {:monitors, monitors} -> length(monitors)
+      nil -> 0
+    end
   end
 
   defp initialize_secrets(secret_store, runbook) do

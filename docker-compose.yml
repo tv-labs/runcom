@@ -64,8 +64,7 @@ services:
 
   agent-nyc-001:
     build:
-      context: ..
-      dockerfile: runcom_demo/Dockerfile.agent
+      dockerfile: Dockerfile.agent
     hostname: agent-nyc-001
     restart: unless-stopped
     environment:
@@ -86,8 +85,7 @@ services:
 
   agent-nyc-002:
     build:
-      context: ..
-      dockerfile: runcom_demo/Dockerfile.agent
+      dockerfile: Dockerfile.agent
     hostname: agent-nyc-002
     restart: unless-stopped
     environment:
@@ -107,8 +105,7 @@ services:
 
   agent-lax-001:
     build:
-      context: ..
-      dockerfile: runcom_demo/Dockerfile.agent
+      dockerfile: Dockerfile.agent
     hostname: agent-lax-001
     restart: unless-stopped
     environment:
@@ -128,8 +125,7 @@ services:
 
   agent-lax-002:
     build:
-      context: ..
-      dockerfile: runcom_demo/Dockerfile.agent
+      dockerfile: Dockerfile.agent
     hostname: agent-lax-002
     restart: unless-stopped
     environment:
@@ -149,8 +145,7 @@ services:
 
   agent-ams-001:
     build:
-      context: ..
-      dockerfile: runcom_demo/Dockerfile.agent
+      dockerfile: Dockerfile.agent
     hostname: agent-ams-001
     restart: unless-stopped
     environment:

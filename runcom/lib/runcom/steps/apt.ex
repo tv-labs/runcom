@@ -14,7 +14,6 @@ defmodule Runcom.Steps.Apt do
       - `:absent` - Ensure package is removed
       - `:latest` - Ensure package is at latest version
     * `:update_cache` - Run apt-get update first (boolean)
-    * `:sink` - Sink for capturing stdout/stderr (defaults to runbook's sink)
 
   ## Examples
 

@@ -254,13 +254,14 @@ defmodule RuncomWeb.Live.DispatchLive do
   def handle_event("dispatch", _params, socket) do
     %{
       selected_runbook: runbook_id,
+      base_path: base_path,
       selected_nodes: selected_nodes,
       store_mod: store_mod,
       store_opts: store_opts,
       assign_values: runbook_assigns,
-      dispatcher: dispatcher
-    } =
-      socket.assigns
+      dispatcher: dispatcher,
+      pubsub: pubsub
+    } = socket.assigns
 
     runbook_assigns =
       Map.reject(runbook_assigns, fn {k, v} ->
@@ -280,7 +281,7 @@ defmodule RuncomWeb.Live.DispatchLive do
       )
 
     for node <- selected_nodes do
-      node_id = Map.get(node, :node_id) || Map.get(node, "node_id")
+      node_id = node.node_id
       store_mod.create_dispatch_node(%{dispatch_id: dispatch.id, node_id: node_id}, store_opts)
     end
 
@@ -290,14 +291,14 @@ defmodule RuncomWeb.Live.DispatchLive do
 
     dispatch_async(dispatcher, runbook_id, selected_nodes, dispatch_opts, store_mod, store_opts)
 
-    if pubsub = socket.assigns.pubsub do
+    if pubsub do
       Phoenix.PubSub.broadcast(pubsub, "runcom:dispatches", {:dispatch_created, dispatch.id})
     end
 
     {:noreply,
      socket
      |> put_flash(:info, "Dispatched \"#{runbook_id}\" to #{length(selected_nodes)} node(s)")
-     |> push_navigate(to: "#{socket.assigns.base_path}/dispatch/#{dispatch.id}")}
+     |> push_navigate(to: "#{base_path}/dispatch/#{dispatch.id}")}
   end
 
   @impl true
@@ -376,7 +377,7 @@ defmodule RuncomWeb.Live.DispatchLive do
   defp dispatch_async(dispatcher, runbook_id, nodes, dispatch_opts, store_mod, store_opts) do
     dispatch_id = Keyword.fetch!(dispatch_opts, :dispatch_id)
 
-    Task.start(fn ->
+    Task.Supervisor.start_child(Runcom.TaskSupervisor, fn ->
       case dispatcher.dispatch(runbook_id, nodes, dispatch_opts) do
         results when is_list(results) ->
           for {node_id, :acked} <- results, node_id != nil do

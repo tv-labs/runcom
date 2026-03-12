@@ -1,0 +1,48 @@
+FROM elixir:1.19-otp-28-slim AS build
+
+RUN apt-get update -qq && \
+    apt-get install -y --no-install-recommends git build-essential ca-certificates && \
+    rm -rf /var/lib/apt/lists/*
+
+WORKDIR /app
+
+# Copy dependency source trees
+COPY runcom /deps/runcom
+COPY runcom_rmq /deps/runcom_rmq
+COPY runcom_demo_agent /app
+
+# Rewrite path deps to match container layout
+RUN sed -i 's|\.\./runcom_rmq|/deps/runcom_rmq|' mix.exs && \
+    sed -i 's|\.\./runcom|/deps/runcom|' mix.exs && \
+    sed -i 's|\.\./runcom|/deps/runcom|' /deps/runcom_rmq/mix.exs
+
+ENV MIX_ENV=prod
+
+RUN mix local.hex --force && mix local.rebar --force
+RUN mix deps.get --only prod
+RUN mix deps.compile
+RUN mix compile
+RUN mix release
+
+# ── Runner stage ─────────────────────────────────────────────────────────────
+
+FROM debian:trixie-slim
+
+RUN apt-get update -qq && \
+    apt-get install -y --no-install-recommends \
+      libstdc++6 openssl libncurses6 locales ca-certificates curl bash && \
+    rm -rf /var/lib/apt/lists/* && \
+    sed -i '/en_US.UTF-8/s/^# //g' /etc/locale.gen && locale-gen
+
+ENV LANG=en_US.UTF-8
+
+# Shutdown shim: the Reboot step runs "shutdown -r now" which doesn't exist
+# in containers without systemd. This shim kills PID 1 (the BEAM process)
+# causing the container to exit. Docker's restart policy brings it back.
+RUN printf '#!/bin/sh\nkill 1\n' > /usr/local/bin/shutdown && chmod +x /usr/local/bin/shutdown
+
+COPY --from=build /app/_build/prod/rel/runcom_agent /app
+
+WORKDIR /app
+
+CMD ["/app/bin/runcom_agent", "start"]

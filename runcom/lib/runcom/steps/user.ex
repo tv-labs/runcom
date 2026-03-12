@@ -21,6 +21,8 @@ defmodule Runcom.Steps.User do
     * `:state` - `:present` or `:absent` (required)
     * `:shell` - Login shell (e.g., `/bin/bash`)
     * `:home` - Home directory path
+    * `:group` - Primary group (name or GID). Auto-detected when a group
+      matching the username already exists.
     * `:groups` - List of supplementary groups
     * `:system` - Create a system account (boolean)
     * `:create_home` - Create home directory (boolean, default varies by OS)
@@ -45,6 +47,7 @@ defmodule Runcom.Steps.User do
     field(:state, :enum, required: true, values: [:present, :absent])
     field(:shell, :string)
     field(:home, :string)
+    field(:group, :string)
     field(:groups, {:array, :string})
     field(:system, :boolean)
     field(:create_home, :boolean)
@@ -66,8 +69,22 @@ defmodule Runcom.Steps.User do
 
   defp ensure_present(opts, family, sink) do
     if user_exists?(opts.name, sink) do
-      {:ok, Result.ok(output: "User '#{opts.name}' already exists")}
+      case build_modify_commands(opts, family) do
+        [] ->
+          {:ok, Result.ok(output: "User '#{opts.name}' already exists")}
+
+        cmds ->
+          case run_commands(cmds, sink) do
+            {:ok, _} = result -> result
+            error -> error
+          end
+      end
     else
+      opts =
+        if group_exists?(opts.name, sink),
+          do: Map.put_new(opts, :group, opts.name),
+          else: opts
+
       run_commands(build_commands(opts, family), sink)
     end
   end
@@ -84,6 +101,18 @@ defmodule Runcom.Steps.User do
     case CommandRunner.run(
            cmd: "id",
            args: [name],
+           stdout_sink: sink,
+           stderr_sink: sink
+         ) do
+      {:ok, %{exit_code: 0}} -> true
+      _ -> false
+    end
+  end
+
+  defp group_exists?(name, sink) do
+    case CommandRunner.run(
+           cmd: "getent",
+           args: ["group", name],
            stdout_sink: sink,
            stderr_sink: sink
          ) do
@@ -127,6 +156,7 @@ defmodule Runcom.Steps.User do
   def build_commands(%{state: :present} = opts, :alpine) do
     args =
       ["-D"]
+      |> maybe_add_flag("-G", opts[:group])
       |> maybe_add_flag("-s", opts[:shell])
       |> maybe_add_flag("-h", opts[:home])
       |> maybe_add_bool("-S", opts[:system])
@@ -154,6 +184,7 @@ defmodule Runcom.Steps.User do
   def build_commands(%{state: :present} = opts, _family) do
     args =
       []
+      |> maybe_add_flag("--gid", opts[:group])
       |> maybe_add_flag("--shell", opts[:shell])
       |> maybe_add_flag("--home-dir", opts[:home])
       |> maybe_add_flag("--groups", opts[:groups] && Enum.join(opts[:groups], ","))
@@ -172,6 +203,39 @@ defmodule Runcom.Steps.User do
       |> Kernel.++([opts.name])
 
     [{"userdel", args}]
+  end
+
+  defp build_modify_commands(opts, :alpine) do
+    primary =
+      if opts[:group],
+        do: [{"addgroup", [opts.name, opts[:group]]}],
+        else: []
+
+    supplementary =
+      case opts[:groups] do
+        groups when is_list(groups) and groups != [] ->
+          Enum.map(groups, fn group -> {"addgroup", [opts.name, group]} end)
+
+        _ ->
+          []
+      end
+
+    primary ++ supplementary
+  end
+
+  defp build_modify_commands(opts, _family) do
+    has_groups = is_list(opts[:groups]) and opts[:groups] != []
+
+    args =
+      []
+      |> maybe_add_flag("--gid", opts[:group])
+      |> maybe_add_bool("--append", has_groups)
+      |> maybe_add_flag("--groups", has_groups && Enum.join(opts[:groups], ","))
+
+    case args do
+      [] -> []
+      _ -> [{"usermod", args ++ [opts.name]}]
+    end
   end
 
   defp maybe_add_flag(args, _flag, nil), do: args
