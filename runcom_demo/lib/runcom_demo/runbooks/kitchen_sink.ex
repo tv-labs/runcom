@@ -163,7 +163,7 @@ defmodule RuncomDemo.Runbooks.KitchenSink do
         disk = step_output(rc, "disk")
         uptime_val = step_output(rc, "uptime")
 
-        ~b"""
+        ~BASH"""
         echo '=== Kitchen Sink Report ==='
         echo 'Run ID: #{rc.assigns.run_id}'
         echo "Node: $(hostname)"

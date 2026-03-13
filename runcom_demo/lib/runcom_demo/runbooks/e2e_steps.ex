@@ -92,7 +92,7 @@ defmodule RuncomDemo.Runbooks.E2ESteps do
       script: fn rc ->
         dir = rc.assigns.work_dir
 
-        ~b"""
+        ~BASH"""
         mkdir -p '#{dir}/archive-src'
         echo 'archived-content' > '#{dir}/archive-src/file.txt'
         cd '#{dir}' && tar czf fixture.tar.gz -C archive-src .
@@ -129,7 +129,7 @@ defmodule RuncomDemo.Runbooks.E2ESteps do
 
     # 13. Cleanup
     |> RCBash.add("cleanup",
-      script: fn rc -> ~b"rm -rf '#{rc.assigns.work_dir}' && echo 'cleaned up'" end,
+      script: fn rc -> ~BASH"rm -rf '#{rc.assigns.work_dir}' && echo 'cleaned up'" end,
       await: [
         "echo_test",
         "bash_test",

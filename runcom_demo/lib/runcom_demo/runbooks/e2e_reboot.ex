@@ -35,7 +35,7 @@ defmodule RuncomDemo.Runbooks.E2EReboot do
     # 2. Write marker to persistent volume
     |> RCBash.add("write_marker",
       script: fn rc ->
-        ~b"echo 'reboot-marker-#{rc.assigns.run_id}' > /data/runcom/reboot-marker.txt && echo 'marker written'"
+        ~BASH"echo 'reboot-marker-#{rc.assigns.run_id}' > /data/runcom/reboot-marker.txt && echo 'marker written'"
       end
     )
 

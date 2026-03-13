@@ -65,7 +65,7 @@ defmodule RuncomDemo.Runbooks.E2ES3 do
     |> Debug.add("start", message: &"E2E S3 #{&1.assigns.run_id} starting")
     |> RCBash.add("setup",
       script: fn rc ->
-        ~b"""
+        ~BASH"""
         mkdir -p '#{rc.assigns.work_dir}'
         echo 'setup complete'
         """
@@ -84,7 +84,7 @@ defmodule RuncomDemo.Runbooks.E2ES3 do
     )
     |> RCBash.add("verify_download",
       script: fn rc ->
-        ~b"""
+        ~BASH"""
         content=$(cat '#{rc.assigns.work_dir}/downloaded.txt')
         if [ "$content" = "hello-from-minio" ]; then
           echo 'download verified'
@@ -98,7 +98,7 @@ defmodule RuncomDemo.Runbooks.E2ES3 do
     )
     |> RCBash.add("large_output",
       script: fn _rc ->
-        ~b"""
+        ~BASH"""
         seq 1 100 | while read i; do echo "line $i: padding to generate output exceeding truncation threshold"; done
         """
       end,
@@ -106,7 +106,7 @@ defmodule RuncomDemo.Runbooks.E2ES3 do
     )
     |> RCBash.add("cleanup",
       script: fn rc ->
-        ~b"rm -rf '#{rc.assigns.work_dir}' /tmp/minio-seed.txt && echo 'cleaned up'"
+        ~BASH"rm -rf '#{rc.assigns.work_dir}' /tmp/minio-seed.txt && echo 'cleaned up'"
       end,
       await: ["large_output"]
     )

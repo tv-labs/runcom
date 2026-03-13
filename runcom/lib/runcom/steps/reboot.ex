@@ -39,8 +39,6 @@ defmodule Runcom.Steps.Reboot do
     field(:message, :string, default: @default_message)
   end
 
-  import Bash.Sigil
-
   alias Runcom.CommandRunner
   alias Runcom.Orchestrator
 
@@ -80,8 +78,9 @@ defmodule Runcom.Steps.Reboot do
   """
   @spec build_detached_command(non_neg_integer(), String.t()) :: String.t()
   def build_detached_command(delay, message) do
-    to_string(~b"""
-      nohup sh -c 'sleep #{delay} && shutdown -r now "#{Bash.escape!(message, ?")}"' > /dev/null 2>&1 &
-    """)
+    """
+    nohup sh -c 'sleep #{delay} && shutdown -r now "#{Bash.escape!(message, ?")}"' > /dev/null 2>&1 &
+    """
+    |> to_string()
   end
 end

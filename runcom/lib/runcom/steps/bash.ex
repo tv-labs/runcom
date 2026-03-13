@@ -6,7 +6,7 @@ defmodule Runcom.Steps.Bash do
 
   ### Inline script (interpreter)
 
-      RC.Bash.add(runbook, "setup", script: ~b"echo hello && cd /tmp")
+      RC.Bash.add(runbook, "setup", script: ~BASH"echo hello && cd /tmp")
 
   ### Local file (CommandRunner)
 

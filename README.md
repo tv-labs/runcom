@@ -80,7 +80,7 @@ end
 Infrastructure automation lives in bash scripts, but they're opaque to the
 tools running them. Runcom integrates with the
 [`bash`](https://github.com/tv-labs/bash) Elixir package — a pure-Elixir bash
-interpreter with compile-time parsing via the `~BASH` and `~b` sigils. This
+interpreter with compile-time parsing via the `~BASH` sigils. This
 means your shell scripts are parsed at compile time, catching syntax errors
 before they reach production, while still running real bash at execution time.
 

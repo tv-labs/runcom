@@ -73,10 +73,10 @@ defmodule RuncomDemo.Runbooks.AgentProbe do
       await: ["start"]
     )
     |> Bash.add("collect",
-      script:
-        &~b"""
+      script: fn rc ->
+        ~BASH"""
         echo '=== Agent Probe Report ==='
-        echo "Probe ID: #{&1.assigns.probe_id}"
+        echo "Probe ID: #{rc.assigns.probe_id}"
         echo "Node: $(hostname)"
         echo "Date: $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
         echo ''
@@ -94,14 +94,15 @@ defmodule RuncomDemo.Runbooks.AgentProbe do
         echo ''
         echo '--- Uptime ---'
         cat /proc/uptime
-        """,
+        """
+      end,
       await: ["uname", "disk", "memory"]
     )
     |> Bash.add("write",
-      script:
-        &~b"""
-        REPORT_DIR="#{&1.assigns.report_dir}"
-        PROBE_ID="#{&1.assigns.probe_id}"
+      script: fn rc ->
+        ~BASH"""
+        REPORT_DIR="#{rc.assigns.report_dir}"
+        PROBE_ID="#{rc.assigns.probe_id}"
         REPORT="$REPORT_DIR/probe-$PROBE_ID.txt"
 
         mkdir -p "$REPORT_DIR"
@@ -115,12 +116,14 @@ defmodule RuncomDemo.Runbooks.AgentProbe do
         cat /proc/meminfo | head -3 >> "$REPORT"
         cat /proc/loadavg >> "$REPORT"
         echo "Report written to $REPORT"
-        """,
+        """
+      end,
       await: ["collect"]
     )
     |> Bash.add("curl_check",
-      script:
-        &~b"curl -sf -o /dev/null -w '%{http_code}' '#{&1.assigns.check_url}' || echo 'unreachable'",
+      script: fn rc ->
+        ~BASH"curl -sf -o /dev/null -w '%{http_code}' '#{rc.assigns.check_url}' || echo 'unreachable'"
+      end,
       await: ["collect"]
     )
     |> Debug.add("done",
