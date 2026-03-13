@@ -33,7 +33,7 @@ defmodule Runcom.MixProject do
 
   defp deps do
     [
-      {:bash, ">= 0.3.4"},
+      {:bash, ">= 0.4.0"},
       {:ex_cmd, "~> 0.12"},
       {:req, "~> 0.5"},
       {:telemetry, "~> 1.0"},
