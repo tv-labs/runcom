@@ -31,6 +31,7 @@ defmodule RuncomRmq.Server.EventConsumer do
     * `:batch_size` -- max messages per batch (default: `50`)
     * `:batch_timeout` -- max ms to wait before flushing a batch (default: `1_000`)
     * `:batcher_concurrency` -- number of batcher stages (default: `2`)
+    * `:queue_type` -- `:quorum` for quorum queues (default: classic)
   """
 
   use Broadway
@@ -47,13 +48,14 @@ defmodule RuncomRmq.Server.EventConsumer do
     queue = Keyword.fetch!(opts, :queue)
     store = Keyword.fetch!(opts, :store)
     pubsub = Keyword.fetch!(opts, :pubsub)
+    queue_type = Keyword.get(opts, :queue_type)
     producer_concurrency = Keyword.get(opts, :producer_concurrency, 1)
     processor_concurrency = Keyword.get(opts, :processor_concurrency, 2)
     batch_size = Keyword.get(opts, :batch_size, 50)
     batch_timeout = Keyword.get(opts, :batch_timeout, 1_000)
     batcher_concurrency = Keyword.get(opts, :batcher_concurrency, 2)
 
-    :ok = RuncomRmq.Connection.setup_dlx(connection, queue)
+    :ok = RuncomRmq.Connection.setup_dlx(connection, queue, queue_type: queue_type)
 
     Broadway.start_link(__MODULE__,
       name: name,
@@ -64,12 +66,7 @@ defmodule RuncomRmq.Server.EventConsumer do
            connection: connection,
            declare: [
              durable: true,
-             arguments: [
-               # TODO: Quorum queue type
-               # {"x-queue-type", :longstr, "quorum"},
-               {"x-dead-letter-exchange", :longstr, RuncomRmq.Connection.default_dlx_exchange()},
-               {"x-dead-letter-routing-key", :longstr, queue}
-             ]
+             arguments: RuncomRmq.Connection.queue_arguments(queue, queue_type: queue_type)
            ],
            on_failure: :reject},
         concurrency: producer_concurrency
@@ -175,9 +172,7 @@ defmodule RuncomRmq.Server.EventConsumer do
   defp update_dispatch_tracking(result, event_attrs, store_mod, store_opts) do
     dispatch_id = result_field(result, :dispatch_id)
 
-    # Remove defensive function_exported?
-    # TODO: Cleanup
-    if dispatch_id && function_exported?(store_mod, :get_dispatch_node, 3) do
+    if dispatch_id do
       node_id = result_field(result, :node_id)
 
       case store_mod.get_dispatch_node(dispatch_id, node_id, store_opts) do
@@ -198,11 +193,7 @@ defmodule RuncomRmq.Server.EventConsumer do
 
           case store_mod.update_dispatch_node(dn, node_attrs, store_opts) do
             {:ok, _} ->
-              # Remove defensive function_exported?
-              # TODO: Cleanup
-              if function_exported?(store_mod, :refresh_dispatch_counts, 2) do
-                store_mod.refresh_dispatch_counts(dispatch_id, store_opts)
-              end
+              store_mod.refresh_dispatch_counts(dispatch_id, store_opts)
 
             {:error, reason} ->
               Logger.error("EventConsumer failed to update dispatch_node: #{inspect(reason)}")

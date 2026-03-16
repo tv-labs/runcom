@@ -45,10 +45,11 @@ defmodule RuncomRmq.Server.SyncConsumer do
     connection = Keyword.fetch!(opts, :connection)
     queue = Keyword.fetch!(opts, :queue)
     store = Keyword.fetch!(opts, :store)
+    queue_type = Keyword.get(opts, :queue_type)
     producer_concurrency = Keyword.get(opts, :producer_concurrency, 1)
     processor_concurrency = Keyword.get(opts, :processor_concurrency, 2)
 
-    :ok = RuncomRmq.Connection.setup_dlx(connection, queue)
+    :ok = RuncomRmq.Connection.setup_dlx(connection, queue, queue_type: queue_type)
 
     Broadway.start_link(__MODULE__,
       name: __MODULE__,
@@ -60,11 +61,7 @@ defmodule RuncomRmq.Server.SyncConsumer do
            metadata: [:reply_to, :correlation_id],
            declare: [
              durable: true,
-             # TODO: quorum queue type
-             arguments: [
-               {"x-dead-letter-exchange", :longstr, RuncomRmq.Connection.default_dlx_exchange()},
-               {"x-dead-letter-routing-key", :longstr, queue}
-             ]
+             arguments: RuncomRmq.Connection.queue_arguments(queue, queue_type: queue_type)
            ],
            on_failure: :reject},
         concurrency: producer_concurrency

@@ -30,6 +30,7 @@ defmodule RuncomRmq.Client.DispatchConsumer do
   defstruct [
     :connection,
     :queue,
+    :queue_type,
     :dispatch_handler,
     :cache,
     :sync,
@@ -49,6 +50,7 @@ defmodule RuncomRmq.Client.DispatchConsumer do
     state = %__MODULE__{
       connection: Keyword.fetch!(opts, :connection),
       queue: Keyword.fetch!(opts, :queue),
+      queue_type: Keyword.get(opts, :queue_type),
       # TODO: this could probably be done here in runcom_rmq
       dispatch_handler: Keyword.fetch!(opts, :dispatch_handler),
       cache: Keyword.fetch!(opts, :cache),
@@ -125,10 +127,15 @@ defmodule RuncomRmq.Client.DispatchConsumer do
   end
 
   defp setup_consumer(state) do
+    declare_opts =
+      case state.queue_type do
+        :quorum -> [durable: true, arguments: [{"x-queue-type", :longstr, "quorum"}]]
+        _ -> [durable: true]
+      end
+
     with {:ok, chan} <- Connection.open(state.connection),
          ref = Process.monitor(chan.pid),
-         # TODO: quorum queue
-         {:ok, _} <- AMQP.Queue.declare(chan, state.queue, durable: true),
+         {:ok, _} <- AMQP.Queue.declare(chan, state.queue, declare_opts),
          {:ok, _tag} <- AMQP.Basic.consume(chan, state.queue) do
       {:ok, %{state | channel: chan, channel_ref: ref}}
     end
@@ -150,10 +157,9 @@ defmodule RuncomRmq.Client.DispatchConsumer do
   defp handle_dispatch(message, state) do
     case resolve_module(message, state.cache, state.sync) do
       {:ok, {mod, bytecodes}} ->
-        assigns = normalize_assigns(message[:assigns] || message["assigns"] || %{})
+        assigns = atomize_keys(message[:assigns] || message["assigns"] || %{})
         runbook = rebuild_with_assigns(mod, assigns, bytecodes)
-        # TODO: this is either string or atom, not both.
-        secrets = message[:secrets] || message["secrets"] || %{}
+        secrets = atomize_keys(message[:secrets] || message["secrets"] || %{})
         runbook = inject_secrets(runbook, secrets)
 
         message
@@ -234,7 +240,7 @@ defmodule RuncomRmq.Client.DispatchConsumer do
     Runcom.assign(runbook, assigns)
   end
 
-  defp normalize_assigns(assigns) do
+  defp atomize_keys(assigns) do
     for {k, v} <- assigns, into: %{} do
       key = if is_binary(k), do: String.to_atom(k), else: k
       {key, v}

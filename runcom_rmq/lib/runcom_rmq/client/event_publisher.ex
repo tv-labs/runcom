@@ -198,7 +198,6 @@ defmodule RuncomRmq.Client.EventPublisher do
       dispatch_id: metadata[:dispatch_id],
       step_name: metadata[:step_name],
       step_module: metadata[:step_module],
-      # TODO: is step_order dead?
       step_order: metadata[:step_order],
       event: event_type,
       timestamp: DateTime.utc_now()
