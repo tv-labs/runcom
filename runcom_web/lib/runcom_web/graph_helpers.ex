@@ -15,71 +15,36 @@ defmodule RuncomWeb.GraphHelpers do
   @spec runbook_to_graph(Runcom.t(), String.t()) :: {list(), list()}
   def runbook_to_graph(%Runcom{} = rc, direction \\ "LR") do
     order = Runcom.execution_order(rc)
-    graft_prefixes = detect_graft_prefixes(order)
     when_conditions = incoming_conditions(rc.edges)
 
     {nodes, _index} =
       Enum.reduce(order, {[], 0}, fn name, {acc, idx} ->
-        cond do
-          # Grafted step but not the first one in its group - skip
-          grafted_step?(name, graft_prefixes) and not first_in_group?(name, acc, graft_prefixes) ->
-            {acc, idx}
+        step = rc.steps[name]
+        position = node_position(direction, idx)
 
-          # First step of a graft group -> emit collapsed runbook node
-          grafted_step?(name, graft_prefixes) ->
-            prefix = graft_prefix(name)
-            position = node_position(direction, idx)
+        data =
+          %{
+            "label" => name,
+            "module" => inspect(step.module),
+            "opts" => sanitize_opts(step.opts, step.sources),
+            "html" => render_step_html(step.module, step.opts)
+          }
+          |> put_framework_keys(step, Map.get(when_conditions, name))
 
-            node = %{
-              "id" => prefix,
-              "type" => "runbook",
-              "position" => position,
-              "data" => %{
-                "label" => prefix,
-                "module" => "Runcom.Steps.Runbook",
-                "opts" => %{"runbook_id" => prefix} |> sanitize_opts(),
-                "html" => ""
-              }
-            }
+        node = %{
+          "id" => name,
+          "type" => "step",
+          "position" => position,
+          "data" => data
+        }
 
-            {[node | acc], idx + 1}
-
-          # Regular step
-          true ->
-            step = rc.steps[name]
-            position = node_position(direction, idx)
-
-            data =
-              %{
-                "label" => name,
-                "module" => inspect(step.module),
-                "opts" => sanitize_opts(step.opts, step.sources),
-                "html" => render_step_html(step.module, step.opts)
-              }
-              |> put_framework_keys(step, Map.get(when_conditions, name))
-
-            node = %{
-              "id" => name,
-              "type" => "step",
-              "position" => position,
-              "data" => data
-            }
-
-            {[node | acc], idx + 1}
-        end
+        {[node | acc], idx + 1}
       end)
 
     nodes = Enum.reverse(nodes)
 
     edges =
       rc.edges
-      |> Enum.map(fn {from, to, condition} ->
-        from = remap_graft_ref(from, graft_prefixes)
-        to = remap_graft_ref(to, graft_prefixes)
-        {from, to, condition}
-      end)
-      |> Enum.uniq_by(fn {from, to, _} -> {from, to} end)
-      |> Enum.reject(fn {from, to, _} -> from == to end)
       |> Enum.map(fn {from, to, condition} ->
         {edge_type, condition_data} =
           case condition do
@@ -100,38 +65,8 @@ defmodule RuncomWeb.GraphHelpers do
     {nodes, edges}
   end
 
-  defp detect_graft_prefixes(step_names) do
-    step_names
-    |> Enum.filter(&String.contains?(&1, "."))
-    |> Enum.map(&(String.split(&1, ".", parts: 2) |> List.first()))
-    |> Enum.uniq()
-    |> MapSet.new()
-  end
-
-  defp grafted_step?(name, prefixes) do
-    case String.split(name, ".", parts: 2) do
-      [prefix, _rest] -> prefix in prefixes
-      _ -> false
-    end
-  end
-
-  defp first_in_group?(name, already_emitted, prefixes) do
-    prefix = graft_prefix(name)
-    grafted_step?(name, prefixes) and not Enum.any?(already_emitted, &(&1["id"] == prefix))
-  end
-
-  defp graft_prefix(name) do
-    name |> String.split(".", parts: 2) |> List.first()
-  end
-
-  defp remap_graft_ref(name, prefixes) do
-    if grafted_step?(name, prefixes), do: graft_prefix(name), else: name
-  end
-
   defp node_position("TB", index), do: %{"x" => 250, "y" => index * 100}
   defp node_position(_, index), do: %{"x" => index * 220, "y" => 100}
-
-  defp sanitize_opts(opts, sources \\ %{})
 
   defp sanitize_opts(opts, sources) when is_map(opts) do
     Map.new(opts, fn {k, v} ->

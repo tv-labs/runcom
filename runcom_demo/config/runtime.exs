@@ -30,7 +30,6 @@ if config_env() == :prod do
 
   config :runcom_rmq, signing_secret: Base.decode64!(signing_secret)
 
-
   database_url =
     System.get_env("DATABASE_URL") ||
       raise """

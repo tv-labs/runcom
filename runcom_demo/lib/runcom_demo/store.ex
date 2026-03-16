@@ -16,6 +16,7 @@ defmodule RuncomDemo.Store do
   # ── Results (delegated to RuncomEcto.Store) ──
 
   defdelegate save_result(attrs, opts \\ []), to: RuncomEcto.Store
+  defdelegate save_results(attrs_list, opts \\ []), to: RuncomEcto.Store
   defdelegate list_results(opts \\ []), to: RuncomEcto.Store
   defdelegate get_result(id, opts \\ []), to: RuncomEcto.Store
   defdelegate count_results(opts \\ []), to: RuncomEcto.Store
@@ -49,6 +50,17 @@ defmodule RuncomDemo.Store do
       |> Repo.all()
 
     {:ok, nodes}
+  end
+
+  @doc "Inserts or updates a node by `node_id`."
+  @spec upsert_node(String.t(), map()) :: {:ok, Node.t()} | {:error, term()}
+  def upsert_node(node_id, attrs) do
+    case Repo.get_by(Node, node_id: node_id) do
+      nil -> %Node{node_id: node_id}
+      existing -> existing
+    end
+    |> Node.changeset(attrs)
+    |> Repo.insert_or_update()
   end
 
   @doc "Retrieves a node by its `node_id`."

@@ -462,6 +462,7 @@ defmodule Runcom do
       rc
       | steps: Map.merge(rc.steps, namespaced_steps),
         edges: rc.edges ++ namespaced_edges ++ incoming_edges,
+        assigns: Map.merge(rc.assigns, sub.assigns),
         entry: new_entry,
         last_step: new_last
     }

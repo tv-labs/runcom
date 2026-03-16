@@ -79,7 +79,7 @@ defmodule RuncomWeb.Live.ResultDetailLiveIntegrationTest do
     end
 
     test "shows not found for missing result", %{conn: conn} do
-      {:ok, _view, html} = live(conn, "/dashboard/result/999999")
+      {:ok, _view, html} = live(conn, "/dashboard/result/#{Ecto.UUID.generate()}")
 
       assert html =~ "Result not found"
     end

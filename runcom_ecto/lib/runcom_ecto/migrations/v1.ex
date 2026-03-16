@@ -6,19 +6,20 @@ defmodule RuncomEcto.Migrations.V1 do
   def up(opts \\ []) do
     prefix = Keyword.get(opts, :prefix, "public")
 
-    create table(:runcom_results, prefix: prefix) do
+    create table(:runcom_results, primary_key: false, prefix: prefix) do
+      add :id, :binary_id, primary_key: true
       add :runbook_id, :string, null: false
       add :node_id, :string, null: false
       add :status, :string, null: false
       add :mode, :string
-      add :started_at, :utc_datetime
-      add :completed_at, :utc_datetime
+      add :started_at, :utc_datetime_usec
+      add :completed_at, :utc_datetime_usec
       add :duration_ms, :integer
       add :edges, {:array, :jsonb}, default: []
       add :error_message, :text
       add :dispatch_id, :binary_id
 
-      timestamps type: :utc_datetime
+      timestamps type: :utc_datetime_usec
     end
 
     create index(:runcom_results, [:runbook_id], prefix: prefix)
@@ -63,7 +64,9 @@ defmodule RuncomEcto.Migrations.V1 do
     )
 
     create table(:runcom_step_results, prefix: prefix) do
-      add :result_id, references(:runcom_results, on_delete: :delete_all), null: false
+      add :result_id, references(:runcom_results, type: :binary_id, on_delete: :delete_all),
+        null: false
+
       add :name, :string, null: false
       add :order, :integer, null: false
       add :status, :string, null: false, default: "pending"
@@ -140,7 +143,7 @@ defmodule RuncomEcto.Migrations.V1 do
 
       add :node_id, :string, null: false
       add :status, :string, null: false, default: "pending"
-      add :result_id, references(:runcom_results, on_delete: :nilify_all)
+      add :result_id, references(:runcom_results, type: :binary_id, on_delete: :nilify_all)
       add :started_at, :utc_datetime_usec
       add :completed_at, :utc_datetime_usec
       add :duration_ms, :integer

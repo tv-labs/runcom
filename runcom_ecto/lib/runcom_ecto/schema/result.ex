@@ -13,8 +13,10 @@ defmodule RuncomEcto.Schema.Result do
 
   import Ecto.Changeset
 
+  @primary_key {:id, :binary_id, autogenerate: true}
+
   @type t :: %__MODULE__{
-          id: integer() | nil,
+          id: Ecto.UUID.t() | nil,
           runbook_id: String.t() | nil,
           node_id: String.t() | nil,
           status: String.t() | nil,
@@ -35,8 +37,8 @@ defmodule RuncomEcto.Schema.Result do
     field :status, :string
     field :mode, :string
 
-    field :started_at, :utc_datetime
-    field :completed_at, :utc_datetime
+    field :started_at, :utc_datetime_usec
+    field :completed_at, :utc_datetime_usec
     field :duration_ms, :integer
 
     field :error_message, :string
@@ -45,7 +47,7 @@ defmodule RuncomEcto.Schema.Result do
 
     has_many :step_results, RuncomEcto.Schema.StepResult
 
-    timestamps type: :utc_datetime
+    timestamps type: :utc_datetime_usec
   end
 
   @doc "Build a changeset for inserting or updating an execution result."

@@ -16,7 +16,7 @@ defmodule RuncomEcto.Schema.StepResult do
   alias RuncomEcto.Type.CompressedBinary
 
   schema "runcom_step_results" do
-    belongs_to :result, RuncomEcto.Schema.Result
+    belongs_to :result, RuncomEcto.Schema.Result, type: :binary_id
     field :name, :string
     field :order, :integer
     field :status, :string, default: "pending"

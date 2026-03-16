@@ -52,7 +52,7 @@ defmodule RuncomEcto.StoreTest do
 
   describe "get_result/2" do
     test "returns not_found for missing result" do
-      assert {:error, :not_found} = Store.get_result(999_999, @opts)
+      assert {:error, :not_found} = Store.get_result(Ecto.UUID.generate(), @opts)
     end
 
     test "returns a saved result by primary key" do
