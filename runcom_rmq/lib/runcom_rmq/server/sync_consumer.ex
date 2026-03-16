@@ -60,6 +60,7 @@ defmodule RuncomRmq.Server.SyncConsumer do
            metadata: [:reply_to, :correlation_id],
            declare: [
              durable: true,
+             # TODO: quorum queue type
              arguments: [
                {"x-dead-letter-exchange", :longstr, RuncomRmq.Connection.default_dlx_exchange()},
                {"x-dead-letter-routing-key", :longstr, queue}

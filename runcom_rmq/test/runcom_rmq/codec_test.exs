@@ -41,8 +41,13 @@ defmodule RuncomRmq.CodecTest do
   describe "encode/1 and decode/1 (signed)" do
     setup do
       previous = Application.get_env(:runcom_rmq, :signing_secret)
-      Application.put_env(:runcom_rmq, :signing_secret, "test-signing-secret-32-bytes!!!")
-      on_exit(fn -> Application.put_env(:runcom_rmq, :signing_secret, previous) end)
+      Application.put_env(:runcom_rmq, :signing_secret, :crypto.strong_rand_bytes(32))
+
+      on_exit(fn ->
+        if previous,
+          do: Application.put_env(:runcom_rmq, :signing_secret, previous),
+          else: Application.delete_env(:runcom_rmq, :signing_secret)
+      end)
     end
 
     test "round-trips with HMAC signing" do
@@ -72,7 +77,7 @@ defmodule RuncomRmq.CodecTest do
     test "rejects payload with wrong key" do
       encoded = Codec.encode(%{data: "secret"})
 
-      Application.put_env(:runcom_rmq, :signing_secret, "different-secret-key-also-32!!")
+      Application.put_env(:runcom_rmq, :signing_secret, :crypto.strong_rand_bytes(32))
 
       assert {:error, :invalid_signature} = Codec.decode(encoded)
     end

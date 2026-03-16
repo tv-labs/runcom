@@ -49,6 +49,7 @@ defmodule RuncomRmq.Client.DispatchConsumer do
     state = %__MODULE__{
       connection: Keyword.fetch!(opts, :connection),
       queue: Keyword.fetch!(opts, :queue),
+      # TODO: this could probably be done here in runcom_rmq
       dispatch_handler: Keyword.fetch!(opts, :dispatch_handler),
       cache: Keyword.fetch!(opts, :cache),
       sync: Keyword.fetch!(opts, :sync)
@@ -124,12 +125,11 @@ defmodule RuncomRmq.Client.DispatchConsumer do
   end
 
   defp setup_consumer(state) do
-    with {:ok, chan} <- Connection.open(state.connection) do
-      ref = Process.monitor(chan.pid)
-
-      {:ok, _} = AMQP.Queue.declare(chan, state.queue, durable: true)
-      {:ok, _tag} = AMQP.Basic.consume(chan, state.queue)
-
+    with {:ok, chan} <- Connection.open(state.connection),
+         ref = Process.monitor(chan.pid),
+         # TODO: quorum queue
+         {:ok, _} <- AMQP.Queue.declare(chan, state.queue, durable: true),
+         {:ok, _tag} <- AMQP.Basic.consume(chan, state.queue) do
       {:ok, %{state | channel: chan, channel_ref: ref}}
     end
   end
@@ -152,17 +152,17 @@ defmodule RuncomRmq.Client.DispatchConsumer do
       {:ok, {mod, bytecodes}} ->
         assigns = normalize_assigns(message[:assigns] || message["assigns"] || %{})
         runbook = rebuild_with_assigns(mod, assigns, bytecodes)
+        # TODO: this is either string or atom, not both.
         secrets = message[:secrets] || message["secrets"] || %{}
         runbook = inject_secrets(runbook, secrets)
 
-        enriched =
-          Map.merge(message, %{
-            runbook: runbook,
-            runbook_id: message[:runbook_id],
-            dispatch_id: message[:dispatch_id]
-          })
-
-        call_handler(enriched, state.dispatch_handler)
+        message
+        |> Map.merge(%{
+          runbook: runbook,
+          runbook_id: message[:runbook_id],
+          dispatch_id: message[:dispatch_id]
+        })
+        |> call_handler(state.dispatch_handler)
 
       {:error, reason} ->
         runbook_id = message[:runbook_id] || message["runbook_id"]

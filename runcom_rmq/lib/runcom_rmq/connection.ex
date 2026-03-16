@@ -45,6 +45,7 @@ defmodule RuncomRmq.Connection do
 
     with {:ok, chan} <- open(connection) do
       try do
+        # TODO: Quorum queue type
         :ok = AMQP.Exchange.declare(chan, dlx_exchange, :direct, durable: true)
         {:ok, _} = AMQP.Queue.declare(chan, dlq_name, durable: true)
         :ok = AMQP.Queue.bind(chan, dlq_name, dlx_exchange, routing_key: source_queue)

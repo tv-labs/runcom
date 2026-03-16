@@ -84,6 +84,7 @@ defmodule RuncomWeb.Live.ResultDetailLive do
 
     socket =
       socket
+      |> assign(:page_title, "Result: #{socket.assigns.result.node_id}")
       |> assign(:result_id, id)
       |> assign(:base_path, String.replace(path, ~r"/result/.+$", ""))
       |> assign(:output_tab, tab)

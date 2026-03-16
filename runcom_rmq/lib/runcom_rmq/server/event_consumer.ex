@@ -42,6 +42,7 @@ defmodule RuncomRmq.Server.EventConsumer do
 
   @spec start_link(keyword()) :: GenServer.on_start()
   def start_link(opts) do
+    {name, opts} = Keyword.pop(opts, :name, __MODULE__)
     connection = Keyword.fetch!(opts, :connection)
     queue = Keyword.fetch!(opts, :queue)
     store = Keyword.fetch!(opts, :store)
@@ -55,7 +56,7 @@ defmodule RuncomRmq.Server.EventConsumer do
     :ok = RuncomRmq.Connection.setup_dlx(connection, queue)
 
     Broadway.start_link(__MODULE__,
-      name: __MODULE__,
+      name: name,
       producer: [
         module:
           {BroadwayRabbitMQ.Producer,
@@ -64,6 +65,8 @@ defmodule RuncomRmq.Server.EventConsumer do
            declare: [
              durable: true,
              arguments: [
+               # TODO: Quorum queue type
+               # {"x-queue-type", :longstr, "quorum"},
                {"x-dead-letter-exchange", :longstr, RuncomRmq.Connection.default_dlx_exchange()},
                {"x-dead-letter-routing-key", :longstr, queue}
              ]
@@ -101,6 +104,8 @@ defmodule RuncomRmq.Server.EventConsumer do
   def handle_batch(_batcher, messages, _batch_info, context) do
     %{store: {store_mod, store_opts}, pubsub: pubsub} = context
 
+    # Boo hiss upsert please
+    # TODO: upserts
     Enum.each(messages, fn %Message{data: event} ->
       handle_event(event, store_mod, store_opts, pubsub)
     end)
@@ -143,6 +148,8 @@ defmodule RuncomRmq.Server.EventConsumer do
   defp update_dispatch_tracking(result, event_attrs, store_mod, store_opts) do
     dispatch_id = result_field(result, :dispatch_id)
 
+    # Remove defensive function_exported?
+    # TODO: Cleanup
     if dispatch_id && function_exported?(store_mod, :get_dispatch_node, 3) do
       node_id = result_field(result, :node_id)
 
@@ -164,6 +171,8 @@ defmodule RuncomRmq.Server.EventConsumer do
 
           case store_mod.update_dispatch_node(dn, node_attrs, store_opts) do
             {:ok, _} ->
+              # Remove defensive function_exported?
+              # TODO: Cleanup
               if function_exported?(store_mod, :refresh_dispatch_counts, 2) do
                 store_mod.refresh_dispatch_counts(dispatch_id, store_opts)
               end

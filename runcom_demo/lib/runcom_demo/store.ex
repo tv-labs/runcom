@@ -41,20 +41,6 @@ defmodule RuncomDemo.Store do
 
   # ── Nodes ──
 
-  @doc "Inserts or updates a node by its `node_id`."
-  @spec upsert_node(String.t(), map(), keyword()) :: {:ok, Node.t()} | {:error, term()}
-  def upsert_node(node_id, attrs, _opts \\ []) do
-    attrs = Map.put(attrs, :node_id, node_id)
-
-    %Node{}
-    |> Node.changeset(attrs)
-    |> Repo.insert(
-      on_conflict: {:replace, [:tags, :last_seen_at, :status, :updated_at]},
-      conflict_target: :node_id,
-      returning: true
-    )
-  end
-
   @doc "Lists all registered nodes sorted by most recently seen."
   @spec list_nodes(keyword()) :: {:ok, [Node.t()]}
   def list_nodes(_opts \\ []) do

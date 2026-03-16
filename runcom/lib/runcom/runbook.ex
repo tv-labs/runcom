@@ -90,10 +90,12 @@ defmodule Runcom.Runbook do
   end
 
   @doc "Returns all compiled runbook modules."
-  @spec list() :: [module()]
+  @spec list() :: [module()] | {:error, :not_consolidated}
   def list do
-    {:consolidated, impls} = Runcom.Runbook.Compiled.__protocol__(:impls)
-    impls
+    case Runcom.Runbook.Compiled.__protocol__(:impls) do
+      {:consolidated, impls} -> impls
+      :not_consolidated -> []
+    end
   end
 
   @doc "Looks up a compiled runbook module by name."

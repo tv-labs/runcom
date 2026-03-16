@@ -68,8 +68,7 @@ defmodule RuncomRmq.Client.EventPublisher do
     connection = Keyword.fetch!(opts, :connection)
     node_id = Keyword.fetch!(opts, :node_id)
     event_queue = Keyword.fetch!(opts, :event_queue)
-
-    handler_id = "runcom_rmq_event_publisher_#{System.unique_integer([:positive])}"
+    handler_id = "runcom_rmq_event_publisher_#{node_id}"
     server = self()
 
     :telemetry.attach_many(
@@ -199,6 +198,7 @@ defmodule RuncomRmq.Client.EventPublisher do
       dispatch_id: metadata[:dispatch_id],
       step_name: metadata[:step_name],
       step_module: metadata[:step_module],
+      # TODO: is step_order dead?
       step_order: metadata[:step_order],
       event: event_type,
       timestamp: DateTime.utc_now()
@@ -270,7 +270,7 @@ defmodule RuncomRmq.Client.EventPublisher do
        when is_binary(output) and byte_size(output) <= max_bytes, do: output
 
   defp truncate_output(output, max_bytes) when is_binary(output) do
-    binary_part(output, 0, max_bytes) <> "\n... [truncated, see output_ref]"
+    "[truncated, see output_ref]... \n" <> binary_part(output, byte_size(output), -max_bytes)
   end
 
   defp truncate_output(output, _max_bytes), do: output

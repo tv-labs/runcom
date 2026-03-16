@@ -6,6 +6,9 @@
     <meta name="csrf-token" content={Plug.CSRFProtection.get_csrf_token()} />
     <meta name="live-transport" content={@live_transport} />
     <meta name="live-path" content={@live_path} />
+    <.live_title default="Dashboard" suffix=" · Runcom">
+      {assigns[:page_title]}
+    </.live_title>
 
     <link rel="stylesheet" nonce={@csp_nonces[:style]} href={asset_path(@prefix, :css)} />
     <script nonce={@csp_nonces[:script]} src={asset_path(@prefix, :js)} defer />

@@ -45,6 +45,52 @@ def deps do
 end
 ```
 
+## Message Signing
+
+All messages between server and agents are serialized with `:erlang.term_to_binary/1`
+and compressed with zstd via `RuncomRmq.Codec`. When a signing secret is configured,
+each payload is HMAC-SHA256 signed before transmission and verified on receipt.
+
+### Configuring the Secret
+
+Set the same secret on **both** the server and every agent:
+
+```elixir
+# config/runtime.exs (server and agent)
+config :runcom_rmq, signing_secret: System.fetch_env!("RUNCOM_SIGNING_SECRET")
+```
+
+Generate a secret:
+
+```bash
+openssl rand -base64 32
+```
+
+The secret must be identical on all nodes that exchange messages. When the
+secret is not configured (`nil`), messages are sent unsigned — this is
+acceptable for local development but **must not be used in production**.
+
+### How It Works
+
+- **Encode**: payload is compressed, then `HMAC-SHA256(secret, compressed_payload)`
+  is prepended as a 32-byte prefix.
+- **Decode**: the first 32 bytes are split off, the HMAC is recomputed over the
+  remaining bytes, and the two are compared in constant time with
+  `:crypto.hash_equals/2`. If verification fails, `{:error, :invalid_signature}`
+  is returned and the message is never deserialized.
+
+### Key Rotation
+
+To rotate the signing secret with zero downtime:
+
+1. Deploy agents with the **new** secret
+2. Once all agents are running the new secret, deploy the server with the new secret
+
+During the transition window, agents sending with the new secret will have their
+messages rejected by the server (still on the old secret). Those messages land in
+the dead-letter queue and can be reprocessed after the server is updated. For
+dispatches (server → agent), the same applies in reverse.
+
 ---
 
 ## Server
