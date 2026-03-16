@@ -54,6 +54,16 @@ defmodule RuncomRmq.Test.FakeStore do
     {:ok, result_attrs}
   end
 
+  def save_results(results_list, opts) do
+    name = Keyword.fetch!(opts, :name)
+
+    Agent.update(name, fn state ->
+      %{state | results: Enum.reverse(results_list) ++ state.results}
+    end)
+
+    {:ok, results_list}
+  end
+
   def upsert_node(node_id, attrs, opts) do
     name = Keyword.fetch!(opts, :name)
 

@@ -104,30 +104,57 @@ defmodule RuncomRmq.Server.EventConsumer do
   def handle_batch(_batcher, messages, _batch_info, context) do
     %{store: {store_mod, store_opts}, pubsub: pubsub} = context
 
-    # Boo hiss upsert please
-    # TODO: upserts
-    Enum.each(messages, fn %Message{data: event} ->
+    {result_messages, other_messages} =
+      Enum.split_with(messages, fn %Message{data: event} -> event[:type] == :result end)
+
+    batch_save_results(result_messages, store_mod, store_opts, pubsub)
+
+    Enum.each(other_messages, fn %Message{data: event} ->
       handle_event(event, store_mod, store_opts, pubsub)
     end)
 
     messages
   end
 
-  defp handle_event(%{type: :result} = event, store_mod, store_opts, pubsub) do
-    result_attrs = Map.delete(event, :type)
+  defp batch_save_results([], _store_mod, _store_opts, _pubsub), do: :ok
 
-    broadcast_payload =
-      case store_mod.save_result(result_attrs, store_opts) do
-        {:ok, saved} ->
-          update_dispatch_tracking(saved, result_attrs, store_mod, store_opts)
-          saved
+  defp batch_save_results(result_messages, store_mod, store_opts, pubsub) do
+    result_attrs_list =
+      Enum.map(result_messages, fn %Message{data: event} -> Map.delete(event, :type) end)
 
-        {:error, reason} ->
-          Logger.error("EventConsumer failed to save result: #{inspect(reason)}")
-          result_attrs
+    saved_by_key =
+      if function_exported?(store_mod, :save_results, 2) do
+        case store_mod.save_results(result_attrs_list, store_opts) do
+          {:ok, saved} ->
+            Map.new(saved, fn r -> {{result_field(r, :dispatch_id), result_field(r, :node_id)}, r} end)
+
+          {:error, reason} ->
+            Logger.error("EventConsumer batch save failed: #{inspect(reason)}")
+            %{}
+        end
+      else
+        result_attrs_list
+        |> Enum.flat_map(fn attrs ->
+          case store_mod.save_result(attrs, store_opts) do
+            {:ok, saved} -> [{result_field(saved, :dispatch_id), result_field(saved, :node_id), saved}]
+            {:error, _} -> []
+          end
+        end)
+        |> Map.new(fn {did, nid, saved} -> {{did, nid}, saved} end)
       end
 
-    broadcast(pubsub, result_attrs.dispatch_id, {:result, broadcast_payload})
+    Enum.each(result_attrs_list, fn event_attrs ->
+      key = {event_attrs.dispatch_id, event_attrs[:node_id]}
+
+      case Map.fetch(saved_by_key, key) do
+        {:ok, saved} ->
+          update_dispatch_tracking(saved, event_attrs, store_mod, store_opts)
+          broadcast(pubsub, event_attrs.dispatch_id, {:result, saved})
+
+        :error ->
+          broadcast(pubsub, event_attrs.dispatch_id, {:result, event_attrs})
+      end
+    end)
   end
 
   defp handle_event(%{type: :step_event} = event, _store_mod, _store_opts, pubsub) do

@@ -82,6 +82,78 @@ defmodule RuncomEcto.Store do
   end
 
   @doc """
+  Saves a batch of execution results in a single transaction.
+
+  Each result is upserted by `(dispatch_id, node_id)` using the same conflict
+  strategy as `save_result/2`. Step results are inserted per-result after the
+  batch insert.
+  """
+  @impl true
+  @spec save_results([map()], keyword()) :: {:ok, [Result.t()]} | {:error, term()}
+  def save_results([], _opts), do: {:ok, []}
+
+  def save_results(results_attrs, opts) do
+    repo = repo!(opts)
+    now = DateTime.utc_now() |> DateTime.truncate(:microsecond)
+
+    with {:ok, {result_rows, step_results_by_key}} <-
+           validate_and_build_rows(results_attrs, now) do
+      multi =
+        Ecto.Multi.new()
+        |> Ecto.Multi.insert_all(:results, Result, result_rows,
+          on_conflict: result_upsert_query(),
+          conflict_target: [:dispatch_id, :node_id],
+          returning: true
+        )
+        |> Ecto.Multi.run(:step_results, fn repo, %{results: {_count, saved_results}} ->
+          Enum.reduce_while(saved_results, {:ok, []}, fn result, {:ok, acc} ->
+            key = {result.dispatch_id, result.node_id}
+            sr_attrs = Map.get(step_results_by_key, key, [])
+
+            case insert_step_results(repo, result.id, sr_attrs) do
+              {:ok, srs} -> {:cont, {:ok, [srs | acc]}}
+              {:error, _} = err -> {:halt, err}
+            end
+          end)
+        end)
+
+      case repo.transaction(multi) do
+        {:ok, %{results: {_count, saved}}} -> {:ok, saved}
+        {:error, _step, changeset, _changes} -> {:error, changeset}
+      end
+    end
+  end
+
+  defp validate_and_build_rows(results_attrs, now) do
+    results_attrs
+    |> Enum.reduce_while({:ok, {[], %{}}}, fn attrs, {:ok, {rows, sr_map}} ->
+      {step_results, result_attrs} = Map.pop(attrs, :step_results, [])
+      changeset = Result.changeset(%Result{}, result_attrs)
+
+      case Ecto.Changeset.apply_action(changeset, :insert) do
+        {:ok, result} ->
+          row =
+            result
+            |> Map.from_struct()
+            |> Map.drop([:__meta__, :step_results])
+            |> Map.put_new(:id, Ecto.UUID.generate())
+            |> Map.put_new(:inserted_at, now)
+            |> Map.put(:updated_at, now)
+
+          key = {row.dispatch_id, row.node_id}
+          {:cont, {:ok, {[row | rows], Map.put(sr_map, key, step_results)}}}
+
+        {:error, changeset} ->
+          {:halt, {:error, changeset}}
+      end
+    end)
+    |> case do
+      {:ok, {rows, sr_map}} -> {:ok, {Enum.reverse(rows), sr_map}}
+      {:error, _} = err -> err
+    end
+  end
+
+  @doc """
   Lists execution results with optional filters and keyset pagination.
 
   Results are ordered deterministically by `COALESCE(completed_at, started_at) DESC, id DESC`.

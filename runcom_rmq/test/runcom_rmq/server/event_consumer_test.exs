@@ -72,6 +72,7 @@ defmodule RuncomRmq.Server.EventConsumerTest do
       result_event = %{
         type: :result,
         runbook_id: "deploy-v1",
+        node_id: "agent-1",
         status: :completed,
         dispatch_id: dispatch_id
       }
@@ -124,6 +125,42 @@ defmodule RuncomRmq.Server.EventConsumerTest do
 
       nodes = FakeStore.get_nodes(name: store_name)
       assert %{"agent-42" => %{last_seen_at: %DateTime{}}} = nodes
+    end
+
+    test "batch-saves multiple results in a single call",
+         %{broadway_context: ctx, store_name: store_name, pubsub: pubsub} = context do
+      dispatch_id = "dispatch-#{context.test}"
+      Phoenix.PubSub.subscribe(pubsub, "runcom:events:#{dispatch_id}")
+
+      messages =
+        for i <- 1..5 do
+          build_decoded_message(%{
+            type: :result,
+            runbook_id: "rb-#{i}",
+            node_id: "node-#{i}",
+            status: :completed,
+            dispatch_id: dispatch_id
+          })
+        end
+
+      batch_info = %Broadway.BatchInfo{
+        batcher: :default,
+        batch_key: :default,
+        partition: nil,
+        size: 5,
+        trigger: :flush
+      }
+
+      returned = EventConsumer.handle_batch(:default, messages, batch_info, ctx)
+      assert length(returned) == 5
+
+      saved = FakeStore.get_results(name: store_name)
+      assert length(saved) == 5
+
+      for i <- 1..5 do
+        expected_id = "rb-#{i}"
+        assert_receive {:result, %{runbook_id: ^expected_id}}
+      end
     end
 
     test "does not upsert node when node_id is absent",
@@ -201,6 +238,7 @@ defmodule RuncomRmq.Server.EventConsumerTest do
         build_decoded_message(%{
           type: :result,
           runbook_id: "rb-1",
+          node_id: "node-1",
           status: :completed,
           dispatch_id: dispatch_id
         }),
@@ -213,6 +251,7 @@ defmodule RuncomRmq.Server.EventConsumerTest do
         build_decoded_message(%{
           type: :result,
           runbook_id: "rb-2",
+          node_id: "node-2",
           status: :failed,
           dispatch_id: dispatch_id
         })
