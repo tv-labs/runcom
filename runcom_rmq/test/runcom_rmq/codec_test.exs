@@ -3,7 +3,7 @@ defmodule RuncomRmq.CodecTest do
 
   alias RuncomRmq.Codec
 
-  describe "encode/1 and decode/1" do
+  describe "encode/1 and decode/1 (unsigned)" do
     test "round-trips a map" do
       original = %{action: :sync, manifest: %{"deploy" => <<1, 2, 3>>}}
       encoded = Codec.encode(original)
@@ -35,6 +35,54 @@ defmodule RuncomRmq.CodecTest do
       truncated = binary_part(valid, 0, byte_size(valid) - 2)
 
       assert {:error, _reason} = Codec.decode(truncated)
+    end
+  end
+
+  describe "encode/1 and decode/1 (signed)" do
+    setup do
+      previous = Application.get_env(:runcom_rmq, :signing_secret)
+      Application.put_env(:runcom_rmq, :signing_secret, "test-signing-secret-32-bytes!!!")
+      on_exit(fn -> Application.put_env(:runcom_rmq, :signing_secret, previous) end)
+    end
+
+    test "round-trips with HMAC signing" do
+      original = %{action: :dispatch, payload: <<1, 2, 3>>}
+      encoded = Codec.encode(original)
+
+      assert byte_size(encoded) > 32
+      assert {:ok, ^original} = Codec.decode(encoded)
+    end
+
+    test "prepends a 32-byte HMAC to the payload" do
+      encoded = Codec.encode(:hello)
+      <<hmac::binary-size(32), _rest::binary>> = encoded
+
+      assert byte_size(hmac) == 32
+    end
+
+    test "rejects tampered payload" do
+      encoded = Codec.encode(%{safe: true})
+      <<hmac::binary-size(32), payload::binary>> = encoded
+
+      tampered = <<hmac::binary-size(32), payload::binary, "extra">>
+
+      assert {:error, :invalid_signature} = Codec.decode(tampered)
+    end
+
+    test "rejects payload with wrong key" do
+      encoded = Codec.encode(%{data: "secret"})
+
+      Application.put_env(:runcom_rmq, :signing_secret, "different-secret-key-also-32!!")
+
+      assert {:error, :invalid_signature} = Codec.decode(encoded)
+    end
+
+    test "rejects binary shorter than HMAC length" do
+      assert {:error, :invalid_signature} = Codec.decode(<<0::size(248)>>)
+    end
+
+    test "rejects empty binary" do
+      assert {:error, :invalid_signature} = Codec.decode(<<>>)
     end
   end
 end
