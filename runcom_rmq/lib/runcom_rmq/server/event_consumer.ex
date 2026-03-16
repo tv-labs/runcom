@@ -120,29 +120,15 @@ defmodule RuncomRmq.Server.EventConsumer do
       Enum.map(result_messages, fn %Message{data: event} -> Map.delete(event, :type) end)
 
     saved_by_key =
-      if function_exported?(store_mod, :save_results, 2) do
-        case store_mod.save_results(result_attrs_list, store_opts) do
-          {:ok, saved} ->
-            Map.new(saved, fn r ->
-              {{result_field(r, :dispatch_id), result_field(r, :node_id)}, r}
-            end)
+      case store_mod.save_results(result_attrs_list, store_opts) do
+        {:ok, saved} ->
+          Map.new(saved, fn r ->
+            {{result_field(r, :dispatch_id), result_field(r, :node_id)}, r}
+          end)
 
-          {:error, reason} ->
-            Logger.error("EventConsumer batch save failed: #{inspect(reason)}")
-            %{}
-        end
-      else
-        result_attrs_list
-        |> Enum.flat_map(fn attrs ->
-          case store_mod.save_result(attrs, store_opts) do
-            {:ok, saved} ->
-              [{result_field(saved, :dispatch_id), result_field(saved, :node_id), saved}]
-
-            {:error, _} ->
-              []
-          end
-        end)
-        |> Map.new(fn {did, nid, saved} -> {{did, nid}, saved} end)
+        {:error, reason} ->
+          Logger.error("EventConsumer batch save failed: #{inspect(reason)}")
+          %{}
       end
 
     Enum.each(result_attrs_list, fn event_attrs ->

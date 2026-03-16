@@ -66,9 +66,7 @@ Generate a secret:
 openssl rand -base64 32
 ```
 
-The secret must be identical on all nodes that exchange messages. When the
-secret is not configured (`nil`), messages are sent unsigned — this is
-acceptable for local development but **must not be used in production**.
+The secret must be identical on all nodes that exchange messages.
 
 ### How It Works
 

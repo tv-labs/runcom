@@ -98,7 +98,7 @@ defmodule RuncomRmq.Server.EventConsumerTest do
       assert_receive {:result, %{runbook_id: "deploy-v1", status: :completed}}
     end
 
-    test "upserts node last_seen_at when node_id is present",
+    test "saves result with node_id present",
          %{
            broadway_context: ctx,
            store_name: store_name
@@ -123,8 +123,8 @@ defmodule RuncomRmq.Server.EventConsumerTest do
 
       EventConsumer.handle_batch(:default, messages, batch_info, ctx)
 
-      nodes = FakeStore.get_nodes(name: store_name)
-      assert %{"agent-42" => %{last_seen_at: %DateTime{}}} = nodes
+      saved = FakeStore.get_results(name: store_name)
+      assert [%{node_id: "agent-42", status: :completed}] = saved
     end
 
     test "batch-saves multiple results in a single call",

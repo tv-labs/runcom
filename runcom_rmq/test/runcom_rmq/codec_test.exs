@@ -3,17 +3,6 @@ defmodule RuncomRmq.CodecTest do
 
   alias RuncomRmq.Codec
 
-  setup do
-    previous = Application.get_env(:runcom_rmq, :signing_secret)
-    Application.put_env(:runcom_rmq, :signing_secret, :crypto.strong_rand_bytes(32))
-
-    on_exit(fn ->
-      if previous,
-        do: Application.put_env(:runcom_rmq, :signing_secret, previous),
-        else: Application.delete_env(:runcom_rmq, :signing_secret)
-    end)
-  end
-
   describe "encode/1 and decode/1" do
     test "round-trips a map" do
       original = %{action: :sync, manifest: %{"deploy" => <<1, 2, 3>>}}
