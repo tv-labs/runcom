@@ -5,7 +5,7 @@ defmodule RuncomEcto.Schema.StepResultTest do
 
   describe "changeset/2" do
     test "valid with required fields" do
-      attrs = %{result_id: 1, name: "download", order: 1, status: "ok"}
+      attrs = %{result_id: Ecto.UUID.generate(), name: "download", order: 1, status: "ok"}
       cs = StepResult.changeset(%StepResult{}, attrs)
       assert cs.valid?
     end
@@ -25,7 +25,7 @@ defmodule RuncomEcto.Schema.StepResultTest do
     end
 
     test "validates status inclusion" do
-      attrs = %{result_id: 1, name: "step", order: 1, status: "bogus"}
+      attrs = %{result_id: Ecto.UUID.generate(), name: "step", order: 1, status: "bogus"}
       cs = StepResult.changeset(%StepResult{}, attrs)
       refute cs.valid?
       assert Map.has_key?(errors_on(cs), :status)
@@ -33,7 +33,7 @@ defmodule RuncomEcto.Schema.StepResultTest do
 
     test "accepts all valid statuses" do
       for status <- ~w(ok error skipped pending) do
-        attrs = %{result_id: 1, name: "step", order: 1, status: status}
+        attrs = %{result_id: Ecto.UUID.generate(), name: "step", order: 1, status: status}
         cs = StepResult.changeset(%StepResult{}, attrs)
         assert cs.valid?, "expected #{status} to be valid"
       end
@@ -41,7 +41,7 @@ defmodule RuncomEcto.Schema.StepResultTest do
 
     test "casts all optional fields" do
       attrs = %{
-        result_id: 1,
+        result_id: Ecto.UUID.generate(),
         name: "download",
         order: 1,
         status: "ok",

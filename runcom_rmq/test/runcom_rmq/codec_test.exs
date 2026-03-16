@@ -36,5 +36,37 @@ defmodule RuncomRmq.CodecTest do
 
       assert {:error, _reason} = Codec.decode(truncated)
     end
+
+    test "prepends a 32-byte HMAC to the payload" do
+      encoded = Codec.encode(:hello)
+      <<hmac::binary-size(32), _rest::binary>> = encoded
+
+      assert byte_size(hmac) == 32
+    end
+
+    test "rejects tampered payload" do
+      encoded = Codec.encode(%{safe: true})
+      <<hmac::binary-size(32), payload::binary>> = encoded
+
+      tampered = <<hmac::binary-size(32), payload::binary, "extra">>
+
+      assert {:error, :invalid_signature} = Codec.decode(tampered)
+    end
+
+    test "rejects payload with wrong key" do
+      encoded = Codec.encode(%{data: "secret"})
+
+      Application.put_env(:runcom_rmq, :signing_secret, :crypto.strong_rand_bytes(32))
+
+      assert {:error, :invalid_signature} = Codec.decode(encoded)
+    end
+
+    test "rejects binary shorter than HMAC length" do
+      assert {:error, :invalid_signature} = Codec.decode(:binary.copy(<<0>>, 31))
+    end
+
+    test "rejects empty binary" do
+      assert {:error, :invalid_signature} = Codec.decode(<<>>)
+    end
   end
 end

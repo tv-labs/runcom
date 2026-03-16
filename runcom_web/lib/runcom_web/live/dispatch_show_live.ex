@@ -22,6 +22,7 @@ defmodule RuncomWeb.Live.DispatchShowLive do
       socket
       |> assign(:store_mod, store_mod)
       |> assign(:store_opts, store_opts)
+      |> assign(:page_title, "Dispatch")
       |> assign(:dispatch, nil)
       |> assign(:dispatch_nodes, [])
       |> assign(:results_by_node, %{})

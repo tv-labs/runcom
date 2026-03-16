@@ -31,5 +31,5 @@ defmodule RuncomDemo.Application do
   defp rmq_server_child(nil), do: nil
 
   defp rmq_server_child(connection),
-    do: {RuncomRmq.Server, connection: connection, pubsub: RuncomDemo.PubSub}
+    do: {RuncomRmq.Server, connection: connection, pubsub: RuncomDemo.PubSub, queue_type: :quorum}
 end

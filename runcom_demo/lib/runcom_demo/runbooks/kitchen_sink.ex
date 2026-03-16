@@ -104,6 +104,7 @@ defmodule RuncomDemo.Runbooks.KitchenSink do
       path: & &1.assigns.work_dir,
       state: :directory
     )
+    |> Runcom.graft("probe", RuncomDemo.Runbooks.AgentProbe.build(%{}), await: ["setup_dir"])
     |> RCBash.add("sysinfo",
       script: ~BASH"uname -a",
       await: ["setup_dir"]

@@ -28,6 +28,7 @@ defmodule RuncomAgent.Application do
        sync_queue: sync_queue,
        event_queue: event_queue,
        dispatch_queue: dispatch_queue,
+       queue_type: :quorum,
        dispatch_handler: {RuncomAgent.Executor, :dispatch},
        output_truncate_bytes: truncate_bytes},
       {RuncomAgent.Executor, node_id: node_id}

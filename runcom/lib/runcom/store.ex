@@ -45,6 +45,10 @@ defmodule Runcom.Store do
   @callback save_result(result :: map(), opts :: keyword()) ::
               {:ok, term()} | {:error, term()}
 
+  @doc "Saves a batch of execution results."
+  @callback save_results(results :: [map()], opts :: keyword()) ::
+              {:ok, [term()]} | {:error, term()}
+
   @doc """
   Lists execution results.
 
@@ -143,6 +147,7 @@ defmodule Runcom.Store do
               {:ok, map()} | {:error, term()}
 
   @optional_callbacks [
+    save_results: 2,
     search_results: 2,
     create_dispatch: 2,
     get_dispatch: 2,

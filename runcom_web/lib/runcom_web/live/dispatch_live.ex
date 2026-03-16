@@ -30,6 +30,7 @@ defmodule RuncomWeb.Live.DispatchLive do
       |> assign(:node_search_component, node_search_component)
       |> assign(:render_node_component, render_node_component)
       |> assign(:pubsub, config[:pubsub])
+      |> assign(:page_title, "New Dispatch")
       |> assign(:dispatcher, dispatcher)
       |> assign(:store_mod, store_mod)
       |> assign(:store_opts, store_opts)

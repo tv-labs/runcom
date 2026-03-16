@@ -20,6 +20,7 @@ defmodule RuncomWeb.Live.DashboardLive do
       |> assign(:store_mod, store_mod)
       |> assign(:store_opts, store_opts)
       |> assign(:node_search, "")
+      |> assign(:page_title, "Runcom - Dashboard")
       |> assign(:sidebar_collapsed, false)
       |> assign(:base_path, "")
       |> assign(:cursor, nil)

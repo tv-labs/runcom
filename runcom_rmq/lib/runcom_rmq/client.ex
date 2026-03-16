@@ -69,6 +69,7 @@ defmodule RuncomRmq.Client do
     event_queue = Keyword.fetch!(opts, :event_queue)
     cache_name = Keyword.get(opts, :cache_name, RunbookCache)
 
+    queue_type = Keyword.get(opts, :queue_type)
     dispatch_handler = Keyword.get(opts, :dispatch_handler)
     dispatch_queue = Keyword.get(opts, :dispatch_queue)
 
@@ -87,6 +88,7 @@ defmodule RuncomRmq.Client do
             {DispatchConsumer,
              connection: connection,
              queue: dispatch_queue,
+             queue_type: queue_type,
              dispatch_handler: dispatch_handler,
              cache: cache_name,
              sync: Sync}

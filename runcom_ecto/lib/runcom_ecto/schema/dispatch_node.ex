@@ -14,7 +14,7 @@ defmodule RuncomEcto.Schema.DispatchNode do
     field :dispatch_id, :binary_id
     field :node_id, :string
     field :status, :string, default: "pending"
-    field :result_id, :integer
+    field :result_id, :binary_id
     field :started_at, :utc_datetime_usec
     field :completed_at, :utc_datetime_usec
     field :duration_ms, :integer

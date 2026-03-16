@@ -24,6 +24,12 @@ config :runcom_demo, RuncomDemoWeb.Endpoint,
   http: [port: String.to_integer(System.get_env("PORT", "4002"))]
 
 if config_env() == :prod do
+  signing_secret =
+    System.get_env("RUNCOM_SIGNING_SECRET") ||
+      raise "environment variable RUNCOM_SIGNING_SECRET is missing"
+
+  config :runcom_rmq, signing_secret: Base.decode64!(signing_secret)
+
   database_url =
     System.get_env("DATABASE_URL") ||
       raise """

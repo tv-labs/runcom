@@ -60,6 +60,9 @@ config :phoenix, :json_library, Jason
 # Runcom Store
 config :runcom, store: {RuncomDemo.Store, repo: RuncomDemo.Repo}
 
+# Runcom RMQ
+config :runcom_rmq, signing_secret: Base.decode64!("Qnnfm9NvCxSMFFTbM1l3juiFZDXVmxYP0nM9ZjKuFWE=")
+
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.
 import_config "#{config_env()}.exs"

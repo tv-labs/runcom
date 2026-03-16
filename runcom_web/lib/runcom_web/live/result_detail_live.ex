@@ -79,22 +79,27 @@ defmodule RuncomWeb.Live.ResultDetailLive do
         socket
       end
 
-    expanded = parse_expanded_steps(params["steps"], socket.assigns.expanded_steps)
-    new_to_fetch = MapSet.difference(expanded, socket.assigns.expanded_steps)
-
-    socket =
-      socket
-      |> assign(:result_id, id)
-      |> assign(:base_path, String.replace(path, ~r"/result/.+$", ""))
-      |> assign(:output_tab, tab)
-      |> assign(:patch_path, path)
-      |> assign(:expanded_steps, expanded)
-      |> fetch_outputs_for_steps(new_to_fetch)
-
-    if connected?(socket) and is_nil(params["steps"]) and MapSet.size(expanded) > 0 do
-      {:noreply, push_patch(socket, to: patch_url(path, tab, expanded, []), replace: true)}
-    else
+    if is_nil(socket.assigns.result) do
       {:noreply, socket}
+    else
+      expanded = parse_expanded_steps(params["steps"], socket.assigns.expanded_steps)
+      new_to_fetch = MapSet.difference(expanded, socket.assigns.expanded_steps)
+
+      socket =
+        socket
+        |> assign(:page_title, "Result: #{socket.assigns.result.node_id}")
+        |> assign(:result_id, id)
+        |> assign(:base_path, String.replace(path, ~r"/result/.+$", ""))
+        |> assign(:output_tab, tab)
+        |> assign(:patch_path, path)
+        |> assign(:expanded_steps, expanded)
+        |> fetch_outputs_for_steps(new_to_fetch)
+
+      if connected?(socket) and is_nil(params["steps"]) and MapSet.size(expanded) > 0 do
+        {:noreply, push_patch(socket, to: patch_url(path, tab, expanded, []), replace: true)}
+      else
+        {:noreply, socket}
+      end
     end
   end
 

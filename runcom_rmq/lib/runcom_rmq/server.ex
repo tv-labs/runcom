@@ -28,6 +28,7 @@ defmodule RuncomRmq.Server do
       implementation (defaults to `Runcom.Store.impl/0`)
     * `:pubsub` -- `Phoenix.PubSub` server name for broadcasting
       events (defaults to `config :runcom_rmq, :pubsub`)
+    * `:queue_type` -- :quorum
     * `:sync_queue` -- queue name for sync RPC requests
       (default: `"runcom.sync.request"`)
     * `:event_queue` -- queue name for event ingestion
@@ -47,6 +48,7 @@ defmodule RuncomRmq.Server do
       children = [
         {RuncomRmq.Server,
           connection: "amqp://localhost",
+          queue_type: :quorum,
           sync_queue: "runcom.sync.request",
           event_queue: "runcom.events"}
       ]
@@ -97,6 +99,7 @@ defmodule RuncomRmq.Server do
     pubsub =
       Keyword.get_lazy(opts, :pubsub, fn -> Application.fetch_env!(:runcom_rmq, :pubsub) end)
 
+    queue_type = Keyword.get(opts, :queue_type)
     sync_queue = Keyword.get(opts, :sync_queue, @default_sync_queue)
     event_queue = Keyword.get(opts, :event_queue, @default_event_queue)
     sync_consumer_opts = Keyword.get(opts, :sync_consumer, [])
@@ -105,12 +108,18 @@ defmodule RuncomRmq.Server do
 
     children = [
       {RuncomRmq.Server.SyncConsumer,
-       [connection: connection, queue: sync_queue, store: {store_mod, store_opts}] ++
+       [
+         connection: connection,
+         queue: sync_queue,
+         queue_type: queue_type,
+         store: {store_mod, store_opts}
+       ] ++
          sync_consumer_opts},
       {RuncomRmq.Server.EventConsumer,
        [
          connection: connection,
          queue: event_queue,
+         queue_type: queue_type,
          store: {store_mod, store_opts},
          pubsub: pubsub
        ] ++

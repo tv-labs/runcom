@@ -14,6 +14,7 @@ defmodule RuncomWeb.Live.BuilderLive do
     socket =
       socket
       |> assign(:step_library, step_library)
+      |> assign(:page_title, "Builder")
       |> assign(:nodes, [])
       |> assign(:edges, [])
       |> assign(:selected_node, nil)

@@ -82,6 +82,71 @@ defmodule RuncomEcto.Store do
   end
 
   @doc """
+  Saves a batch of execution results in a single transaction.
+
+  Each result is upserted by `(dispatch_id, node_id)` using the same conflict
+  strategy as `save_result/2`. Step results are inserted per-result after the
+  batch insert.
+  """
+  @impl true
+  @spec save_results([map()], keyword()) :: {:ok, [Result.t()]} | {:error, term()}
+  def save_results([], _opts), do: {:ok, []}
+
+  def save_results(results_attrs, opts) do
+    repo = repo!(opts)
+    now = DateTime.utc_now() |> DateTime.truncate(:microsecond)
+
+    with {:ok, {result_rows, step_results_by_key}} <-
+           validate_and_build_rows(results_attrs) do
+      repo.transaction(fn ->
+        {_count, saved_results} =
+          repo.insert_all(Result, result_rows,
+            placeholders: %{now: now},
+            on_conflict: result_upsert_query(),
+            conflict_target: [:dispatch_id, :node_id],
+            returning: true
+          )
+
+        sr_rows = build_step_result_rows(saved_results, step_results_by_key)
+
+        case upsert_step_results(repo, sr_rows, placeholders: %{now: now}) do
+          {:ok, _} -> saved_results
+          {:error, changeset} -> repo.rollback(changeset)
+        end
+      end)
+    end
+  end
+
+  defp validate_and_build_rows(results_attrs) do
+    results_attrs
+    |> Enum.reduce_while({:ok, {[], %{}}}, fn attrs, {:ok, {rows, sr_map}} ->
+      {step_results, result_attrs} = Map.pop(attrs, :step_results, [])
+      changeset = Result.changeset(%Result{}, result_attrs)
+
+      case Ecto.Changeset.apply_action(changeset, :insert) do
+        {:ok, result} ->
+          row =
+            result
+            |> Map.from_struct()
+            |> Map.drop([:__meta__, :step_results])
+            |> Map.update(:id, Ecto.UUID.generate(), &(&1 || Ecto.UUID.generate()))
+            |> Map.update(:inserted_at, {:placeholder, :now}, &(&1 || {:placeholder, :now}))
+            |> Map.put(:updated_at, {:placeholder, :now})
+
+          key = {row.dispatch_id, row.node_id}
+          {:cont, {:ok, {[row | rows], Map.put(sr_map, key, step_results)}}}
+
+        {:error, changeset} ->
+          {:halt, {:error, changeset}}
+      end
+    end)
+    |> case do
+      {:ok, {rows, sr_map}} -> {:ok, {Enum.reverse(rows), sr_map}}
+      {:error, _} = err -> err
+    end
+  end
+
+  @doc """
   Lists execution results with optional filters and keyset pagination.
 
   Results are ordered deterministically by `COALESCE(completed_at, started_at) DESC, id DESC`.
@@ -615,19 +680,42 @@ defmodule RuncomEcto.Store do
       step_results_attrs
       |> normalize_step_results()
       |> Enum.map(fn attrs ->
-        Map.put(attrs, :result_id, result_id)
+        attrs
+        |> Map.put(:result_id, result_id)
+        |> Map.put_new(:inserted_at, {:placeholder, :now})
       end)
 
+    upsert_step_results(repo, rows, placeholders: %{now: now})
+  end
+
+  defp build_step_result_rows(saved_results, step_results_by_key) do
+    Enum.flat_map(saved_results, fn result ->
+      key = {result.dispatch_id, result.node_id}
+
+      step_results_by_key
+      |> Map.get(key, [])
+      |> normalize_step_results()
+      |> Enum.map(fn attrs ->
+        attrs
+        |> Map.put(:result_id, result.id)
+        |> Map.put_new(:inserted_at, {:placeholder, :now})
+      end)
+    end)
+  end
+
+  defp upsert_step_results(_repo, [], _opts), do: {:ok, []}
+
+  defp upsert_step_results(repo, rows, opts) do
     case Enum.find(rows, fn attrs -> not StepResult.changeset(attrs).valid? end) do
       nil ->
-        rows = Enum.map(rows, &Map.put_new(&1, :inserted_at, now))
-
-        {_count, inserted} =
-          repo.insert_all(StepResult, rows,
+        insert_opts =
+          [
             on_conflict: {:replace, @step_result_fields -- [:inserted_at, :name]},
             conflict_target: [:result_id, :name],
             returning: true
-          )
+          ] ++ opts
+
+        {_count, inserted} = repo.insert_all(StepResult, rows, insert_opts)
 
         {:ok, inserted}
 

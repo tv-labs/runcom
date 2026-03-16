@@ -31,6 +31,7 @@ defmodule RuncomRmq.Server.EventConsumer do
     * `:batch_size` -- max messages per batch (default: `50`)
     * `:batch_timeout` -- max ms to wait before flushing a batch (default: `1_000`)
     * `:batcher_concurrency` -- number of batcher stages (default: `2`)
+    * `:queue_type` -- `:quorum` for quorum queues (default: classic)
   """
 
   use Broadway
@@ -42,20 +43,22 @@ defmodule RuncomRmq.Server.EventConsumer do
 
   @spec start_link(keyword()) :: GenServer.on_start()
   def start_link(opts) do
+    {name, opts} = Keyword.pop(opts, :name, __MODULE__)
     connection = Keyword.fetch!(opts, :connection)
     queue = Keyword.fetch!(opts, :queue)
     store = Keyword.fetch!(opts, :store)
     pubsub = Keyword.fetch!(opts, :pubsub)
+    queue_type = Keyword.get(opts, :queue_type)
     producer_concurrency = Keyword.get(opts, :producer_concurrency, 1)
     processor_concurrency = Keyword.get(opts, :processor_concurrency, 2)
     batch_size = Keyword.get(opts, :batch_size, 50)
     batch_timeout = Keyword.get(opts, :batch_timeout, 1_000)
     batcher_concurrency = Keyword.get(opts, :batcher_concurrency, 2)
 
-    :ok = RuncomRmq.Connection.setup_dlx(connection, queue)
+    :ok = RuncomRmq.Connection.setup_dlx(connection, queue, queue_type: queue_type)
 
     Broadway.start_link(__MODULE__,
-      name: __MODULE__,
+      name: name,
       producer: [
         module:
           {BroadwayRabbitMQ.Producer,
@@ -63,10 +66,7 @@ defmodule RuncomRmq.Server.EventConsumer do
            connection: connection,
            declare: [
              durable: true,
-             arguments: [
-               {"x-dead-letter-exchange", :longstr, RuncomRmq.Connection.default_dlx_exchange()},
-               {"x-dead-letter-routing-key", :longstr, queue}
-             ]
+             arguments: RuncomRmq.Connection.queue_arguments(queue, queue_type: queue_type)
            ],
            on_failure: :reject},
         concurrency: producer_concurrency
@@ -101,28 +101,48 @@ defmodule RuncomRmq.Server.EventConsumer do
   def handle_batch(_batcher, messages, _batch_info, context) do
     %{store: {store_mod, store_opts}, pubsub: pubsub} = context
 
-    Enum.each(messages, fn %Message{data: event} ->
+    {result_messages, other_messages} =
+      Enum.split_with(messages, fn %Message{data: event} -> event[:type] == :result end)
+
+    batch_save_results(result_messages, store_mod, store_opts, pubsub)
+
+    Enum.each(other_messages, fn %Message{data: event} ->
       handle_event(event, store_mod, store_opts, pubsub)
     end)
 
     messages
   end
 
-  defp handle_event(%{type: :result} = event, store_mod, store_opts, pubsub) do
-    result_attrs = Map.delete(event, :type)
+  defp batch_save_results([], _store_mod, _store_opts, _pubsub), do: :ok
 
-    broadcast_payload =
-      case store_mod.save_result(result_attrs, store_opts) do
+  defp batch_save_results(result_messages, store_mod, store_opts, pubsub) do
+    result_attrs_list =
+      Enum.map(result_messages, fn %Message{data: event} -> Map.delete(event, :type) end)
+
+    saved_by_key =
+      case store_mod.save_results(result_attrs_list, store_opts) do
         {:ok, saved} ->
-          update_dispatch_tracking(saved, result_attrs, store_mod, store_opts)
-          saved
+          Map.new(saved, fn r ->
+            {{result_field(r, :dispatch_id), result_field(r, :node_id)}, r}
+          end)
 
         {:error, reason} ->
-          Logger.error("EventConsumer failed to save result: #{inspect(reason)}")
-          result_attrs
+          Logger.error("EventConsumer batch save failed: #{inspect(reason)}")
+          %{}
       end
 
-    broadcast(pubsub, result_attrs.dispatch_id, {:result, broadcast_payload})
+    Enum.each(result_attrs_list, fn event_attrs ->
+      key = {event_attrs.dispatch_id, event_attrs[:node_id]}
+
+      case Map.fetch(saved_by_key, key) do
+        {:ok, saved} ->
+          update_dispatch_tracking(saved, event_attrs, store_mod, store_opts)
+          broadcast(pubsub, event_attrs.dispatch_id, {:result, saved})
+
+        :error ->
+          broadcast(pubsub, event_attrs.dispatch_id, {:result, event_attrs})
+      end
+    end)
   end
 
   defp handle_event(%{type: :step_event} = event, _store_mod, _store_opts, pubsub) do
@@ -143,7 +163,7 @@ defmodule RuncomRmq.Server.EventConsumer do
   defp update_dispatch_tracking(result, event_attrs, store_mod, store_opts) do
     dispatch_id = result_field(result, :dispatch_id)
 
-    if dispatch_id && function_exported?(store_mod, :get_dispatch_node, 3) do
+    if dispatch_id do
       node_id = result_field(result, :node_id)
 
       case store_mod.get_dispatch_node(dispatch_id, node_id, store_opts) do
@@ -164,9 +184,7 @@ defmodule RuncomRmq.Server.EventConsumer do
 
           case store_mod.update_dispatch_node(dn, node_attrs, store_opts) do
             {:ok, _} ->
-              if function_exported?(store_mod, :refresh_dispatch_counts, 2) do
-                store_mod.refresh_dispatch_counts(dispatch_id, store_opts)
-              end
+              store_mod.refresh_dispatch_counts(dispatch_id, store_opts)
 
             {:error, reason} ->
               Logger.error("EventConsumer failed to update dispatch_node: #{inspect(reason)}")

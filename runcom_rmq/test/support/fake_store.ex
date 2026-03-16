@@ -54,6 +54,22 @@ defmodule RuncomRmq.Test.FakeStore do
     {:ok, result_attrs}
   end
 
+  def save_results(results_list, opts) do
+    name = Keyword.fetch!(opts, :name)
+
+    Agent.update(name, fn state ->
+      %{state | results: Enum.reverse(results_list) ++ state.results}
+    end)
+
+    {:ok, results_list}
+  end
+
+  def get_dispatch_node(_dispatch_id, _node_id, _opts), do: {:error, :not_found}
+
+  def update_dispatch_node(_dispatch_node, _attrs, _opts), do: {:ok, %{}}
+
+  def refresh_dispatch_counts(_dispatch_id, _opts), do: {:ok, %{}}
+
   def upsert_node(node_id, attrs, opts) do
     name = Keyword.fetch!(opts, :name)
 
