@@ -3,14 +3,13 @@ defmodule RuncomRmq.Codec do
   Encodes and decodes messages exchanged between RuncomRmq client and server.
 
   Messages are serialized with `:erlang.term_to_binary/1` and compressed with
-  zstd. When a signing secret is configured, an HMAC-SHA256 signature is
-  prepended to the payload for integrity verification.
+  zstd. An HMAC-SHA256 signature is prepended to the payload for integrity
+  verification.
 
-  Wire format (when signed): `<<hmac::binary-32, compressed_payload::binary>>`
-  Wire format (unsigned):    `<<compressed_payload::binary>>`
+  Wire format: `<<hmac::binary-32, compressed_payload::binary>>`
 
-  The signing secret is read from `Application.get_env(:runcom_rmq, :signing_secret)`.
-  When `nil`, messages are sent unsigned for backward compatibility in dev/test.
+  The signing secret is read from `Application.get_env(:runcom_rmq, :signing_secret)`
+  and is required.
 
   ## Examples
 
@@ -22,24 +21,17 @@ defmodule RuncomRmq.Codec do
 
   @spec encode(term()) :: binary()
   def encode(term) do
+    secret = signing_secret!()
     payload = term |> :erlang.term_to_binary() |> :zstd.compress() |> IO.iodata_to_binary()
-
-    case signing_secret() do
-      nil -> payload
-      secret -> <<compute_hmac(secret, payload)::binary-size(@hmac_length), payload::binary>>
-    end
+    <<compute_hmac(secret, payload)::binary-size(@hmac_length), payload::binary>>
   end
 
   @spec decode(binary()) :: {:ok, term()} | {:error, term()}
   def decode(binary) when is_binary(binary) do
-    case signing_secret() do
-      nil ->
-        {:ok, decompress_and_deserialize(binary)}
+    secret = signing_secret!()
 
-      secret ->
-        with {:ok, payload} <- verify_hmac(secret, binary) do
-          {:ok, decompress_and_deserialize(payload)}
-        end
+    with {:ok, payload} <- verify_hmac(secret, binary) do
+      {:ok, decompress_and_deserialize(payload)}
     end
   rescue
     e -> {:error, e}
@@ -63,5 +55,19 @@ defmodule RuncomRmq.Codec do
     binary |> :zstd.decompress() |> IO.iodata_to_binary() |> :erlang.binary_to_term()
   end
 
-  defp signing_secret, do: Application.get_env(:runcom_rmq, :signing_secret)
+  defp signing_secret! do
+    case Application.fetch_env(:runcom_rmq, :signing_secret) do
+      {:ok, secret} when is_binary(secret) and byte_size(secret) > 0 ->
+        secret
+
+      {:ok, _} ->
+        raise ArgumentError,
+              ":signing_secret must be a non-empty binary, e.g. config :runcom_rmq, signing_secret: System.fetch_env!(\"RUNCOM_SIGNING_SECRET\")"
+
+      :error ->
+        raise ArgumentError,
+              "missing :signing_secret in :runcom_rmq config — all messages require HMAC signing. " <>
+                "Set config :runcom_rmq, signing_secret: System.fetch_env!(\"RUNCOM_SIGNING_SECRET\")"
+    end
+  end
 end

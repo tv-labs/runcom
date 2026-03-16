@@ -45,13 +45,16 @@ defmodule RuncomRmq.Client.DispatchConsumer do
     GenServer.start_link(__MODULE__, opts, name: name)
   end
 
+  @valid_keys [:connection, :queue, :queue_type, :dispatch_handler, :cache, :sync, :name]
+
   @impl GenServer
   def init(opts) do
+    opts = Keyword.validate!(opts, @valid_keys)
+
     state = %__MODULE__{
       connection: Keyword.fetch!(opts, :connection),
       queue: Keyword.fetch!(opts, :queue),
       queue_type: Keyword.get(opts, :queue_type),
-      # TODO: this could probably be done here in runcom_rmq
       dispatch_handler: Keyword.fetch!(opts, :dispatch_handler),
       cache: Keyword.fetch!(opts, :cache),
       sync: Keyword.fetch!(opts, :sync)

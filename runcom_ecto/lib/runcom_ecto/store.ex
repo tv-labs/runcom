@@ -97,34 +97,27 @@ defmodule RuncomEcto.Store do
     now = DateTime.utc_now() |> DateTime.truncate(:microsecond)
 
     with {:ok, {result_rows, step_results_by_key}} <-
-           validate_and_build_rows(results_attrs, now) do
-      multi =
-        Ecto.Multi.new()
-        |> Ecto.Multi.insert_all(:results, Result, result_rows,
-          on_conflict: result_upsert_query(),
-          conflict_target: [:dispatch_id, :node_id],
-          returning: true
-        )
-        |> Ecto.Multi.run(:step_results, fn repo, %{results: {_count, saved_results}} ->
-          Enum.reduce_while(saved_results, {:ok, []}, fn result, {:ok, acc} ->
-            key = {result.dispatch_id, result.node_id}
-            sr_attrs = Map.get(step_results_by_key, key, [])
+           validate_and_build_rows(results_attrs) do
+      repo.transaction(fn ->
+        {_count, saved_results} =
+          repo.insert_all(Result, result_rows,
+            placeholders: %{now: now},
+            on_conflict: result_upsert_query(),
+            conflict_target: [:dispatch_id, :node_id],
+            returning: true
+          )
 
-            case insert_step_results(repo, result.id, sr_attrs) do
-              {:ok, srs} -> {:cont, {:ok, [srs | acc]}}
-              {:error, _} = err -> {:halt, err}
-            end
-          end)
-        end)
+        sr_rows = build_step_result_rows(saved_results, step_results_by_key)
 
-      case repo.transaction(multi) do
-        {:ok, %{results: {_count, saved}}} -> {:ok, saved}
-        {:error, _step, changeset, _changes} -> {:error, changeset}
-      end
+        case upsert_step_results(repo, sr_rows, placeholders: %{now: now}) do
+          {:ok, _} -> saved_results
+          {:error, changeset} -> repo.rollback(changeset)
+        end
+      end)
     end
   end
 
-  defp validate_and_build_rows(results_attrs, now) do
+  defp validate_and_build_rows(results_attrs) do
     results_attrs
     |> Enum.reduce_while({:ok, {[], %{}}}, fn attrs, {:ok, {rows, sr_map}} ->
       {step_results, result_attrs} = Map.pop(attrs, :step_results, [])
@@ -136,9 +129,9 @@ defmodule RuncomEcto.Store do
             result
             |> Map.from_struct()
             |> Map.drop([:__meta__, :step_results])
-            |> Map.put_new(:id, Ecto.UUID.generate())
-            |> Map.put_new(:inserted_at, now)
-            |> Map.put(:updated_at, now)
+            |> Map.update(:id, Ecto.UUID.generate(), &(&1 || Ecto.UUID.generate()))
+            |> Map.update(:inserted_at, {:placeholder, :now}, &(&1 || {:placeholder, :now}))
+            |> Map.put(:updated_at, {:placeholder, :now})
 
           key = {row.dispatch_id, row.node_id}
           {:cont, {:ok, {[row | rows], Map.put(sr_map, key, step_results)}}}
@@ -687,19 +680,42 @@ defmodule RuncomEcto.Store do
       step_results_attrs
       |> normalize_step_results()
       |> Enum.map(fn attrs ->
-        Map.put(attrs, :result_id, result_id)
+        attrs
+        |> Map.put(:result_id, result_id)
+        |> Map.put_new(:inserted_at, {:placeholder, :now})
       end)
 
+    upsert_step_results(repo, rows, placeholders: %{now: now})
+  end
+
+  defp build_step_result_rows(saved_results, step_results_by_key) do
+    Enum.flat_map(saved_results, fn result ->
+      key = {result.dispatch_id, result.node_id}
+
+      step_results_by_key
+      |> Map.get(key, [])
+      |> normalize_step_results()
+      |> Enum.map(fn attrs ->
+        attrs
+        |> Map.put(:result_id, result.id)
+        |> Map.put_new(:inserted_at, {:placeholder, :now})
+      end)
+    end)
+  end
+
+  defp upsert_step_results(_repo, [], _opts), do: {:ok, []}
+
+  defp upsert_step_results(repo, rows, opts) do
     case Enum.find(rows, fn attrs -> not StepResult.changeset(attrs).valid? end) do
       nil ->
-        rows = Enum.map(rows, &Map.put_new(&1, :inserted_at, now))
-
-        {_count, inserted} =
-          repo.insert_all(StepResult, rows,
+        insert_opts =
+          [
             on_conflict: {:replace, @step_result_fields -- [:inserted_at, :name]},
             conflict_target: [:result_id, :name],
             returning: true
-          )
+          ] ++ opts
+
+        {_count, inserted} = repo.insert_all(StepResult, rows, insert_opts)
 
         {:ok, inserted}
 
