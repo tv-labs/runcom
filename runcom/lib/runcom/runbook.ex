@@ -90,12 +90,41 @@ defmodule Runcom.Runbook do
   end
 
   @doc "Returns all compiled runbook modules."
-  @spec list() :: [module()] | {:error, :not_consolidated}
-  def list do
-    case Runcom.Runbook.Compiled.__protocol__(:impls) do
-      {:consolidated, impls} -> impls
-      :not_consolidated -> []
+  @spec list() :: [module()]
+  if Code.ensure_loaded?(Mix) and Mix.env() != :prod do
+    def list do
+      case Runcom.Runbook.Compiled.__protocol__(:impls) do
+        {:consolidated, impls} -> impls
+        :not_consolidated -> discover_runbook_modules()
+      end
     end
+  else
+    def list do
+      case Runcom.Runbook.Compiled.__protocol__(:impls) do
+        {:consolidated, impls} -> impls
+        :not_consolidated -> []
+      end
+    end
+  end
+
+  defp discover_runbook_modules do
+    for {app, _, _} <- Application.loaded_applications(),
+        mod <- app_modules(app),
+        runbook_module?(mod),
+        do: mod
+  end
+
+  defp app_modules(app) do
+    case :application.get_key(app, :modules) do
+      {:ok, modules} -> modules
+      :undefined -> []
+    end
+  end
+
+  defp runbook_module?(mod) do
+    Code.ensure_loaded?(mod) and
+      function_exported?(mod, :__name__, 0) and
+      function_exported?(mod, :build, 1)
   end
 
   @doc "Looks up a compiled runbook module by name."
