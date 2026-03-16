@@ -30,6 +30,8 @@ defmodule Runcom.Runbook do
 
   """
 
+  alias Runcom.Runbook.Compiled
+
   @doc "Returns default parameters for building the runbook (used for introspection)."
   @callback params() :: map()
 
@@ -41,9 +43,10 @@ defmodule Runcom.Runbook do
 
     quote do
       @behaviour Runcom.Runbook
-      @before_compile Runcom.Runbook
 
       import Runcom.Schema, only: [schema: 1, field: 1, field: 2, field: 3, group: 1, group: 2]
+
+      @before_compile Runcom.Runbook
 
       defimpl Runcom.Runbook.Compiled do
         def module(_), do: @for
@@ -53,7 +56,7 @@ defmodule Runcom.Runbook do
 
       @doc false
       def __runbook_hash__ do
-        __MODULE__.__info__(:md5) |> Base.encode16(case: :lower)
+        :md5 |> __MODULE__.__info__() |> Base.encode16(case: :lower)
       end
     end
   end
@@ -65,6 +68,15 @@ defmodule Runcom.Runbook do
       unless has_schema do
         quote do
           defstruct []
+        end
+      end
+
+    schema_ast =
+      unless has_schema do
+        quote do
+          def __schema__(:fields), do: []
+          def __schema__(:defaults), do: %{}
+          def __schema__(:field, _name), do: nil
         end
       end
 
@@ -85,44 +97,36 @@ defmodule Runcom.Runbook do
 
     quote do
       unquote(struct_ast)
+      unquote(schema_ast)
       unquote(params_ast)
     end
   end
 
   @doc "Returns all compiled runbook modules."
   @spec list() :: [module()]
-  if Code.ensure_loaded?(Mix) and Mix.env() != :prod do
-    def list do
-      case Runcom.Runbook.Compiled.__protocol__(:impls) do
-        {:consolidated, impls} -> impls
-        :not_consolidated -> discover_runbook_modules()
-      end
+  def list do
+    case Compiled.__protocol__(:impls) do
+      {:consolidated, impls} -> impls
+      :not_consolidated -> discover_runbook_modules()
     end
+  end
 
-    defp discover_runbook_modules do
-      for {app, _, _} <- Application.loaded_applications(),
-          mod <- app_modules(app),
-          runbook_module?(mod),
-          do: mod
-    end
+  defp discover_runbook_modules do
+    for {app, _, _} <- Application.loaded_applications(),
+        mod <- app_modules(app),
+        runbook_module?(mod),
+        do: mod
+  end
 
-    defp app_modules(app) do
-      case :application.get_key(app, :modules) do
-        {:ok, modules} -> modules
-        :undefined -> []
-      end
+  defp app_modules(app) do
+    case :application.get_key(app, :modules) do
+      {:ok, modules} -> modules
+      :undefined -> []
     end
+  end
 
-    defp runbook_module?(mod) do
-      Code.ensure_loaded?(mod) and function_exported?(mod, :__runbook_hash__, 0)
-    end
-  else
-    def list do
-      case Runcom.Runbook.Compiled.__protocol__(:impls) do
-        {:consolidated, impls} -> impls
-        :not_consolidated -> []
-      end
-    end
+  defp runbook_module?(mod) do
+    Code.ensure_loaded?(mod) and function_exported?(mod, :__runbook_hash__, 0)
   end
 
   @doc "Looks up a compiled runbook module by name."
@@ -145,16 +149,12 @@ defmodule Runcom.Runbook do
         type: :compiled
       }
 
-      if function_exported?(mod, :__schema__, 1) do
-        fields =
-          Enum.map(mod.__schema__(:fields), fn {name, _type, _opts} ->
-            mod.__schema__(:field, name)
-          end)
+      fields =
+        Enum.map(mod.__schema__(:fields), fn {name, _type, _opts} ->
+          mod.__schema__(:field, name)
+        end)
 
-        Map.put(base, :fields, fields)
-      else
-        Map.put(base, :fields, [])
-      end
+      Map.put(base, :fields, fields)
     end)
   end
 
@@ -233,7 +233,8 @@ defmodule Runcom.Runbook do
   defp walk_deps(%Runcom{steps: steps}, depth, visited) do
     refs = extract_graft_refs(steps)
 
-    Enum.flat_map(refs, fn ref_name ->
+    refs
+    |> Enum.flat_map(fn ref_name ->
       if ref_name in visited do
         []
       else

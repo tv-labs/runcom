@@ -11,10 +11,12 @@ defmodule RuncomEcto.Schema.StepResult do
   """
 
   use Ecto.Schema
+
   import Ecto.Changeset
 
   alias RuncomEcto.Type.CompressedBinary
 
+  @primary_key {:id, :binary_id, autogenerate: true}
   schema "runcom_step_results" do
     belongs_to :result, RuncomEcto.Schema.Result, type: :binary_id
     field :name, :string

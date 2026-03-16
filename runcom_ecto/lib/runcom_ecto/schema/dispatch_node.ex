@@ -8,8 +8,10 @@ defmodule RuncomEcto.Schema.DispatchNode do
   """
 
   use Ecto.Schema
+
   import Ecto.Changeset
 
+  @primary_key {:id, :binary_id, autogenerate: true}
   schema "runcom_dispatch_nodes" do
     field :dispatch_id, :binary_id
     field :node_id, :string
