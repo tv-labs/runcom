@@ -110,7 +110,7 @@ defmodule RuncomRmq.Client.Sync do
   end
 
   defp do_rpc(chan, sync_queue, payload, rpc_timeout) do
-    correlation_id = :crypto.strong_rand_bytes(16) |> Base.encode16(case: :lower)
+    correlation_id = 16 |> :crypto.strong_rand_bytes() |> Base.encode16(case: :lower)
 
     with {:ok, %{queue: reply_queue}} <-
            AMQP.Queue.declare(chan, "", exclusive: true, auto_delete: true),
@@ -169,7 +169,7 @@ defmodule RuncomRmq.Client.Sync do
 
   defp safe_close_channel(chan) do
     AMQP.Channel.close(chan)
-  rescue
-    _ -> :ok
+  catch
+    :exit, _ -> :ok
   end
 end

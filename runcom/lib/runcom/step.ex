@@ -353,10 +353,12 @@ defmodule Runcom.Step do
       end
 
     add_doc = Runcom.Step.build_add_doc(env, has_schema)
+    run_eval_ast = Runcom.Step.build_run_eval(env, has_schema)
 
     quote do
       unquote(struct_ast)
       unquote(validate_ast)
+      unquote(run_eval_ast)
 
       @doc false
       def __deps__, do: unquote(traced_deps)
@@ -439,5 +441,52 @@ defmodule Runcom.Step do
       * `name` - Unique name for this step instance
       * `opts` - Step-specific options (keyword list)
     """
+  end
+
+  @doc false
+  def build_run_eval(env, has_schema) do
+    has_run = Module.defines?(env.module, {:run, 2})
+    has_run_eval = Module.defines?(env.module, {:run_eval, 2})
+
+    cond do
+      has_run && has_run_eval ->
+        raise CompileError,
+          description:
+            "#{inspect(env.module)} defines both run/2 and run_eval/1; only one is allowed",
+          file: env.file,
+          line: env.line
+
+      has_run_eval ->
+        {:v1, :def, _meta, [{_clause_meta, _args, _guards, body}]} =
+          Module.get_definition(env.module, {:run_eval, 2})
+
+        Module.delete_definition(env.module, {:run_eval, 2})
+        escaped_body = Macro.escape(body)
+
+        validate_ast =
+          if !has_schema && !Module.defines?(env.module, {:validate, 1}) do
+            quote do
+              @impl Runcom.Step
+              def validate(_opts), do: :ok
+              defoverridable validate: 1
+            end
+          end
+
+        quote do
+          unquote(validate_ast)
+
+          @doc false
+          def __agent_ast__, do: unquote(escaped_body)
+
+          @impl Runcom.Step
+          def run(rc, opts) do
+            {result, _binding} = Code.eval_quoted(__agent_ast__(), [rc: rc, opts: opts])
+            result
+          end
+        end
+
+      true ->
+        nil
+    end
   end
 end

@@ -243,6 +243,56 @@ defmodule Runcom.StepTest do
     end
   end
 
+  defmodule AgentStep do
+    use Runcom.Step, name: "Agent Step"
+
+    def run_eval(rc, _opts) do
+      {:ok, Runcom.Step.Result.ok(output: "hello from #{rc.assigns.name}")}
+    end
+  end
+
+  defmodule AgentStepWithSchema do
+    use Runcom.Step, name: "Agent Step With Schema"
+
+    schema do
+      field(:multiplier, :integer, default: 1)
+    end
+
+    def run_eval(rc, opts) do
+      {:ok, Runcom.Step.Result.ok(output: "value=#{rc.assigns.value * opts.multiplier}")}
+    end
+  end
+
+  describe "run_eval/1" do
+    test "generates run/2 that evaluates AST with rc binding" do
+      rc = %Runcom{id: "test", assigns: %{name: "agent-1"}}
+      assert {:ok, result} = AgentStep.run(rc, %{})
+      assert result.output == "hello from agent-1"
+    end
+
+    test "opts binding is available in evaluated AST" do
+      rc = %Runcom{id: "test", assigns: %{value: 5}}
+      assert {:ok, result} = AgentStepWithSchema.run(rc, %{multiplier: 3})
+      assert result.output == "value=15"
+    end
+
+    test "generates default validate/1 when no schema" do
+      assert AgentStep.validate(%{}) == :ok
+    end
+
+    test "schema-based validate/1 still works with run_eval" do
+      assert AgentStepWithSchema.validate(%{multiplier: 2}) == :ok
+    end
+
+    test "stores AST accessible via __agent_ast__/0" do
+      assert is_tuple(AgentStep.__agent_ast__())
+    end
+
+    test "run_eval/1 is not defined as a function on the module" do
+      refute function_exported?(AgentStep, :run_eval, 2)
+    end
+  end
+
   describe "add/3 documentation" do
     test "step with schema has options in add/3 doc" do
       {:docs_v1, _, _, _, _, _, docs} = Code.fetch_docs(Runcom.Steps.Command)

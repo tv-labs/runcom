@@ -1,6 +1,5 @@
 defmodule RuncomTest do
   use ExUnit.Case, async: true
-
   doctest Runcom
 
   defmodule FailStep do

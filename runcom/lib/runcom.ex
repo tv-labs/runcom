@@ -31,6 +31,11 @@ defmodule Runcom do
 
   """
 
+  alias Runcom.Executor
+  alias Runcom.Orchestrator
+  alias Runcom.Sink
+  alias Runcom.StepNode
+
   @type status :: :pending | :running | :halted | :completed | :failed
   @type step_result :: :ok | :error | :skipped
 
@@ -65,11 +70,6 @@ defmodule Runcom do
             sink: nil,
             secret_store: nil,
             source: nil
-
-  alias Runcom.Executor
-  alias Runcom.Orchestrator
-  alias Runcom.StepNode
-  alias Runcom.Sink
 
   @doc """
   Create a new runbook with the given identifier.
@@ -147,9 +147,13 @@ defmodule Runcom do
       Runcom.new("test")
       |> Runcom.assign(%{version: "1.0", env: "prod"})
   """
-  @spec assign(t(), map()) :: t()
+  @spec assign(t(), map() | keyword()) :: t()
   def assign(%__MODULE__{} = rc, map) when is_map(map) do
     %{rc | assigns: Map.merge(rc.assigns, map)}
+  end
+
+  def assign(%__MODULE__{} = rc, list) when is_list(list) do
+    assign(rc, Map.new(list))
   end
 
   @doc """
@@ -252,13 +256,11 @@ defmodule Runcom do
 
   @doc false
   @spec add(t(), String.t(), module(), keyword() | map(), map(), MapSet.t(), MapSet.t()) :: t()
-  def add(%__MODULE__{} = rc, name, module, opts, sources, assign_refs, secret_refs)
-      when is_map(opts) do
+  def add(%__MODULE__{} = rc, name, module, opts, sources, assign_refs, secret_refs) when is_map(opts) do
     add(rc, name, module, Map.to_list(opts), sources, assign_refs, secret_refs)
   end
 
-  def add(%__MODULE__{} = rc, name, module, opts, sources, assign_refs, secret_refs)
-      when is_list(opts) do
+  def add(%__MODULE__{} = rc, name, module, opts, sources, assign_refs, secret_refs) when is_list(opts) do
     do_add(rc, name, module, opts, sources, assign_refs, secret_refs)
   end
 
@@ -274,7 +276,8 @@ defmodule Runcom do
     {post_fn, opts} = Keyword.pop(opts, :post)
 
     step =
-      StepNode.new(name, module, opts, sources, assign_refs, secret_refs)
+      name
+      |> StepNode.new(module, opts, sources, assign_refs, secret_refs)
       |> StepNode.with_sink(sink)
       |> Map.merge(%{
         assert_fn: assert_fn,
@@ -908,7 +911,7 @@ defmodule Runcom do
 
     {status, res, sink} = Executor.execute_step(ctx)
 
-    updated_step = %{step | sink: sink} |> StepNode.put_result(res)
+    updated_step = StepNode.put_result(%{step | sink: sink}, res)
 
     rc =
       if status == :error do

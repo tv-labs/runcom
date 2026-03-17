@@ -94,8 +94,16 @@ defmodule RuncomRmq.Client.DispatchConsumer do
         Logger.error("DispatchConsumer: failed to decode message: #{inspect(reason)}")
     end
 
-    if state.channel, do: AMQP.Basic.ack(state.channel, tag)
+    if state.channel do
+      AMQP.Basic.ack(state.channel, tag)
+    end
+
     {:noreply, state}
+  catch
+    :exit, _ ->
+      Logger.warning("DispatchConsumer: channel lost during dispatch, reconnecting")
+      Process.send_after(self(), :connect, 1_000)
+      {:noreply, %{state | channel: nil, channel_ref: nil, consumer_tag: nil}}
   end
 
   def handle_info({:DOWN, ref, :process, _pid, _reason}, %{channel_ref: ref} = state) do
@@ -112,8 +120,8 @@ defmodule RuncomRmq.Client.DispatchConsumer do
   def terminate(_reason, state) do
     if state.channel, do: AMQP.Channel.close(state.channel)
     :ok
-  rescue
-    _ -> :ok
+  catch
+    :exit, _ -> :ok
   end
 
   defp handle_connect(state) do
@@ -177,9 +185,7 @@ defmodule RuncomRmq.Client.DispatchConsumer do
         runbook_id = message[:runbook_id] || message["runbook_id"]
         dispatch_id = message[:dispatch_id] || message["dispatch_id"]
 
-        Logger.warning(
-          "DispatchConsumer: runbook resolution failed for #{runbook_id}: #{inspect(reason)}"
-        )
+        Logger.warning("DispatchConsumer: runbook resolution failed for #{runbook_id}: #{inspect(reason)}")
 
         :telemetry.execute(
           [:runcom, :run, :stop],
@@ -211,9 +217,7 @@ defmodule RuncomRmq.Client.DispatchConsumer do
         {:ok, {mod, bytecodes}}
 
       _miss ->
-        Logger.info(
-          "DispatchConsumer: cache miss or stale for #{runbook_id}, fetching from server"
-        )
+        Logger.info("DispatchConsumer: cache miss or stale for #{runbook_id}, fetching from server")
 
         case Sync.fetch_runbook(sync, runbook_id) do
           {:ok, {mod, _runbook}} ->
@@ -266,9 +270,7 @@ defmodule RuncomRmq.Client.DispatchConsumer do
       runbook_id = message[:runbook_id] || message["runbook_id"]
       dispatch_id = message[:dispatch_id] || message["dispatch_id"]
 
-      Logger.error(
-        "DispatchConsumer: handler crashed: #{Exception.format(:error, error, stacktrace)}"
-      )
+      Logger.error("DispatchConsumer: handler crashed: #{Exception.format(:error, error, stacktrace)}")
 
       :telemetry.execute(
         [:runcom, :run, :exception],
