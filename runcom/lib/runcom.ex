@@ -18,6 +18,11 @@ defmodule Runcom do
     * `:step_status` - Map of step name to :ok | :error | :skipped
     * `:errors` - Map of step name to error reason
     * `:status` - Overall status: :pending | :running | :halted | :completed | :failed
+    * `:facts` - `%Runcom.Facts{}` populated at execution time with OS/host info
+    * `:sink` - Output capture sink (see `Runcom.Sink` protocol)
+    * `:secret_store` - ETS table reference for resolved secrets
+    * `:source` - `{module, params, bytecodes}` tuple set by `Runcom.Runbook.build/2`,
+      used for checkpoint resume and code sync
 
   ## Example
 
@@ -97,21 +102,42 @@ defmodule Runcom do
   end
 
   defp create_default_sink(id) do
+    case Application.get_env(:runcom, :default_sink, {Sink.DETS, []}) do
+      {Sink.Null, _} ->
+        Sink.Null.new()
+
+      {Sink.DETS, opts} ->
+        path = Keyword.get_lazy(opts, :path, fn -> default_sink_path(id) end)
+        Sink.DETS.new(path: path)
+
+      {module, opts} ->
+        module.new(opts)
+    end
+  end
+
+  defp default_sink_path(id) do
     sanitized_id = String.replace(id, ~r/[^\w\-]/, "_")
     artifact_dir = artifact_dir()
     File.mkdir_p!(artifact_dir)
-    path = Path.join(artifact_dir, "#{sanitized_id}.dets")
-    Sink.DETS.new(path: path)
+    Path.join(artifact_dir, "#{sanitized_id}.dets")
   end
 
   defp create_step_sink(runbook_id, step_name) do
-    sanitized_id = String.replace(runbook_id || "runbook", ~r/[^\w\-]/, "_")
-    sanitized_step = String.replace(step_name, ~r/[^\w\-]/, "_")
-    timestamp = System.system_time(:millisecond)
-    artifact_dir = artifact_dir()
-    File.mkdir_p!(artifact_dir)
-    path = Path.join(artifact_dir, "#{sanitized_id}_#{sanitized_step}_#{timestamp}.dets")
-    Sink.DETS.new(path: path)
+    case Application.get_env(:runcom, :default_sink, {Sink.DETS, []}) do
+      {Sink.Null, _} ->
+        Sink.Null.new()
+
+      {Sink.DETS, _opts} ->
+        sanitized_id = String.replace(runbook_id || "runbook", ~r/[^\w\-]/, "_")
+        sanitized_step = String.replace(step_name, ~r/[^\w\-]/, "_")
+        timestamp = System.system_time(:millisecond)
+        path = Path.join(artifact_dir(), "#{sanitized_id}_#{sanitized_step}_#{timestamp}.dets")
+        File.mkdir_p!(artifact_dir())
+        Sink.DETS.new(path: path)
+
+      {module, opts} ->
+        module.new(opts)
+    end
   end
 
   @doc """

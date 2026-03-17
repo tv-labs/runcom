@@ -56,7 +56,8 @@ defmodule Runcom.Step do
 
     * Sets `@behaviour Runcom.Step`
     * Aliases `Runcom.Step.Result` for convenience
-    * Defines `add/3` helper for adding steps to runbooks
+    * Defines `add/3` macro for adding steps to runbooks (callers must
+      `require` the step module, not `alias` it)
     * Defines default `stub/2` implementation using ProcessTree
 
   ## Using Sinks for Output Capture

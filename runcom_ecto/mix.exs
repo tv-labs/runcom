@@ -64,12 +64,20 @@ defmodule RuncomEcto.MixProject do
 
   defp deps do
     [
-      {:runcom, path: "../runcom"},
+      runcom_dep(),
       {:ecto_sql, "~> 3.12"},
       {:postgrex, "~> 0.19"},
       {:jason, "~> 1.4"},
       {:ex_doc, "~> 0.35", only: :dev, runtime: false}
     ]
+  end
+
+  defp runcom_dep do
+    if path = System.get_env("RUNCOM_PATH") do
+      {:runcom, path: path}
+    else
+      {:runcom, "~> 0.1.0"}
+    end
   end
 
   defp package do

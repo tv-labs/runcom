@@ -1,9 +1,10 @@
 defmodule RuncomDemo do
   @moduledoc """
-  RuncomDemo keeps the contexts that define your domain
-  and business logic.
+  Full-stack demo wiring all Runcom packages together.
 
-  Contexts are also responsible for managing your data, regardless
-  if it comes from the database, an external API or others.
+  Demonstrates `RuncomEcto.Store` persistence, `RuncomWeb` dashboard, and
+  `RuncomRmq.Server` transport in a single Phoenix application. See
+  `RuncomDemo.Application` for the supervision tree and `lib/runcom_demo/runbooks/`
+  for example runbook modules.
   """
 end

@@ -88,7 +88,32 @@ end
 ```elixir
 config :runcom,
   formatters: [Runcom.Formatter.Markdown, Runcom.Formatter.Asciinema],
-  checkpoint_dir: "/var/lib/runcom"
+  checkpoint_dir: "/var/lib/runcom",
+  default_sink: {Runcom.Sink.DETS, []}
+
+# In test.exs — disable output capture:
+config :runcom, default_sink: {Runcom.Sink.Null, []}
+```
+
+The `:default_sink` option accepts a `{module, opts}` tuple. When omitted, defaults
+to `{Runcom.Sink.DETS, []}`. For DETS, the file path is auto-derived from the
+runbook id. You can override per-runbook via `Runcom.new("id", sink: my_sink)`.
+
+See `Runcom.Sink` for available implementations.
+
+## Hello World
+
+```elixir
+require Runcom.Steps.Command, as: Command
+
+# `require` is needed because `add/3` is a macro
+runbook =
+  Runcom.new("hello")
+  |> Command.add("greet", cmd: "echo 'Hello from Runcom!'")
+
+{:ok, rc} = Runcom.run_sync(runbook)
+Runcom.output(rc, "greet")
+# => "Hello from Runcom!\n"
 ```
 
 ## Quick Start
@@ -99,6 +124,7 @@ config :runcom,
 defmodule MyApp.Runbooks.Deploy do
   use Runcom.Runbook, name: "deploy"
 
+  # `require` is needed because `add/3` is a macro
   require Runcom.Steps.Command, as: Command
   require Runcom.Steps.GetUrl, as: GetUrl
   require Runcom.Steps.Systemd, as: Systemd
@@ -194,12 +220,12 @@ Add `config :runcom, mode: :stub` to `config/test.exs`, then register stubs per 
 test "deploy succeeds", %{test: test_name} do
   id = to_string(test_name)
 
-  # Stubs match on {module, opts} — use opts to distinguish steps of the same type
+  # Stubs match on {step_name, opts} — use step names to route
   Runcom.Test.stub(id, fn
-    {Runcom.Steps.Command, %{cmd: "curl" <> _}} ->
+    {"download", %{cmd: "curl" <> _}} ->
       {:ok, Result.ok(output: "/tmp/app.tar.gz")}
 
-    {Runcom.Steps.Systemd, _opts} ->
+    {"restart", _opts} ->
       {:ok, Result.ok(exit_code: 0)}
   end)
 
@@ -212,8 +238,6 @@ test "deploy succeeds", %{test: test_name} do
   assert Runcom.ok?(rc, "restart")
 end
 ```
-
-For custom steps, match on your module directly: `{MyApp.Steps.Migrate, _opts} -> ...`
 
 ## Built-in Steps
 
@@ -279,6 +303,27 @@ defmodule MyApp.Steps.AgentCheck do
   end
 end
 ```
+
+## Code Sync
+
+When custom steps are used in runbooks dispatched to remote agents, their
+bytecode must be shipped alongside the runbook. `Runcom.CodeSync` handles this
+automatically via a compilation tracer.
+
+Apps that define custom steps must enable the tracer in `mix.exs`:
+
+```elixir
+def project do
+  [
+    ...
+    elixirc_options: [tracers: [Runcom.CodeSync.Tracer]]
+  ]
+end
+```
+
+The tracer records compile-time dependencies for each `use Runcom.Step` module.
+`Runcom.CodeSync.bundle/1` walks these manifests to build precise bytecode
+bundles.
 
 ## Behaviours
 

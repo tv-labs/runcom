@@ -166,6 +166,8 @@ streams through the sink without growing the process heap.
 | [runcom_ecto](runcom_ecto/) | Ecto/Postgres persistence — results, dispatches, secrets, analytics |
 | [runcom_web](runcom_web/) | Phoenix LiveView dashboard, visual builder, dispatch UI, and metrics |
 | [runcom_rmq](runcom_rmq/) | RabbitMQ transport — sync, events, and dispatch via Broadway |
+| [runcom_demo](runcom_demo/) | Full-stack demo app wiring all packages together |
+| [runcom_demo_agent](runcom_demo_agent/) | Agent-side companion for testing distributed dispatch |
 
 ## Architecture
 
@@ -287,6 +289,37 @@ runbooks and monitor execution.
 
 For a complete working example with pre-configured agents, see the
 [runcom_demo](runcom_demo/) application.
+
+## Security
+
+### Message signing
+
+All messages between server and agents are HMAC-SHA256 signed via
+`RuncomRmq.Codec`. A shared signing secret must be configured on both sides:
+
+```elixir
+# config/runtime.exs (server and every agent)
+config :runcom_rmq, signing_secret: System.fetch_env!("RUNCOM_SIGNING_SECRET")
+```
+
+The secret is **required** — `RuncomRmq.Codec` raises at encode/decode time if
+it is missing or empty. Messages that fail signature verification are rejected
+with `{:error, :invalid_signature}` and never deserialized.
+
+See the [key rotation section](runcom_rmq/README.md#key-rotation) in the
+RuncomRmq README for zero-downtime secret rotation.
+
+### Deserialization
+
+`RuncomRmq.Codec` uses `:erlang.binary_to_term/1` (without the `[:safe]` option)
+to deserialize message payloads. This is intentional: the HMAC signature is
+verified **before** deserialization, so only payloads signed with your secret are
+ever passed to `binary_to_term`. The `[:safe]` restriction (which prevents atom
+creation) is unnecessary here and would break legitimate payloads containing
+module atoms and structs.
+
+If you expose RabbitMQ to untrusted networks, ensure TLS is enabled on the AMQP
+connection and that the signing secret is strong (32+ random bytes).
 
 ## License
 

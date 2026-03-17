@@ -26,7 +26,15 @@ Visit [`localhost:4000`](http://localhost:4000) to access the dashboard.
 
 ## What's Included
 
-- Pre-configured `RuncomRmq.Server` and `RuncomRmq.Client` supervision trees
 - `RuncomEcto.Store` backed by Postgres
 - `RuncomWeb` dashboard and builder mounted at `/`
-- Example runbooks demonstrating step composition, secrets, and dispatch
+- `RuncomRmq.Server` supervision tree (started when `rmq_connection` is configured)
+- Example runbooks in `lib/runcom_demo/runbooks/`:
+  - `deploy_app.ex` -- multi-step app deployment
+  - `host_health.ex` -- system health checks
+  - `sys_maintenance.ex` -- system maintenance tasks
+  - `cert_rotation.ex` -- TLS certificate rotation
+  - `kitchen_sink.ex` -- exercises most built-in step types
+
+A companion `runcom_demo_agent/` package in the monorepo root provides the
+agent-side counterpart for testing distributed dispatch.

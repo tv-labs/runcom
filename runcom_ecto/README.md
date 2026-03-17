@@ -3,6 +3,10 @@
 Ecto-backed persistence for Runcom. Implements `Runcom.Store`
 behaviour using Postgres with versioned migrations.
 
+**Do I need this?** Runcom works without persistence — results live in memory
+and DETS checkpoints handle crash recovery. Add RuncomEcto when you want to
+keep execution history, query analytics, or power the RuncomWeb dashboard.
+
 ## Schema
 
 ```mermaid
@@ -79,6 +83,12 @@ erDiagram
 
 ```
 
+## Requirements
+
+- Elixir ~> 1.18
+- PostgreSQL 14+
+- OTP 28+ (for zstd compression of step output)
+
 ## Installation
 
 ```elixir
@@ -96,14 +106,15 @@ config :runcom,
   store: {RuncomEcto.Store, repo: MyApp.Repo}
 ```
 
-2. Create a migration in your consuming app:
+2. Create a migration in your consuming app (always pin to an explicit `:version`
+   so that new library versions don't auto-apply schema changes):
 
 ```elixir
 defmodule MyApp.Repo.Migrations.AddRuncom do
   use Ecto.Migration
 
-  def up, do: RuncomEcto.Migrations.up()
-  def down, do: RuncomEcto.Migrations.down()
+  def up, do: RuncomEcto.Migrations.up(version: 1)
+  def down, do: RuncomEcto.Migrations.down(version: 1)
 end
 ```
 
@@ -117,6 +128,7 @@ end
 | `runcom_step_results` | Per-step results with compressed output |
 | `runcom_dispatches` | Dispatch batch records |
 | `runcom_dispatch_nodes` | Per-node dispatch tracking |
+
 ## Store API
 
 `RuncomEcto.Store` implements `Runcom.Store`:

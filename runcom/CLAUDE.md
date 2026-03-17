@@ -48,20 +48,19 @@ The tracer is not needed in `runcom`'s own `mix.exs` (builtin steps are filtered
 
 ```
 Runcom.Application
-└── Runcom.DynamicSupervisor
-    ├── Runcom.Executor (Supervisor) - deploy-1.4.0
-    │   ├── Runcom.Orchestrator (GenServer)
-    │   ├── Task - check_disk (completed)
-    │   ├── Task - download (running)
-    │   └── Task - extract (pending)
-    ├── Runcom.Executor (Supervisor) - remediate-disk-123
-    │   ├── Runcom.Orchestrator (GenServer)
-    │   └── Task - clean_journal (running)
+├── Runcom.Registry (unique)
+├── Runcom.DynamicSupervisor
+│   ├── Runcom.Orchestrator (GenServer) - deploy-1.4.0
+│   ├── Runcom.Orchestrator (GenServer) - remediate-disk-123
+│   └── ...
+└── Runcom.TaskSupervisor
+    ├── Task - check_disk (completed)
+    ├── Task - download (running)
     └── ...
 ```
 
-- **Executor** (Supervisor): Creates/owns ETS tables (meta + data), supervises Orchestrator and step Tasks
-- **Orchestrator** (GenServer): Schedules steps by `await` deps, starts Tasks under Executor, handles retries, checkpoints after each step
+- **Executor** (stateless module): Creates/owns ETS tables (meta + data), starts Orchestrator under `DynamicSupervisor` and step Tasks under `TaskSupervisor`
+- **Orchestrator** (GenServer): Schedules steps by `await` deps, starts Tasks via `TaskSupervisor`, handles retries, checkpoints after each step
 
 ## Telemetry Events
 

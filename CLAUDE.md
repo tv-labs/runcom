@@ -11,6 +11,7 @@ Composable DSL for defining and executing change plans with checkpointing, desig
 | `runcom_web` | `runcom_web/` | Phoenix LiveView dashboard, visual builder, dispatch UI, metrics |
 | `runcom_rmq` | `runcom_rmq/` | RabbitMQ transport — sync, events, dispatch via Broadway |
 | `runcom_demo` | `runcom_demo/` | Demo app wiring all packages together with Phoenix + RabbitMQ |
+| `runcom_demo_agent` | `runcom_demo_agent/` | Agent-side companion for testing distributed dispatch |
 
 Each package is published to Hex independently. During local development, packages use path deps. Each has its own `mix.exs`, `_build/`, and `deps/`.
 

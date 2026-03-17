@@ -2,8 +2,27 @@ defprotocol Runcom.Sink do
   @moduledoc """
   Protocol for streaming output sinks.
 
+  Sinks capture stdout and stderr output from step execution, enabling
+  post-run inspection via `Runcom.read_stdout/2` and `Runcom.read_stderr/2`.
+  Each step gets its own scoped sink derived from the runbook-level sink
+  via `for_step/2`.
+
   Sinks receive tagged chunks: `{:stdout, data}` or `{:stderr, data}`.
   Plain binary writes are normalized to `{:stdout, binary}`.
+
+  ## Implementations
+
+    * `Runcom.Sink.DETS` - Default. Persists output to DETS tables on disk.
+      Good for local execution with crash recovery.
+    * `Runcom.Sink.File` - Writes output to a plain file. Simple and
+      inspectable, but no crash recovery.
+    * `Runcom.Sink.S3` - Uploads output to S3-compatible storage. Use for
+      remote/distributed execution where output must be accessible from
+      the server. `remote?/1` returns `true`.
+    * `Runcom.Sink.Multi` - Composes multiple sinks. Writes are fanned out
+      to all children (e.g., DETS + S3).
+    * `Runcom.Sink.Null` - Discards all output. Useful in tests or when
+      output capture is not needed.
   """
 
   @doc "Open/initialize the sink for writing"

@@ -4,6 +4,12 @@ RabbitMQ transport for Runcom. Provides Broadway-backed server and client
 components for syncing runbooks, forwarding execution events, and dispatching
 runs to remote agents.
 
+**Do I need this?** If you only run runbooks locally (or on a single machine),
+you don't need this package — `Runcom.run_sync/2` and `Runcom.run_async/2` work
+standalone. Add RuncomRmq when you want to execute runbooks on remote agent
+machines from a central server, with automatic runbook syncing and live event
+streaming back to the server.
+
 ## Architecture
 
 ```mermaid
@@ -81,13 +87,17 @@ The secret must be identical on all nodes that exchange messages.
 
 To rotate the signing secret with zero downtime:
 
-1. Deploy agents with the **new** secret
-2. Once all agents are running the new secret, deploy the server with the new secret
+1. Deploy the **server** with the new secret first
+2. Once the server is running the new secret, deploy agents with the new secret
 
-During the transition window, agents sending with the new secret will have their
-messages rejected by the server (still on the old secret). Those messages land in
-the dead-letter queue and can be reprocessed after the server is updated. For
-dispatches (server → agent), the same applies in reverse.
+During the transition window, agents still sending with the old secret will have
+their messages rejected by the server. Those messages land in the dead-letter
+queue (`{queue}.dead` via the `runcom.dlx` exchange) and can be reprocessed
+after all agents are updated. For dispatches (server → agent), the same applies
+in reverse — agents on the old secret will reject dispatches signed with the new
+secret until they are updated.
+
+Monitor the dead-letter queues during rotation to ensure no messages are lost.
 
 ---
 
@@ -194,8 +204,8 @@ ack (or timeout), preventing queue leaks.
 ## Client
 
 The client runs on each remote agent node. It caches runbooks locally,
-publishes execution telemetry back to the server, consumes dispatch commands,
-and consumes dispatch commands.
+publishes execution telemetry back to the server, and consumes dispatch
+commands.
 
 ### Setup
 
