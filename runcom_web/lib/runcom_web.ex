@@ -8,7 +8,7 @@ defmodule RuncomWeb do
   ## Setup
 
       # mix.exs
-      {:runcom_web, path: "../runcom_web"}
+      {:runcom_web, "~> 0.1"}
 
       # config/config.exs
       config :runcom_web, pubsub: MyApp.PubSub
@@ -22,9 +22,8 @@ defmodule RuncomWeb do
         runcom_dashboard "/dashboard"
       end
 
-      # assets/js/app.js
-      import {hooks as webHooks} from "runcom_web/priv/static/runcom_web"
-      hooks: {...webHooks}
+  RuncomWeb ships its own root layout, JavaScript, and CSS via embedded
+  asset routes. No npm install or hook wiring is needed in the host app.
 
   ## Routes
 

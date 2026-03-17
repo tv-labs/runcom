@@ -12,7 +12,8 @@ defmodule RuncomRmq do
       {RuncomRmq.Client,
         connection: "amqp://localhost",
         node_id: "agent-1",
-        sync_interval: :timer.minutes(5)}
+        sync_queue: "runcom.sync.request",
+        event_queue: "runcom.events"}
 
   ## Server
 

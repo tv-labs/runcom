@@ -37,6 +37,7 @@ defmodule Runcom.MixProject do
       {:ex_cmd, "~> 0.12"},
       {:req, "~> 0.5"},
       {:telemetry, "~> 1.0"},
+      {:telemetry_registry, "~> 0.3"},
       {:process_tree, "~> 0.1"},
       {:ex_doc, "~> 0.35", only: :dev, runtime: false, warn_if_outdated: true},
       {:tidewave, "~> 0.5", only: :dev, warn_if_outdated: true},
@@ -95,7 +96,7 @@ defmodule Runcom.MixProject do
       source_url_pattern: "#{@source_url}/blob/v#{@version}/runcom/%{path}#L%{line}",
       before_closing_body_tag: %{html: @mermaid_js},
       groups_for_modules: [
-        Steps: ~r/^Runcom\.Steps?\.?/,
+        Steps: ~r/^Runcom\.Steps\.?/,
         Sinks: ~r/^Runcom\.Sink\.?/,
         Formatters: [
           ~r/^Runcom\.Formatter\.?/,

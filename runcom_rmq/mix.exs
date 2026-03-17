@@ -62,13 +62,21 @@ defmodule RuncomRmq.MixProject do
   end
 
   defp deps do
-    [
-      {:runcom, path: "../runcom"},
-      {:broadway_rabbitmq, "~> 0.8"},
-      {:phoenix_pubsub, "~> 2.1"},
-      {:jason, "~> 1.4"},
-      {:ex_doc, "~> 0.35", only: :dev, runtime: false}
-    ]
+    runcom_dep() ++
+      [
+        {:broadway_rabbitmq, "~> 0.8"},
+        {:phoenix_pubsub, "~> 2.1"},
+        {:jason, "~> 1.4"},
+        {:ex_doc, "~> 0.35", only: :dev, runtime: false}
+      ]
+  end
+
+  defp runcom_dep do
+    if path = System.get_env("RUNCOM_ROOT") do
+      [{:runcom, path: "#{path}/runcom"}]
+    else
+      [{:runcom, "~> 0.1.0"}]
+    end
   end
 
   defp package do

@@ -12,6 +12,25 @@ defmodule RuncomEcto.Schema.DispatchNode do
   import Ecto.Changeset
 
   @primary_key {:id, :binary_id, autogenerate: true}
+
+  @type t :: %__MODULE__{
+          id: Ecto.UUID.t() | nil,
+          dispatch_id: Ecto.UUID.t() | nil,
+          node_id: String.t() | nil,
+          status: String.t() | nil,
+          result_id: Ecto.UUID.t() | nil,
+          started_at: DateTime.t() | nil,
+          completed_at: DateTime.t() | nil,
+          duration_ms: integer() | nil,
+          steps_completed: integer(),
+          steps_failed: integer(),
+          steps_skipped: integer(),
+          steps_total: integer(),
+          error_message: String.t() | nil,
+          acked_at: DateTime.t() | nil,
+          inserted_at: DateTime.t() | nil
+        }
+
   schema "runcom_dispatch_nodes" do
     field :dispatch_id, :binary_id
     field :node_id, :string

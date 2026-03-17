@@ -22,7 +22,7 @@ defmodule Runcom.Sink.S3 do
     * `:bucket` - S3 bucket name (required)
     * `:prefix` - Key prefix (default: "")
     * `:key` - Full S3 key. When nil, built from prefix at upload time.
-    * `:s3` - Keyword list of S3/aws_sigv4 options (see `Runcom.S3`)
+    * `:s3` - Keyword list of S3/aws_sigv4 options
     * `:region` - AWS region (default: "us-east-1")
     * `:endpoint_url` - Custom S3 endpoint for S3-compatible services (e.g., MinIO).
       When set, uses path-style addressing (`endpoint/bucket/key`).
@@ -62,7 +62,7 @@ defmodule Runcom.Sink.S3 do
     * `:bucket` - S3 bucket name (required)
     * `:prefix` - Key prefix (default: "")
     * `:key` - Full S3 key override
-    * `:s3` - S3 credential options (see `Runcom.S3`)
+    * `:s3` - S3 credential options
     * `:region` - AWS region (default: "us-east-1")
     * `:endpoint_url` - Custom S3 endpoint (e.g., "http://minio:9000")
     * `:part_size` - Minimum bytes per part (default: 5 MB)

@@ -4,7 +4,7 @@ defmodule RuncomEcto.Store do
 
   Provides persistence for operational data: execution results, nodes,
   dispatches, and metrics. Runbook discovery is handled by
-  `Runcom.Runbook` via the `Runcom.Runbook.Compiled` protocol.
+  `Runcom.Runbook`.
 
   ## Configuration
 

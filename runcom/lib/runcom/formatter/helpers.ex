@@ -3,12 +3,7 @@ defmodule Runcom.Formatter.Helpers do
   Shared utilities for runbook formatters.
   """
 
-  @doc """
-  Converts string keys in a map to existing atoms.
-
-  Returns the original map unchanged if any key cannot be converted
-  to an existing atom.
-  """
+  @doc false
   @spec atomize_keys(map()) :: map()
   def atomize_keys(map) when is_map(map) do
     Map.new(map, fn

@@ -63,20 +63,19 @@ defmodule RuncomEcto.MixProject do
   defp elixirc_paths(_), do: ["lib"]
 
   defp deps do
-    [
-      runcom_dep(),
-      {:ecto_sql, "~> 3.12"},
-      {:postgrex, "~> 0.19"},
-      {:jason, "~> 1.4"},
-      {:ex_doc, "~> 0.35", only: :dev, runtime: false}
-    ]
+    runcom_dep() ++
+      [
+        {:ecto_sql, "~> 3.12"},
+        {:postgrex, "~> 0.19"},
+        {:ex_doc, "~> 0.35", only: :dev, runtime: false}
+      ]
   end
 
   defp runcom_dep do
-    if path = System.get_env("RUNCOM_PATH") do
-      {:runcom, path: path}
+    if path = System.get_env("RUNCOM_ROOT") do
+      [{:runcom, path: "#{path}/runcom"}]
     else
-      {:runcom, "~> 0.1.0"}
+      [{:runcom, "~> 0.1.0"}]
     end
   end
 

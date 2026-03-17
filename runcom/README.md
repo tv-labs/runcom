@@ -88,7 +88,7 @@ end
 ```elixir
 config :runcom,
   formatters: [Runcom.Formatter.Markdown, Runcom.Formatter.Asciinema],
-  checkpoint_dir: "/var/lib/runcom",
+  artifact_dir: "/var/lib/runcom",
   default_sink: {Runcom.Sink.DETS, []}
 
 # In test.exs — disable output capture:
@@ -112,7 +112,7 @@ runbook =
   |> Command.add("greet", cmd: "echo 'Hello from Runcom!'")
 
 {:ok, rc} = Runcom.run_sync(runbook)
-Runcom.output(rc, "greet")
+Runcom.result(rc, "greet").output
 # => "Hello from Runcom!\n"
 ```
 
@@ -166,7 +166,7 @@ prior step results:
 
 ```elixir
 |> Command.add("log",
-     cmd: &("echo 'Downloaded to #{Runcom.output(&1, "download")}'")
+     cmd: &("echo 'Downloaded to #{Runcom.result(&1, "download").output}'")
    )
 ```
 
@@ -199,15 +199,51 @@ Runcom.new("api-call")
 {:ok, pid} = Runcom.resume("deploy-1.4.0")
 ```
 
-## Result inspection
+## Result Inspection
 
 ```elixir
 Runcom.result(rc, "download")            # %Runcom.Step.Result{}
-Runcom.output(rc, "download")            # step output value
+Runcom.result(rc, "download").output      # step return value
 Runcom.ok?(rc, "download")               # true | false
 Runcom.read_stdout(rc, "download")       # captured stdout
 Runcom.read_stderr(rc, "download")       # captured stderr
 ```
+
+`result.output` is the **structured value** the step chose to return via
+`Result.ok(output: ...)` — use it for logic, passing data between steps, and
+assertions. `read_stdout`/`read_stderr` are the **raw bytes** the underlying
+process printed — use them for debugging, logging, and display.
+
+## Error Handling
+
+Runbook execution returns `{:ok, rc}` even when individual steps fail — the
+runbook completed its run, it just has failures in it. Check `rc.status` or
+per-step results to determine what happened:
+
+```elixir
+{:ok, rc} = Runcom.run_sync(runbook)
+
+case rc.status do
+  :completed -> IO.puts("all steps succeeded")
+  :failed    -> IO.puts("one or more steps failed")
+  :halted    -> IO.puts("a step halted execution (e.g. assertion failed)")
+end
+
+# Inspect a specific failure
+unless Runcom.ok?(rc, "deploy") do
+  result = Runcom.result(rc, "deploy")
+  IO.puts("deploy failed: #{result.error}")
+  IO.puts("stderr: #{Runcom.read_stderr(rc, "deploy")}")
+  IO.puts("attempts: #{result.attempts}")
+end
+
+# Steps that depend on a failed step are skipped
+rc.step_status
+# => %{"download" => :ok, "extract" => :error, "restart" => :skipped}
+```
+
+The function returns `{:error, reason}` only for infrastructure failures (e.g.,
+the orchestrator process crashed). Step-level errors are always inside the `rc`.
 
 ## Testing
 
@@ -325,6 +361,25 @@ The tracer records compile-time dependencies for each `use Runcom.Step` module.
 `Runcom.CodeSync.bundle/1` walks these manifests to build precise bytecode
 bundles.
 
+## Glossary
+
+| Term | Meaning |
+|------|---------|
+| **Runbook** | A module that builds a `%Runcom{}` struct — the complete execution plan |
+| **Step** | A single operation in a runbook (e.g., run a command, download a file) |
+| **DAG** | Directed acyclic graph — steps declare dependencies via `await:`, forming a graph that determines execution order and parallelism |
+| **Entry point** | A step with no dependencies — it runs immediately when execution starts |
+| **Assigns** | User-defined key-value pairs on the runbook, accessible to all steps via `rc.assigns` |
+| **Facts** | Read-only system info (OS, arch, hostname, memory) gathered at execution time, available via `rc.facts` |
+| **Sink** | A pluggable output backend that captures step stdout/stderr (see `Runcom.Sink`) |
+| **Checkpoint** | A snapshot of runbook state written to disk after each step, enabling resume after crash or reboot |
+| **Dispatch** | Sending a runbook to one or more remote agent nodes for execution |
+| **Node** | A remote agent machine that receives and executes dispatched runbooks |
+| **Graft** | Embedding one runbook's steps into another, merging their DAGs |
+| **Deferred value** | A function in step opts that resolves at execution time (e.g., `&Runcom.result(&1, "prior_step").output`) |
+| **Executor** | Stateless module that sets up ETS tables and starts the Orchestrator and step tasks |
+| **Orchestrator** | GenServer that drives execution — schedules steps, manages retries, writes checkpoints |
+
 ## Behaviours
 
 | Behaviour | Purpose | Default |
@@ -336,10 +391,4 @@ bundles.
 
 ## Telemetry
 
-```elixir
-[:runcom, :step, :start]     # %{system_time: ...}
-[:runcom, :step, :stop]      # %{duration: native_time}
-[:runcom, :step, :exception] # %{duration: native_time}
-[:runcom, :run, :start]      # runbook started
-[:runcom, :run, :stop]       # runbook completed
-```
+See `Runcom.Telemetry` for the full event catalog with measurements and metadata.

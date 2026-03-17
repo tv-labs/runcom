@@ -63,21 +63,34 @@ defmodule RuncomWeb.MixProject do
   end
 
   defp deps do
-    [
-      {:runcom, path: "../runcom"},
-      {:runcom_ecto, path: "../runcom_ecto"},
-      {:phoenix_live_view, "~> 1.0"},
-      {:live_svelte, "~> 0.17"},
-      {:phoenix_pubsub, "~> 2.1"},
-      {:jason, "~> 1.4"},
-      {:mime, "~> 2.0"},
-      {:mdex, "~> 0.11"},
-      {:mdex_gfm, "~> 0.1"},
-      {:easel, "~> 0.3"},
-      {:decimal, "~> 2.0"},
-      {:ex_doc, "~> 0.35", only: :dev, runtime: false},
-      {:lazy_html, ">= 0.1.0", only: :test}
-    ]
+    runcom_dep() ++
+      [
+        {:phoenix_live_view, "~> 1.0"},
+        {:live_svelte, "~> 0.17"},
+        {:phoenix_pubsub, "~> 2.1"},
+        {:jason, "~> 1.4"},
+        {:mime, "~> 2.0"},
+        {:mdex, "~> 0.11"},
+        {:mdex_gfm, "~> 0.1"},
+        {:easel, "~> 0.3"},
+        {:decimal, "~> 2.0"},
+        {:ex_doc, "~> 0.35", only: :dev, runtime: false},
+        {:lazy_html, ">= 0.1.0", only: :test}
+      ]
+  end
+
+  defp runcom_dep do
+    if path = System.get_env("RUNCOM_ROOT") do
+      [
+        {:runcom, path: "#{path}/runcom"},
+        {:runcom_ecto, path: "#{path}/runcom_ecto"}
+      ]
+    else
+      [
+        {:runcom, "~> 0.1.0"},
+        {:runcom_ecto, "~> 0.1.0"}
+      ]
+    end
   end
 
   defp package do

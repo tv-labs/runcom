@@ -134,18 +134,27 @@ end
 `RuncomEcto.Store` implements `Runcom.Store`:
 
 ```elixir
-# Results
-RuncomEcto.Store.save_result(attrs)
+# Results (all accept optional `repo: MyApp.Repo`)
+RuncomEcto.Store.save_result(attrs, repo: MyApp.Repo)
 RuncomEcto.Store.get_result(id)
-RuncomEcto.Store.list_results()
-RuncomEcto.Store.search_results("deploy failure")
+RuncomEcto.Store.list_results(runbook_id: "deploy", search: "failure")
+RuncomEcto.Store.search_results("deploy failure")  # full-text search via tsvector
 
-# Analytics
-RuncomEcto.Store.run_rate()              # runs per time bucket
-RuncomEcto.Store.timing_stats()          # avg/p50/p95/max per runbook
-RuncomEcto.Store.status_rates()          # completion/failure rates
-RuncomEcto.Store.step_timing_stats()     # per-step timing breakdown
-RuncomEcto.Store.count_results()         # total and failure counts
+# Analytics (all require `since:` and accept `repo:`)
+RuncomEcto.Store.run_rate(since: ago, bucket: "hour")
+# => {:ok, [%{bucket: ~U[...], runbook_id: "deploy", count: 12}, ...]}
+
+RuncomEcto.Store.timing_stats(since: ago)
+# => {:ok, [%{runbook_id: "deploy", avg_ms: 4500, p50_ms: 4200, p90_ms: 6100, p95_ms: 7000, p99_ms: 8500, max_ms: 9200, count: 50}, ...]}
+
+RuncomEcto.Store.status_rates(since: ago)
+# => {:ok, [%{runbook_id: "deploy", total: 100, completed: 92, failed: 6, running: 2}, ...]}
+
+RuncomEcto.Store.step_timing_stats(since: ago, runbook_id: "deploy")
+# => {:ok, [%{name: "download", avg_ms: 1200, p50_ms: 1100, ...}, ...]}
+
+RuncomEcto.Store.count_results()
+# => {:ok, %{total: 1500, failures: 43}}
 
 # Dispatch tracking
 RuncomEcto.Store.create_dispatch(attrs)

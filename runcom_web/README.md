@@ -74,12 +74,9 @@ scope "/" do
 end
 ```
 
-3. Build the frontend assets:
-
-```bash
-mix assets.setup   # npm install
-mix assets.build   # build JS/CSS bundles
-```
+RuncomWeb ships its own root layout, JavaScript, and CSS — all served via
+embedded asset routes. No npm install, hook wiring, or asset pipeline
+integration is needed in the host app.
 
 ## Views
 
@@ -188,6 +185,38 @@ runcom_dashboard("/dashboard",
 
 The callback receives assigns with `:dispatch`, `:dispatch_nodes`,
 `:results_by_node`, and `:base_path`.
+
+## Actor Rendering
+
+The dashboard can display who dispatched a runbook via the `RuncomWeb.Actor`
+behaviour. The host app owns the User model, so actor information is extracted
+from the conn at session creation and stored as an opaque map on the dispatch.
+
+```elixir
+defmodule MyApp.RuncomActor do
+  @behaviour RuncomWeb.Actor
+  use Phoenix.Component
+
+  @impl true
+  def render(assigns) do
+    ~H"""
+    <span>{@actor["name"]}</span>
+    """
+  end
+end
+```
+
+Pass both the extraction function and renderer as dashboard options:
+
+```elixir
+runcom_dashboard("/dashboard",
+  actor: &MyAppWeb.Runcom.extract_actor/1,
+  actor_renderer: MyApp.RuncomActor
+)
+```
+
+When no `:actor_renderer` is configured, `RuncomWeb.Actor.Default` renders the
+first available name-like key from the map.
 
 ## Dependencies
 

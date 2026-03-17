@@ -1042,6 +1042,11 @@ defmodule Runcom do
   @doc """
   Returns the result stored in a step's StepNode.
 
+  The result's `.output` field contains the structured value the step chose
+  to return via `Result.ok(output: ...)`. Use this for logic, passing data
+  between steps, and assertions. For raw process output, see `read_stdout/2`
+  and `read_stderr/2`.
+
   Returns `nil` if the step does not exist or has no result.
 
   ## Examples
@@ -1081,6 +1086,10 @@ defmodule Runcom do
   @doc """
   Reads stdout content from a step's sink.
 
+  Returns the raw bytes the underlying process printed to stdout. Use this
+  for debugging, logging, and display. For the step's structured return
+  value, see `result/2` instead.
+
   Returns `{:ok, content}` on success, or `{:error, reason}` if the step
   does not exist or has no sink.
 
@@ -1100,6 +1109,10 @@ defmodule Runcom do
 
   @doc """
   Reads stderr content from a step's sink.
+
+  Returns the raw bytes the underlying process printed to stderr. Use this
+  for debugging, logging, and display. For the step's structured return
+  value, see `result/2` instead.
 
   Returns `{:ok, content}` on success, or `{:error, reason}` if the step
   does not exist or has no sink.

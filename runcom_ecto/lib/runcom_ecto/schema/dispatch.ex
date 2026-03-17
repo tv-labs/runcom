@@ -12,6 +12,22 @@ defmodule RuncomEcto.Schema.Dispatch do
 
   @primary_key {:id, :binary_id, autogenerate: true}
 
+  @type t :: %__MODULE__{
+          id: Ecto.UUID.t() | nil,
+          runbook_id: String.t() | nil,
+          status: String.t() | nil,
+          nodes_acked: integer(),
+          nodes_completed: integer(),
+          nodes_failed: integer(),
+          started_at: DateTime.t() | nil,
+          completed_at: DateTime.t() | nil,
+          duration_ms: integer() | nil,
+          assigns: map(),
+          actor: map() | nil,
+          inserted_at: DateTime.t() | nil,
+          updated_at: DateTime.t() | nil
+        }
+
   schema "runcom_dispatches" do
     field :runbook_id, :string
     field :status, :string, default: "dispatching"

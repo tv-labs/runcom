@@ -29,8 +29,8 @@ defmodule RuncomWeb.Router do
 
   ## Dashboard Options
 
-    * `:node_search_component` — LiveComponent for node search (default: `RuncomWeb.Components.DefaultNodeSearch`)
-    * `:render_node_component` — Component for rendering node cards (default: `RuncomWeb.Components.DefaultNodeRender`)
+    * `:node_search_component` — LiveComponent for node search
+    * `:render_node_component` — Component for rendering node cards
     * `:dispatcher` — Module implementing dispatch logic (e.g., `RuncomRmq.Server.Dispatcher`)
     * `:pubsub` — PubSub server for real-time updates
     * `:actor` — `(Plug.Conn.t() -> map() | nil)` extracts actor info at session creation for audit trails

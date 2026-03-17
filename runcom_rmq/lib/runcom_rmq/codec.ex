@@ -11,6 +11,14 @@ defmodule RuncomRmq.Codec do
   The signing secret is read from `Application.get_env(:runcom_rmq, :signing_secret)`
   and is required.
 
+  ## Security
+
+  Deserialization uses `:erlang.binary_to_term/1` without the `[:safe]` option.
+  This is intentional: the HMAC signature is verified before deserialization, so
+  only payloads signed with your secret are ever passed to `binary_to_term`. The
+  `[:safe]` restriction would prevent atom creation and break legitimate payloads
+  containing module atoms and structs.
+
   ## Examples
 
       iex> encoded = RuncomRmq.Codec.encode(%{action: :sync, manifest: %{}})

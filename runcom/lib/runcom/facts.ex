@@ -26,8 +26,8 @@ defmodule Runcom.Facts do
   defstruct [:os, :arch, :hostname, :os_version, :distro_family, :cpu_count, :total_memory_mb]
 
   @type t :: %__MODULE__{
-          os: atom(),
-          arch: atom(),
+          os: :linux | :darwin | :freebsd | :windows | atom(),
+          arch: :x86_64 | :aarch64 | :arm | :riscv64 | atom(),
           hostname: String.t(),
           os_version: String.t() | nil,
           distro_family: :debian | :alpine | :redhat | :macos | :unknown,
