@@ -9,6 +9,10 @@ defmodule Runcom.Step do
 
     * `validate/1` - Validate options before execution
     * `run/2` - Execute the step with the runbook context and options
+    * `run_eval/2` - Alternative to `run/2` whose body is captured as AST
+      and evaluated via `Code.eval_quoted/2` on the agent. Useful for steps
+      defined on the server that need to call modules only available on
+      the agent. Either `run/2` or `run_eval/2` must be defined, not both.
     * `dryrun/2` (optional) - Describe what would happen without executing
     * `stub/2` (optional) - Return test stub response
 
@@ -26,6 +30,23 @@ defmodule Runcom.Step do
         def run(rc, opts) do
           # Implementation
           {:ok, Result.ok(output: "done")}
+        end
+      end
+
+  ## Evaluated Steps
+
+  Define `run_eval/2` instead of `run/2` when the step body should be
+  evaluated as AST on the agent rather than compiled into bytecode. At
+  compile time the body is captured and deleted from the module. At
+  execution time a generated `run/2` evaluates the AST with `rc` and
+  `opts` bound.
+
+      defmodule MyApp.Steps.AgentCheck do
+        use Runcom.Step, name: "Agent Check"
+
+        def run_eval(rc, _opts) do
+          version = MyAgentApp.Version.current()
+          {:ok, Result.ok(output: "agent \#{rc.assigns.name} at \#{version}")}
         end
       end
 
@@ -480,7 +501,7 @@ defmodule Runcom.Step do
 
           @impl Runcom.Step
           def run(rc, opts) do
-            {result, _binding} = Code.eval_quoted(__agent_ast__(), [rc: rc, opts: opts])
+            {result, _binding} = Code.eval_quoted(__agent_ast__(), rc: rc, opts: opts)
             result
           end
         end

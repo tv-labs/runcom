@@ -17,7 +17,8 @@ defmodule RuncomWeb.Components.DefaultNodeRender do
   defp node_id(%{node_id: id}), do: id
   defp node_id(_node), do: "unknown"
 
-  defp online?(%{last_checkin_at: %DateTime{} = t}), do: DateTime.diff(DateTime.utc_now(), t, :minute) < 5
+  defp online?(%{last_checkin_at: %DateTime{} = t}),
+    do: DateTime.diff(DateTime.utc_now(), t, :minute) < 5
 
   defp online?(_), do: false
 end

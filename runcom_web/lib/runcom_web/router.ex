@@ -171,7 +171,8 @@ defmodule RuncomWeb.Router do
     session_name = Keyword.get(route_opts, :as, default_name)
 
     session_opts = [
-      session: {__MODULE__, :__session__, [prefix, runcom_config, csp_key, socket_path, transport]},
+      session:
+        {__MODULE__, :__session__, [prefix, runcom_config, csp_key, socket_path, transport]},
       root_layout: {RuncomWeb.Layouts, :root},
       on_mount: [{RuncomWeb.Session, :default}]
     ]
@@ -202,7 +203,8 @@ defmodule RuncomWeb.Router do
 
   defp expand_csp_nonces(_conn, nil), do: %{style: nil, script: nil}
 
-  defp expand_csp_nonces(conn, key) when is_atom(key), do: %{style: conn.assigns[key], script: conn.assigns[key]}
+  defp expand_csp_nonces(conn, key) when is_atom(key),
+    do: %{style: conn.assigns[key], script: conn.assigns[key]}
 
   defp expand_csp_nonces(conn, map) when is_map(map),
     do: %{style: conn.assigns[map[:style]], script: conn.assigns[map[:script]]}

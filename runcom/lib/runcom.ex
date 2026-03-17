@@ -256,11 +256,13 @@ defmodule Runcom do
 
   @doc false
   @spec add(t(), String.t(), module(), keyword() | map(), map(), MapSet.t(), MapSet.t()) :: t()
-  def add(%__MODULE__{} = rc, name, module, opts, sources, assign_refs, secret_refs) when is_map(opts) do
+  def add(%__MODULE__{} = rc, name, module, opts, sources, assign_refs, secret_refs)
+      when is_map(opts) do
     add(rc, name, module, Map.to_list(opts), sources, assign_refs, secret_refs)
   end
 
-  def add(%__MODULE__{} = rc, name, module, opts, sources, assign_refs, secret_refs) when is_list(opts) do
+  def add(%__MODULE__{} = rc, name, module, opts, sources, assign_refs, secret_refs)
+      when is_list(opts) do
     do_add(rc, name, module, opts, sources, assign_refs, secret_refs)
   end
 

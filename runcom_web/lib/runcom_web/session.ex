@@ -14,8 +14,14 @@ defmodule RuncomWeb.Session do
       |> assign(:live_transport, session["live_transport"] || "websocket")
       |> assign(:actor, session["actor"])
       |> assign(:actor_renderer, config[:actor_renderer] || RuncomWeb.Actor.Default)
-      |> assign(:dispatch_node_renderer, config[:dispatch_node_renderer] || RuncomWeb.DispatchNodeRenderer.Default)
-      |> assign(:render_node_component, config[:render_node_component] || RuncomWeb.Components.DefaultNodeRender)
+      |> assign(
+        :dispatch_node_renderer,
+        config[:dispatch_node_renderer] || RuncomWeb.DispatchNodeRenderer.Default
+      )
+      |> assign(
+        :render_node_component,
+        config[:render_node_component] || RuncomWeb.Components.DefaultNodeRender
+      )
 
     {:cont, socket}
   end

@@ -185,7 +185,9 @@ defmodule RuncomRmq.Client.DispatchConsumer do
         runbook_id = message[:runbook_id] || message["runbook_id"]
         dispatch_id = message[:dispatch_id] || message["dispatch_id"]
 
-        Logger.warning("DispatchConsumer: runbook resolution failed for #{runbook_id}: #{inspect(reason)}")
+        Logger.warning(
+          "DispatchConsumer: runbook resolution failed for #{runbook_id}: #{inspect(reason)}"
+        )
 
         :telemetry.execute(
           [:runcom, :run, :stop],
@@ -217,7 +219,9 @@ defmodule RuncomRmq.Client.DispatchConsumer do
         {:ok, {mod, bytecodes}}
 
       _miss ->
-        Logger.info("DispatchConsumer: cache miss or stale for #{runbook_id}, fetching from server")
+        Logger.info(
+          "DispatchConsumer: cache miss or stale for #{runbook_id}, fetching from server"
+        )
 
         case Sync.fetch_runbook(sync, runbook_id) do
           {:ok, {mod, _runbook}} ->
@@ -270,7 +274,9 @@ defmodule RuncomRmq.Client.DispatchConsumer do
       runbook_id = message[:runbook_id] || message["runbook_id"]
       dispatch_id = message[:dispatch_id] || message["dispatch_id"]
 
-      Logger.error("DispatchConsumer: handler crashed: #{Exception.format(:error, error, stacktrace)}")
+      Logger.error(
+        "DispatchConsumer: handler crashed: #{Exception.format(:error, error, stacktrace)}"
+      )
 
       :telemetry.execute(
         [:runcom, :run, :exception],
