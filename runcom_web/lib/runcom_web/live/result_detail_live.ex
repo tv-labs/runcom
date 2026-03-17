@@ -3,12 +3,12 @@ defmodule RuncomWeb.Live.ResultDetailLive do
 
   use Phoenix.LiveView
 
-  alias Phoenix.LiveView.JS
-
   import Ecto.Query
   import RuncomWeb.Helpers
   import RuncomWeb.ViewTransitions
 
+  alias Phoenix.LiveView.JS
+  alias Runcom.Step.Result
   alias RuncomEcto.Schema.StepResult
 
   defp topic_for(dispatch_id), do: "runcom:events:#{dispatch_id}"
@@ -153,7 +153,14 @@ defmodule RuncomWeb.Live.ResultDetailLive do
               <li>
                 <a
                   href="#"
-                  phx-click={navigate_back("result-detail", "#result-header", @base_path, "#results-#{result_field(@result, :id)}")}
+                  phx-click={
+                    navigate_back(
+                      "result-detail",
+                      "#result-header",
+                      @base_path,
+                      "#results-#{result_field(@result, :id)}"
+                    )
+                  }
                 >
                   Dashboard
                 </a>
@@ -189,7 +196,10 @@ defmodule RuncomWeb.Live.ResultDetailLive do
             >
               dryrun
             </span>
-            <span class="text-sm text-base-content/60 font-mono" style="view-transition-name: result-duration">
+            <span
+              class="text-sm text-base-content/60 font-mono"
+              style="view-transition-name: result-duration"
+            >
               {format_duration(wall_clock_duration(@result))}
             </span>
             <span class="text-sm text-base-content/60" style="view-transition-name: result-time">
@@ -229,7 +239,9 @@ defmodule RuncomWeb.Live.ResultDetailLive do
               <%!-- Output tabs --%>
               <div class="flex items-center gap-1 mb-3">
                 <.link
-                  :for={tab <- [{"steps", "Steps"}, {"markdown", "Markdown"}, {"asciinema", "Asciinema"}]}
+                  :for={
+                    tab <- [{"steps", "Steps"}, {"markdown", "Markdown"}, {"asciinema", "Asciinema"}]
+                  }
                   patch={patch_url(@patch_path, @output_tab, @expanded_steps, tab: elem(tab, 0))}
                   class={[
                     "px-3 py-1 text-xs font-medium rounded-full transition-colors",
@@ -248,7 +260,11 @@ defmodule RuncomWeb.Live.ResultDetailLive do
                 <div :if={@nodes != []} class="space-y-1">
                   <div :for={node <- @nodes} class="border border-base-300 rounded-lg overflow-hidden">
                     <button
-                      phx-click={JS.patch(patch_url(@patch_path, @output_tab, @expanded_steps, toggle: node["id"]))}
+                      phx-click={
+                        JS.patch(
+                          patch_url(@patch_path, @output_tab, @expanded_steps, toggle: node["id"])
+                        )
+                      }
                       class={[
                         "w-full flex items-center justify-between p-3 transition-colors cursor-pointer text-left",
                         step_row_bg(node["data"]["status"])
@@ -263,18 +279,25 @@ defmodule RuncomWeb.Live.ResultDetailLive do
                           &#9654;
                         </span>
                         <span class="font-mono text-sm">{node["id"]}</span>
-                        <span :if={node["data"]["duration_ms"]} class="text-xs text-base-content/50 font-mono">
+                        <span
+                          :if={node["data"]["duration_ms"]}
+                          class="text-xs text-base-content/50 font-mono"
+                        >
                           {format_duration(node["data"]["duration_ms"])}
                         </span>
                         <span :if={node["data"]["halt"]} class="text-xs text-warning font-mono">
-                          halted{if node["data"]["wait_ms"], do: " · resumed after #{format_duration(node["data"]["wait_ms"])}"}
+                          halted{if node["data"]["wait_ms"],
+                            do: " · resumed after #{format_duration(node["data"]["wait_ms"])}"}
                         </span>
                       </div>
                       <span class={["badge badge-sm", status_badge_class(node["data"]["status"])]}>
                         {node["data"]["status"]}
                       </span>
                     </button>
-                    <div :if={MapSet.member?(@expanded_steps, node["id"])} class="border-t border-base-300 bg-base-200/30 p-3 space-y-2">
+                    <div
+                      :if={MapSet.member?(@expanded_steps, node["id"])}
+                      class="border-t border-base-300 bg-base-200/30 p-3 space-y-2"
+                    >
                       <%!-- Rendered step details --%>
                       <div :if={node["data"]["details_html"]}>
                         {Phoenix.HTML.raw(node["data"]["details_html"])}
@@ -291,7 +314,10 @@ defmodule RuncomWeb.Live.ResultDetailLive do
                         <div class="text-xs font-semibold text-base-content/60 mb-1">Output</div>
                         <pre class="text-xs bg-base-300 p-2 rounded whitespace-pre-wrap font-mono max-h-64 overflow-y-auto">{format_output(node["data"]["output"])}</pre>
                       </div>
-                      <p :if={node["data"]["output"] in [nil, ""] && !node["data"]["error"]} class="text-xs text-base-content/40">
+                      <p
+                        :if={node["data"]["output"] in [nil, ""] && !node["data"]["error"]}
+                        class="text-xs text-base-content/40"
+                      >
                         No output captured for this step.
                       </p>
                     </div>
@@ -312,7 +338,11 @@ defmodule RuncomWeb.Live.ResultDetailLive do
                     class="absolute top-2 right-2 btn btn-ghost btn-xs gap-1 opacity-60 hover:opacity-100"
                     title="Copy markdown source"
                   >
-                    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 640 512" class="w-4 h-4 fill-current">
+                    <svg
+                      xmlns="http://www.w3.org/2000/svg"
+                      viewBox="0 0 640 512"
+                      class="w-4 h-4 fill-current"
+                    >
                       <path d="M593.8 59.1l-547.6 0C20.7 59.1 0 79.8 0 105.2L0 406.7c0 25.5 20.7 46.2 46.2 46.2l547.7 0c25.5 0 46.2-20.7 46.1-46.1l0-301.6c0-25.4-20.7-46.1-46.2-46.1zM338.5 360.6l-61.5 0 0-120-61.5 76.9-61.5-76.9 0 120-61.7 0 0-209.2 61.5 0 61.5 76.9 61.5-76.9 61.5 0 0 209.2 .2 0zm135.3 3.1l-92.3-107.7 61.5 0 0-104.6 61.5 0 0 104.6 61.5 0-92.2 107.7z" />
                     </svg>
                   </button>
@@ -587,9 +617,9 @@ defmodule RuncomWeb.Live.ResultDetailLive do
       |> Enum.map(fn {step_name, index} ->
         sr = sr_by_name[step_name]
         status = if sr, do: sr.status || "pending", else: "pending"
-        module = if sr, do: parse_module_string(sr.module), else: nil
-        opts = if(sr, do: sr.opts, else: nil) || %{}
-        meta = if(sr, do: sr.meta, else: nil) || %{}
+        module = if sr, do: parse_module_string(sr.module)
+        opts = if(sr, do: sr.opts) || %{}
+        meta = if(sr, do: sr.meta) || %{}
 
         result_struct = build_step_result_from_sr(sr)
         step_data = step_result_to_map(sr)
@@ -605,7 +635,7 @@ defmodule RuncomWeb.Live.ResultDetailLive do
           |> maybe_put("error", if(sr, do: sr.error))
           |> maybe_put("step_result_id", if(sr, do: sr.id))
           |> maybe_put("has_assert", meta["has_assert"])
-          |> maybe_put("retry", meta["retry"])
+          |> maybe_put("retry", format_retry(meta["retry"]))
           |> maybe_put("has_post", meta["has_post"])
           |> maybe_put("halt", meta["halt"])
 
@@ -620,10 +650,10 @@ defmodule RuncomWeb.Live.ResultDetailLive do
     nodes = annotate_halt_wait(nodes, sr_by_name, stored_edges, ordered_names)
 
     edges =
-      if stored_edges != [] do
-        build_edges_from_stored(stored_edges)
-      else
+      if stored_edges == [] do
         build_edges_from_names(names)
+      else
+        build_edges_from_stored(stored_edges)
       end
 
     {nodes, edges}
@@ -639,20 +669,22 @@ defmodule RuncomWeb.Live.ResultDetailLive do
         halt_sr = sr_by_name[node["id"]]
 
         wait_ms =
-          with %{completed_at: %DateTime{} = completed} <- halt_sr do
-            successor_starts =
-              successors
-              |> Map.get(node["id"], [])
-              |> Enum.reduce([], fn name, acc ->
-                case sr_by_name[name] do
-                  %{started_at: %DateTime{} = started} -> [started | acc]
-                  _ -> acc
-                end
-              end)
+          case halt_sr do
+            %{completed_at: %DateTime{} = completed} ->
+              successor_starts =
+                successors
+                |> Map.get(node["id"], [])
+                |> Enum.reduce([], fn name, acc ->
+                  case sr_by_name[name] do
+                    %{started_at: %DateTime{} = started} -> [started | acc]
+                    _ -> acc
+                  end
+                end)
 
-            Helpers.halt_wait_ms(completed, successor_starts)
-          else
-            _ -> nil
+              Helpers.halt_wait_ms(completed, successor_starts)
+
+            _ ->
+              nil
           end
 
         put_in(node, ["data", "wait_ms"], wait_ms)
@@ -731,7 +763,7 @@ defmodule RuncomWeb.Live.ResultDetailLive do
   defp build_step_result_from_sr(nil), do: nil
 
   defp build_step_result_from_sr(%StepResult{} = sr) do
-    %Runcom.Step.Result{
+    %Result{
       status: parse_step_status(sr.status),
       duration_ms: sr.duration_ms,
       exit_code: sr.exit_code,
@@ -808,6 +840,10 @@ defmodule RuncomWeb.Live.ResultDetailLive do
   defp extract_field(data, key) when is_map(data), do: Map.get(data, key)
   defp extract_field(_, _), do: nil
 
+  defp format_retry(%{"max" => max, "delay" => delay}), do: "#{max}x / #{delay}ms"
+  defp format_retry(%{max: max, delay: delay}), do: "#{max}x / #{delay}ms"
+  defp format_retry(_), do: nil
+
   defp maybe_put(map, _key, nil), do: map
   defp maybe_put(map, key, value), do: Map.put(map, key, value)
 
@@ -842,7 +878,7 @@ defmodule RuncomWeb.Live.ResultDetailLive do
 
         meta = sr.meta || %{}
 
-        step_result = %Runcom.Step.Result{
+        step_result = %Result{
           status: status_atom,
           duration_ms: sr.duration_ms,
           exit_code: sr.exit_code,
@@ -854,8 +890,7 @@ defmodule RuncomWeb.Live.ResultDetailLive do
         }
 
         stored_opts =
-          (sr.opts || %{})
-          |> Map.new(fn {k, v} -> {to_existing_atom(k), v} end)
+          Map.new(sr.opts || %{}, fn {k, v} -> {to_existing_atom(k), v} end)
 
         step_node = %Runcom.StepNode{
           name: sr.name,
@@ -922,7 +957,8 @@ defmodule RuncomWeb.Live.ResultDetailLive do
   defp render_markdown(nil), do: nil
 
   defp render_markdown(source) do
-    MDEx.new(markdown: source)
+    [markdown: source]
+    |> MDEx.new()
     |> MDExGFM.attach()
     |> MDEx.to_html!(
       syntax_highlight: [
@@ -945,14 +981,12 @@ defmodule RuncomWeb.Live.ResultDetailLive do
     tab = opts[:tab] || tab
 
     expanded =
-      cond do
-        id = opts[:toggle] ->
-          if MapSet.member?(expanded, id),
-            do: MapSet.delete(expanded, id),
-            else: MapSet.put(expanded, id)
-
-        true ->
-          expanded
+      if id = opts[:toggle] do
+        if MapSet.member?(expanded, id),
+          do: MapSet.delete(expanded, id),
+          else: MapSet.put(expanded, id)
+      else
+        expanded
       end
 
     steps_csv = expanded |> MapSet.to_list() |> Enum.sort() |> Enum.join(",")
