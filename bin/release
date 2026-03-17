@@ -1,0 +1,50 @@
+#!/bin/sh
+# Usage: ./bin/release {old_version} {new_version}
+#
+# Bumps version across all packages, runs tests, tags, and publishes to Hex.
+# Packages are published in dependency order so Hex resolves correctly.
+set -e
+
+previous_version="${1}"
+release_version="${2}"
+
+if [ -z "$previous_version" ] || [ -z "$release_version" ]; then
+  echo "Usage: ./bin/release {old_version} {new_version}"
+  exit 1
+fi
+
+packages="runcom runcom_ecto runcom_rmq runcom_web"
+
+# Run tests in each package
+for pkg in $packages; do
+  echo "==> Testing $pkg"
+  (cd "$pkg" && mix test)
+done
+
+# Bump versions in mix.exs and README.md for each package
+for pkg in $packages; do
+  sed -i "" "s/$previous_version/$release_version/" "$pkg/mix.exs"
+  sed -i "" "s/$previous_version/$release_version/" "$pkg/README.md"
+done
+
+# Bump version in root README
+sed -i "" "s/$previous_version/$release_version/" README.md
+
+# Bump changelogs
+for pkg in $packages; do
+  if [ -f "$pkg/CHANGELOG.md" ]; then
+    sed -i "" "s/unreleased/$release_version ($(date +%F))/" "$pkg/CHANGELOG.md"
+  fi
+done
+
+# Stage and commit
+git add -A "*/mix.exs" "*/README.md" "*/CHANGELOG.md" README.md
+git commit -m "Release v${release_version}"
+git tag -a "v${release_version}" -m "Release version v${release_version}"
+git push origin "v${release_version}"
+
+# Publish in dependency order
+for pkg in $packages; do
+  echo "==> Publishing $pkg"
+  (cd "$pkg" && mix hex.build && mix hex.publish --yes)
+done

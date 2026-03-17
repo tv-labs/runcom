@@ -41,7 +41,7 @@ graph LR
 
 ```elixir
 def deps do
-  [{:runcom_rmq, path: "../runcom_rmq"}]
+  [{:runcom_rmq, "~> 0.1.0"}]
 end
 ```
 

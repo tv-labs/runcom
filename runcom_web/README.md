@@ -49,7 +49,7 @@ graph TB
 
 ```elixir
 def deps do
-  [{:runcom_web, path: "../runcom_web"}]
+  [{:runcom_web, "~> 0.1.0"}]
 end
 ```
 
@@ -152,6 +152,42 @@ The DAG viewer component can be used standalone in your own LiveViews:
 
 Events emitted to the parent LiveView: `"node_selected"`, `"edge_selected"`,
 `"graph_changed"`, `"drop_step"`.
+
+## Custom Dispatch Node Rendering
+
+The dispatch detail page renders node cards via a pluggable behaviour. Implement
+`RuncomWeb.DispatchNodeRenderer` to replace the default card grid with your own
+layout:
+
+```elixir
+defmodule MyApp.RuncomNodeRenderer do
+  @behaviour RuncomWeb.DispatchNodeRenderer
+  use Phoenix.Component
+
+  @impl true
+  def render_nodes(assigns) do
+    ~H"""
+    <table class="table">
+      <tr :for={dn <- @dispatch_nodes}>
+        <td>{dn.node_id}</td>
+        <td>{dn.status}</td>
+      </tr>
+    </table>
+    """
+  end
+end
+```
+
+Pass it as a dashboard option:
+
+```elixir
+runcom_dashboard("/dashboard",
+  dispatch_node_renderer: MyApp.RuncomNodeRenderer
+)
+```
+
+The callback receives assigns with `:dispatch`, `:dispatch_nodes`,
+`:results_by_node`, and `:base_path`.
 
 ## Dependencies
 

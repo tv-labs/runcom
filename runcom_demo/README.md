@@ -1,18 +1,32 @@
 # RuncomDemo
 
-To start your Phoenix server:
+Full-stack demo application wiring all Runcom packages together with
+Phoenix, Ecto, and RabbitMQ. Use this as a reference for integrating
+Runcom into your own application.
 
-* Run `mix setup` to install and setup dependencies
-* Start Phoenix endpoint with `mix phx.server` or inside IEx with `iex -S mix phx.server`
+## Prerequisites
 
-Now you can visit [`localhost:4000`](http://localhost:4000) from your browser.
+- Docker and Docker Compose (for RabbitMQ and Postgres)
+- Elixir, Erlang, and Node managed by `mise` (see root `mise.toml`)
 
-Ready to run in production? Please [check our deployment guides](https://hexdocs.pm/phoenix/deployment.html).
+## Getting Started
 
-## Learn more
+```bash
+# Start infrastructure
+docker compose up -d
 
-* Official website: https://www.phoenixframework.org/
-* Guides: https://hexdocs.pm/phoenix/overview.html
-* Docs: https://hexdocs.pm/phoenix
-* Forum: https://elixirforum.com/c/phoenix-forum
-* Source: https://github.com/phoenixframework/phoenix
+# Install deps, create DB, run migrations
+mix setup
+
+# Start the server
+mix phx.server
+```
+
+Visit [`localhost:4000`](http://localhost:4000) to access the dashboard.
+
+## What's Included
+
+- Pre-configured `RuncomRmq.Server` and `RuncomRmq.Client` supervision trees
+- `RuncomEcto.Store` backed by Postgres
+- `RuncomWeb` dashboard and builder mounted at `/`
+- Example runbooks demonstrating step composition, secrets, and dispatch

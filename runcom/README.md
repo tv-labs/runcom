@@ -263,6 +263,23 @@ defmodule MyApp.Steps.HealthCheck do
 end
 ```
 
+### Evaluated Steps
+
+Define `run_eval/2` instead of `run/2` when the step body references modules
+that only exist on the agent. The body is captured as AST at compile time and
+evaluated via `Code.eval_quoted/2` on the agent with `rc` and `opts` bound:
+
+```elixir
+defmodule MyApp.Steps.AgentCheck do
+  use Runcom.Step, name: "Agent Check"
+
+  def run_eval(rc, _opts) do
+    version = MyAgentApp.Version.current()
+    {:ok, Result.ok(output: "agent #{rc.assigns.name} at #{version}")}
+  end
+end
+```
+
 ## Behaviours
 
 | Behaviour | Purpose | Default |
