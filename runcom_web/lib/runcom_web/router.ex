@@ -35,6 +35,7 @@ defmodule RuncomWeb.Router do
     * `:pubsub` — PubSub server for real-time updates
     * `:actor` — `(Plug.Conn.t() -> map() | nil)` extracts actor info at session creation for audit trails
     * `:actor_renderer` — module implementing `RuncomWeb.Actor` behaviour (default: `RuncomWeb.Actor.Default`)
+    * `:dispatch_node_renderer` — module implementing `RuncomWeb.DispatchNodeRenderer` behaviour (default: `RuncomWeb.DispatchNodeRenderer.Default`)
     * `:csp_nonce_assign_key` — CSP nonce key(s) for securing asset tags (nil, atom, or map)
     * `:socket_path` — Phoenix socket path, defaults to `"/live"`
     * `:transport` — Socket transport, `"websocket"` or `"longpoll"`, defaults to `"websocket"`
@@ -47,6 +48,7 @@ defmodule RuncomWeb.Router do
     :pubsub,
     :actor,
     :actor_renderer,
+    :dispatch_node_renderer,
     :csp_nonce_assign_key,
     :socket_path,
     :transport
@@ -68,6 +70,8 @@ defmodule RuncomWeb.Router do
         import Phoenix.LiveView.Router, only: [live: 3, live: 4, live_session: 3]
         import Phoenix.Router, only: [forward: 2, get: 3]
 
+        alias RuncomWeb.Live.BuilderLive
+
         get "/css-:md5", RuncomWeb.Assets, :css
         get "/js-:md5", RuncomWeb.Assets, :js
         get "/dag-:md5", RuncomWeb.Assets, :dag
@@ -79,12 +83,12 @@ defmodule RuncomWeb.Router do
 
         live_session session_name, session_opts do
           live "/",
-               RuncomWeb.Live.BuilderLive,
+               BuilderLive,
                :index,
                Keyword.merge([as: :runcom_builder], route_opts)
 
           live "/:id",
-               RuncomWeb.Live.BuilderLive,
+               BuilderLive,
                :edit,
                Keyword.merge([as: :runcom_builder], route_opts)
         end
@@ -167,8 +171,7 @@ defmodule RuncomWeb.Router do
     session_name = Keyword.get(route_opts, :as, default_name)
 
     session_opts = [
-      session:
-        {__MODULE__, :__session__, [prefix, runcom_config, csp_key, socket_path, transport]},
+      session: {__MODULE__, :__session__, [prefix, runcom_config, csp_key, socket_path, transport]},
       root_layout: {RuncomWeb.Layouts, :root},
       on_mount: [{RuncomWeb.Session, :default}]
     ]
@@ -199,8 +202,7 @@ defmodule RuncomWeb.Router do
 
   defp expand_csp_nonces(_conn, nil), do: %{style: nil, script: nil}
 
-  defp expand_csp_nonces(conn, key) when is_atom(key),
-    do: %{style: conn.assigns[key], script: conn.assigns[key]}
+  defp expand_csp_nonces(conn, key) when is_atom(key), do: %{style: conn.assigns[key], script: conn.assigns[key]}
 
   defp expand_csp_nonces(conn, map) when is_map(map),
     do: %{style: conn.assigns[map[:style]], script: conn.assigns[map[:script]]}

@@ -3,9 +3,9 @@ defmodule RuncomWeb.Live.DashboardLive do
 
   use Phoenix.LiveView
 
+  import RuncomWeb.Components.Sidebar
   import RuncomWeb.Helpers
   import RuncomWeb.ViewTransitions
-  import RuncomWeb.Components.Sidebar
 
   @per_page 100
 
@@ -115,8 +115,7 @@ defmodule RuncomWeb.Live.DashboardLive do
                   else: "text-sm"
               }
             >
-              <span class={["inline-block w-2 h-2 rounded-full", node_status_class(node)]} />
-              {node_id(node)}
+              <.render_node module={@render_node_component} node={node} />
             </a>
           </li>
         </ul>
@@ -157,37 +156,62 @@ defmodule RuncomWeb.Live.DashboardLive do
               <button
                 phx-click="set_view"
                 phx-value-view="dispatch"
-                class={["join-item btn btn-sm btn-ghost", if(@view_mode == "dispatch", do: "btn-active bg-base-200", else: "text-base-content/50")]}
+                class={[
+                  "join-item btn btn-sm btn-ghost",
+                  if(@view_mode == "dispatch",
+                    do: "btn-active bg-base-200",
+                    else: "text-base-content/50"
+                  )
+                ]}
               >
                 By Dispatch
               </button>
               <button
                 phx-click="set_view"
                 phx-value-view="node"
-                class={["join-item btn btn-sm btn-ghost", if(@view_mode == "node", do: "btn-active bg-base-200", else: "text-base-content/50")]}
+                class={[
+                  "join-item btn btn-sm btn-ghost",
+                  if(@view_mode == "node", do: "btn-active bg-base-200", else: "text-base-content/50")
+                ]}
               >
                 By Node
               </button>
             </div>
             <span class="text-xs text-base-content/50">
               <%= if @view_mode == "dispatch" do %>
-                <span class="text-info font-semibold">{@dispatch_count}</span> dispatches
-                <span class="mx-1 text-base-content/30">&middot;</span>
-                <span class="text-info font-semibold">{length(@nodes)}</span> nodes
-                <span class="mx-1 text-base-content/30">&middot;</span>
-                <span class="text-error font-semibold">{@failure_count}</span> failures
+                <span class="text-info font-semibold">{@dispatch_count}</span>
+                dispatches <span class="mx-1 text-base-content/30">&middot;</span>
+                <span class="text-info font-semibold">{length(@nodes)}</span>
+                nodes <span class="mx-1 text-base-content/30">&middot;</span>
+                <span class="text-error font-semibold">{@failure_count}</span>
+                failures
               <% else %>
-                <span class="text-info font-semibold">{length(@nodes)}</span> nodes
-                <span class="mx-1 text-base-content/30">&middot;</span>
-                <span class="text-success font-semibold">{@result_count}</span> executions
-                <span class="mx-1 text-base-content/30">&middot;</span>
-                <span class="text-error font-semibold">{@failure_count}</span> failures
+                <span class="text-info font-semibold">{length(@nodes)}</span>
+                nodes <span class="mx-1 text-base-content/30">&middot;</span>
+                <span class="text-success font-semibold">{@result_count}</span>
+                executions <span class="mx-1 text-base-content/30">&middot;</span>
+                <span class="text-error font-semibold">{@failure_count}</span>
+                failures
               <% end %>
             </span>
             <div class="flex-1" />
             <nav class="flex items-center gap-3 text-sm font-medium">
-              <a id="metrics-nav" href="#" phx-click={navigate_forward("metrics", "#metrics-nav", "#{@base_path}/metrics")} class="link link-hover text-base-content/80">Metrics</a>
-              <a id="dispatch-nav" href="#" phx-click={navigate_forward("dispatch", "#dispatch-nav", "#{@base_path}/dispatch")} class="link link-hover text-primary">New Dispatch</a>
+              <a
+                id="metrics-nav"
+                href="#"
+                phx-click={navigate_forward("metrics", "#metrics-nav", "#{@base_path}/metrics")}
+                class="link link-hover text-base-content/80"
+              >
+                Metrics
+              </a>
+              <a
+                id="dispatch-nav"
+                href="#"
+                phx-click={navigate_forward("dispatch", "#dispatch-nav", "#{@base_path}/dispatch")}
+                class="link link-hover text-primary"
+              >
+                New Dispatch
+              </a>
             </nav>
           </div>
         </header>
@@ -210,13 +234,23 @@ defmodule RuncomWeb.Live.DashboardLive do
                 <tr
                   :for={{dom_id, dispatch} <- @streams.dispatches}
                   id={dom_id}
-                  phx-click={navigate_forward("dispatch-detail", "##{dom_id}", "#{@base_path}/dispatch/#{dispatch.id}")}
+                  phx-click={
+                    navigate_forward(
+                      "dispatch-detail",
+                      "##{dom_id}",
+                      "#{@base_path}/dispatch/#{dispatch.id}"
+                    )
+                  }
                   class="hover:bg-base-200 cursor-pointer transition-colors"
                 >
                   <td class="text-base-content/70 font-mono text-xs">{short_id(dispatch.id)}</td>
                   <td class="font-medium">{dispatch.runbook_id}</td>
                   <td>
-                    <.actor_component module={@actor_renderer} actor={dispatch.actor} context={:small} />
+                    <.actor_component
+                      module={@actor_renderer}
+                      actor={dispatch.actor}
+                      context={:small}
+                    />
                   </td>
                   <td>
                     <span class={["badge badge-sm", status_badge_class(dispatch.status)]}>
@@ -224,7 +258,11 @@ defmodule RuncomWeb.Live.DashboardLive do
                     </span>
                   </td>
                   <td>
-                    <.progress_bar completed={dispatch.nodes_completed || 0} failed={dispatch.nodes_failed || 0} total={dispatch.total_nodes || 0} />
+                    <.progress_bar
+                      completed={dispatch.nodes_completed || 0}
+                      failed={dispatch.nodes_failed || 0}
+                      total={dispatch.total_nodes || 0}
+                    />
                   </td>
                   <td class="text-base-content/70 font-mono text-xs">
                     {format_duration(dispatch.duration_ms)}
@@ -257,14 +295,27 @@ defmodule RuncomWeb.Live.DashboardLive do
                 <tr
                   :for={{dom_id, result} <- @streams.results}
                   id={dom_id}
-                  phx-click={navigate_forward("result-detail", "##{dom_id}", "#{@base_path}/result/#{result_id(result)}")}
+                  phx-click={
+                    navigate_forward(
+                      "result-detail",
+                      "##{dom_id}",
+                      "#{@base_path}/result/#{result_id(result)}"
+                    )
+                  }
                   class="hover:bg-base-200 cursor-pointer transition-colors"
                 >
-                  <td class="text-base-content/70 font-mono text-xs">{short_id(result_field(result, :dispatch_id))}</td>
+                  <td class="text-base-content/70 font-mono text-xs">
+                    {short_id(result_field(result, :dispatch_id))}
+                  </td>
                   <td class="font-medium">{result_field(result, :runbook_id)}</td>
-                  <td class="text-base-content/70" data-vt="result-node">{result_field(result, :node_id)}</td>
+                  <td class="text-base-content/70" data-vt="result-node">
+                    {result_field(result, :node_id)}
+                  </td>
                   <td>
-                    <span data-vt="result-status" class={["badge badge-sm", status_badge_class(result_field(result, :status))]}>
+                    <span
+                      data-vt="result-status"
+                      class={["badge badge-sm", status_badge_class(result_field(result, :status))]}
+                    >
                       {result_field(result, :status)}
                     </span>
                     <span
@@ -460,17 +511,17 @@ defmodule RuncomWeb.Live.DashboardLive do
           Map.put(current, :nodes, new_set)
       end
 
-    overrides = Keyword.drop(overrides, [:toggle_node])
+    overrides = Keyword.delete(overrides, :toggle_node)
     merged = Enum.reduce(overrides, current, fn {k, v}, acc -> Map.put(acc, k, v) end)
 
     params =
       []
-      |> then(fn p -> if merged.view != "dispatch", do: [{"view", merged.view} | p], else: p end)
+      |> then(fn p -> if merged.view == "dispatch", do: p, else: [{"view", merged.view} | p] end)
       |> then(fn p ->
-        if merged.status not in [nil, ""], do: [{"status", merged.status} | p], else: p
+        if merged.status in [nil, ""], do: p, else: [{"status", merged.status} | p]
       end)
       |> then(fn p ->
-        if merged.search not in [nil, ""], do: [{"search", merged.search} | p], else: p
+        if merged.search in [nil, ""], do: p, else: [{"search", merged.search} | p]
       end)
       |> then(fn p ->
         case MapSet.to_list(merged.nodes) do
@@ -627,7 +678,7 @@ defmodule RuncomWeb.Live.DashboardLive do
   end
 
   defp base_store_opts(socket) do
-    normalize_store_args(socket.assigns.store_opts) |> List.first()
+    socket.assigns.store_opts |> normalize_store_args() |> List.first()
   end
 
   defp build_filter_opts(base_opts, assigns) do
@@ -713,18 +764,8 @@ defmodule RuncomWeb.Live.DashboardLive do
   defp result_id(result) when is_struct(result), do: to_string(result.id)
   defp result_id(result) when is_map(result), do: to_string(Map.get(result, :id))
 
-  defp node_status_class(node) do
-    status =
-      case node do
-        %{status: s} -> s
-        _ -> "unknown"
-      end
-
-    case status do
-      "online" -> "bg-success"
-      "offline" -> "bg-error"
-      _ -> "bg-base-content/30"
-    end
+  defp render_node(assigns) do
+    assigns.module.render_node(assigns)
   end
 
   @doc false
