@@ -63,7 +63,9 @@ defmodule RuncomEcto.Migrations.V1 do
       "DROP INDEX IF EXISTS #{prefix}.runcom_results_searchable_index"
     )
 
-    create table(:runcom_step_results, prefix: prefix) do
+    create table(:runcom_step_results, primary_key: false, prefix: prefix) do
+      add :id, :binary_id, primary_key: true
+
       add :result_id, references(:runcom_results, type: :binary_id, on_delete: :delete_all),
         null: false
 
@@ -137,7 +139,9 @@ defmodule RuncomEcto.Migrations.V1 do
       "DROP INDEX IF EXISTS #{prefix}.runcom_dispatches_active_index"
     )
 
-    create table(:runcom_dispatch_nodes, prefix: prefix) do
+    create table(:runcom_dispatch_nodes, primary_key: false, prefix: prefix) do
+      add :id, :binary_id, primary_key: true
+
       add :dispatch_id, references(:runcom_dispatches, type: :binary_id, on_delete: :delete_all),
         null: false
 
