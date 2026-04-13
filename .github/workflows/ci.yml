@@ -8,6 +8,9 @@ on:
 
 env:
   MIX_ENV: test
+  # Build sibling packages against the local `runcom/` via path deps
+  # (see runcom_ecto/mix.exs, runcom_rmq/mix.exs, runcom_web/mix.exs).
+  RUNCOM_ROOT: ${{ github.workspace }}
 
 jobs:
   format:
