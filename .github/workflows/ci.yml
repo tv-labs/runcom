@@ -14,20 +14,39 @@ env:
 
 jobs:
   format:
-    name: Format check
+    name: Format ${{ matrix.package }}
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        package: [runcom, runcom_ecto, runcom_rmq, runcom_web]
     steps:
       - uses: actions/checkout@v4
       - uses: erlef/setup-beam@v1
         with:
           elixir-version: "1.19.5"
           otp-version: "28.3"
+      - name: Cache deps
+        uses: actions/cache@v4
+        with:
+          path: |
+            ${{ matrix.package }}/deps
+            ${{ matrix.package }}/_build
+          key: ${{ runner.os }}-mix-${{ matrix.package }}-${{ hashFiles(format('{0}/mix.lock', matrix.package)) }}
+          restore-keys: |
+            ${{ runner.os }}-mix-${{ matrix.package }}-
+      # `.formatter.exs` imports from deps (e.g. :bash, :ecto, :phoenix,
+      # :phoenix_live_view) and uses the Bash.Formatter plugin — all need to
+      # be fetched and compiled before `mix format` can load them.
+      - name: Install deps
+        working-directory: ${{ matrix.package }}
+        run: mix deps.get
+      - name: Compile deps
+        working-directory: ${{ matrix.package }}
+        run: mix deps.compile
       - name: Check formatting
-        run: |
-          for pkg in runcom runcom_ecto runcom_rmq runcom_web; do
-            echo "==> Checking $pkg"
-            (cd "$pkg" && mix format --check-formatted)
-          done
+        working-directory: ${{ matrix.package }}
+        run: mix format --check-formatted
 
   test-pure:
     name: Test ${{ matrix.package }}
