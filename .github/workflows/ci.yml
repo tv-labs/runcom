@@ -59,7 +59,7 @@ jobs:
         run: mix compile --warnings-as-errors
       - name: Check for compile-time dependency cycles
         working-directory: ${{ matrix.package }}
-        run: mix xref graph --format cycles --fail-above 0
+        run: mix xref graph --format cycles --label compile-connected --fail-above 0
       - name: Run tests
         working-directory: ${{ matrix.package }}
         run: mix test
@@ -108,7 +108,7 @@ jobs:
         run: mix compile --warnings-as-errors
       - name: Check for compile-time dependency cycles
         working-directory: ${{ matrix.package }}
-        run: mix xref graph --format cycles --fail-above 0
+        run: mix xref graph --format cycles --label compile-connected --fail-above 0
       - name: Run tests
         working-directory: ${{ matrix.package }}
         run: mix test
