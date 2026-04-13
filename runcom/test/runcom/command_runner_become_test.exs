@@ -8,6 +8,7 @@ defmodule Runcom.CommandRunnerBecomeTest do
   describe "become option" do
     @describetag :command_sinks
 
+    @tag :requires_sudo
     test "wraps command with sudo when become: true",
          %{stdout_sink: stdout_sink, stderr_sink: stderr_sink} do
       {:ok, result} =
@@ -22,6 +23,7 @@ defmodule Runcom.CommandRunnerBecomeTest do
       assert result.exit_code in [0, 1]
     end
 
+    @tag :requires_sudo
     test "wraps command with sudo -u <user> when become_user set",
          %{stdout_sink: stdout_sink, stderr_sink: stderr_sink} do
       {:ok, result} =
@@ -39,6 +41,7 @@ defmodule Runcom.CommandRunnerBecomeTest do
       assert stdout =~ "hello"
     end
 
+    @tag :requires_sudo
     test "supports become_method: :su",
          %{stdout_sink: stdout_sink, stderr_sink: stderr_sink} do
       {:ok, result} =

@@ -19,7 +19,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        package: [runcom, runcom_ecto, runcom_rmq, runcom_web]
+        package: [runcom, runcom_ecto, runcom_rmq, runcom_web, runcom_demo]
     steps:
       - uses: actions/checkout@v4
       - uses: erlef/setup-beam@v1
@@ -82,6 +82,57 @@ jobs:
       - name: Run tests
         working-directory: ${{ matrix.package }}
         run: mix test
+
+  e2e:
+    name: E2E (runcom_demo)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: erlef/setup-beam@v1
+        with:
+          elixir-version: "1.19.5"
+          otp-version: "28.3"
+      - name: Cache deps
+        uses: actions/cache@v4
+        with:
+          path: |
+            runcom_demo/deps
+            runcom_demo/_build
+          key: ${{ runner.os }}-mix-runcom_demo-${{ hashFiles('runcom_demo/mix.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-mix-runcom_demo-
+      - name: Install deps
+        working-directory: runcom_demo
+        run: mix deps.get
+      # Bring up all long-running services and wait for healthchecks.
+      # `minio-init` is excluded here because it's a one-shot that exits 0 —
+      # `docker compose --wait` treats that as failure, even on success.
+      - name: Start docker compose stack
+        run: |
+          docker compose up -d --build --wait \
+            postgres rabbitmq minio \
+            agent-nyc-001 agent-nyc-002 \
+            agent-lax-001 agent-lax-002 \
+            agent-ams-001
+      # Run the MinIO bucket bootstrap; attaches and exits with its status.
+      - name: Run minio bucket init
+        run: docker compose up --build minio-init
+      - name: Show service status
+        if: always()
+        run: docker compose ps
+      - name: Run E2E tests
+        working-directory: runcom_demo
+        run: mix test --only integration
+      - name: Show service status on failure
+        if: failure()
+        run: docker compose ps --all
+      - name: Dump service logs on failure
+        if: failure()
+        run: docker compose logs --no-color --timestamps
+      - name: Stop docker compose stack
+        if: always()
+        run: docker compose down -v
 
   test-postgres:
     name: Test ${{ matrix.package }}

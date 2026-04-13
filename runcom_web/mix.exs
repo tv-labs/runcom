@@ -118,6 +118,7 @@ defmodule RuncomWeb.MixProject do
 
   defp aliases do
     [
+      test: ["ecto.create --quiet", "test"],
       "assets.setup": ["cmd --cd assets npm install"],
       "assets.build": [
         "cmd --cd assets node build.js",
