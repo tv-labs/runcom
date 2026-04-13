@@ -27,20 +27,15 @@ development, packages reference each other via path deps.
 
 ## Development Setup
 
-Runtime versions are managed by [mise](https://mise.jdx.dev) (see `mise.toml`):
+Runtime versions are managed by [mise](https://mise.jdx.dev) (see `mise.toml`)
 
-- Elixir 1.20-rc.2
-- OTP 28
-- Node 22
-
-```bash
 # Per-package (run from package directory)
 mix deps.get && mix compile
 mix test
 mix format
 
 # Full demo stack
-cd runcom_demo && docker compose up
+docker compose up -d
 ```
 
 ## Making Changes
@@ -77,8 +72,7 @@ Open an issue with:
 
 ## Security Issues
 
-Do **not** open a public issue for security vulnerabilities. See the security
-policy (if present) or email the maintainers directly.
+Do **not** open a public issue for security vulnerabilities. See the [security policy](SECURITY.md) or email the maintainers directly.
 
 ## License
 

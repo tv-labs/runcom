@@ -17,10 +17,7 @@ reporting.
 
 **Do not open a public GitHub issue for security vulnerabilities.**
 
-Please report suspected vulnerabilities using GitHub's private vulnerability
-reporting:
-
-  https://github.com/tv-labs/runcom/security/advisories/new
+Please report suspected vulnerabilities by emailing dbern@tvlabs.ai.
 
 Include as much of the following as you can:
 
