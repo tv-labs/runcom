@@ -3,6 +3,10 @@
     "tidewave": {
       "type": "http",
       "url": "http://localhost:4002/tidewave/mcp"
+    },
+    "tidewave-website": {
+      "type": "http",
+      "url": "http://localhost:4098/tidewave/mcp"
     }
   }
 }
