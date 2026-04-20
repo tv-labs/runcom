@@ -1,7 +1,7 @@
 defmodule Runcom.MixProject do
   use Mix.Project
 
-  @version "0.1.0"
+  @version Path.join(__DIR__, "VERSION") |> File.read!() |> String.trim()
   @source_url "https://github.com/tv-labs/runcom"
 
   def project do
