@@ -275,8 +275,6 @@ defmodule RuncomWeb.Live.DispatchShowLive do
 
   defp total_nodes(dispatch), do: length(dispatch.dispatch_nodes)
 
-  defp has_properties?(nil), do: false
-
   defp has_properties?(dispatch) do
     display_assigns(dispatch.assigns) != []
   end
