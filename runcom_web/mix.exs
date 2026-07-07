@@ -73,7 +73,7 @@ defmodule RuncomWeb.MixProject do
         {:mdex, "~> 0.11"},
         {:mdex_gfm, "~> 0.1"},
         {:easel, "~> 0.3"},
-        {:decimal, "~> 2.0"},
+        {:decimal, "~> 3.0"},
         {:ex_doc, "~> 0.35", only: :dev, runtime: false},
         {:lazy_html, ">= 0.1.0", only: :test}
       ]
