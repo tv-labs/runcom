@@ -239,8 +239,6 @@ defmodule RuncomDemo.Integration.E2ETest do
     assert db_output =~ "[truncated, see output_ref]", "Truncated output should contain marker"
   end
 
-  # ── Helpers ──
-
   defp dispatch_runbook(runbook_name, run_id, repo_opts) do
     dispatch_id = Ecto.UUID.generate()
 
