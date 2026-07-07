@@ -60,8 +60,13 @@ config :phoenix, :json_library, Jason
 # Runcom Store
 config :runcom, store: {RuncomDemo.Store, repo: RuncomDemo.Repo}
 
-# Runcom RMQ
-config :runcom_rmq, signing_secret: Base.decode64!("Qnnfm9NvCxSMFFTbM1l3juiFZDXVmxYP0nM9ZjKuFWE=")
+# Runcom RMQ — dev/test fixture keys, never use in production.
+# The demo acts as both server (signs with the private key) and agent
+# (verifies with the public key), so it holds the full Ed25519 keypair.
+config :runcom_rmq,
+  signing_secret: Base.decode64!("Qnnfm9NvCxSMFFTbM1l3juiFZDXVmxYP0nM9ZjKuFWE="),
+  signing_private_key: Base.decode64!("6kZ/i613pBlQe30IrPCJ9TPTbLTzZdbaGoykrKcMqzI="),
+  signing_public_key: Base.decode64!("xcc8yRTIqmktyI6IGbifs0AQZnsUaSnDxZrh6/NVjN4=")
 
 # Import environment specific config. This must remain at the bottom
 # of this file so it overrides the configuration defined above.

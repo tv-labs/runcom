@@ -21,7 +21,7 @@ defmodule RuncomRmq.ServerTest do
         )
 
       assert %{strategy: :one_for_one} = sup_flags
-      assert length(children) == 3
+      assert length(children) == 4
 
       child_modules =
         Enum.map(children, fn
@@ -29,6 +29,7 @@ defmodule RuncomRmq.ServerTest do
           %{start: {mod, _, _}} -> mod
         end)
 
+      assert RuncomRmq.ReplayGuard in child_modules
       assert RuncomRmq.Server.SyncConsumer in child_modules
       assert RuncomRmq.Server.EventConsumer in child_modules
       assert RuncomRmq.Server.Dispatcher in child_modules

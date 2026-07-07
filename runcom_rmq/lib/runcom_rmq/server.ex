@@ -47,7 +47,7 @@ defmodule RuncomRmq.Server do
       # Minimal — reads store and pubsub from application config:
       children = [
         {RuncomRmq.Server,
-          connection: "amqp://localhost",
+          connection: "amqps://localhost",
           queue_type: :quorum,
           sync_queue: "runcom.sync.request",
           event_queue: "runcom.events"}
@@ -56,7 +56,7 @@ defmodule RuncomRmq.Server do
       # Explicit — full tuning:
       children = [
         {RuncomRmq.Server,
-          connection: "amqp://localhost",
+          connection: "amqps://localhost",
           store: {RuncomEcto.Store, repo: MyApp.Repo},
           pubsub: MyApp.PubSub,
           sync_queue: "runcom.sync.request",
@@ -107,6 +107,7 @@ defmodule RuncomRmq.Server do
     dispatcher_opts = Keyword.get(opts, :dispatcher, [])
 
     children = [
+      RuncomRmq.ReplayGuard,
       {RuncomRmq.Server.SyncConsumer,
        [
          connection: connection,

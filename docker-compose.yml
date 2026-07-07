@@ -76,6 +76,7 @@ services:
       MINIO_SECRET_KEY: minioadmin
       OUTPUT_TRUNCATE_BYTES: "256"
       RUNCOM_SIGNING_SECRET: Qnnfm9NvCxSMFFTbM1l3juiFZDXVmxYP0nM9ZjKuFWE=
+      RUNCOM_SIGNING_PUBLIC_KEY: xcc8yRTIqmktyI6IGbifs0AQZnsUaSnDxZrh6/NVjN4=
     volumes:
       - agent-nyc-001-data:/data/runcom
     depends_on:
@@ -97,6 +98,7 @@ services:
       MINIO_ACCESS_KEY: minioadmin
       MINIO_SECRET_KEY: minioadmin
       RUNCOM_SIGNING_SECRET: Qnnfm9NvCxSMFFTbM1l3juiFZDXVmxYP0nM9ZjKuFWE=
+      RUNCOM_SIGNING_PUBLIC_KEY: xcc8yRTIqmktyI6IGbifs0AQZnsUaSnDxZrh6/NVjN4=
     volumes:
       - agent-nyc-002-data:/data/runcom
     depends_on:
@@ -118,6 +120,7 @@ services:
       MINIO_ACCESS_KEY: minioadmin
       MINIO_SECRET_KEY: minioadmin
       RUNCOM_SIGNING_SECRET: Qnnfm9NvCxSMFFTbM1l3juiFZDXVmxYP0nM9ZjKuFWE=
+      RUNCOM_SIGNING_PUBLIC_KEY: xcc8yRTIqmktyI6IGbifs0AQZnsUaSnDxZrh6/NVjN4=
     volumes:
       - agent-lax-001-data:/data/runcom
     depends_on:
@@ -139,6 +142,7 @@ services:
       MINIO_ACCESS_KEY: minioadmin
       MINIO_SECRET_KEY: minioadmin
       RUNCOM_SIGNING_SECRET: Qnnfm9NvCxSMFFTbM1l3juiFZDXVmxYP0nM9ZjKuFWE=
+      RUNCOM_SIGNING_PUBLIC_KEY: xcc8yRTIqmktyI6IGbifs0AQZnsUaSnDxZrh6/NVjN4=
     volumes:
       - agent-lax-002-data:/data/runcom
     depends_on:
@@ -160,6 +164,7 @@ services:
       MINIO_ACCESS_KEY: minioadmin
       MINIO_SECRET_KEY: minioadmin
       RUNCOM_SIGNING_SECRET: Qnnfm9NvCxSMFFTbM1l3juiFZDXVmxYP0nM9ZjKuFWE=
+      RUNCOM_SIGNING_PUBLIC_KEY: xcc8yRTIqmktyI6IGbifs0AQZnsUaSnDxZrh6/NVjN4=
     volumes:
       - agent-ams-001-data:/data/runcom
     depends_on:

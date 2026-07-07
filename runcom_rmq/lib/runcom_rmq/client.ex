@@ -39,7 +39,7 @@ defmodule RuncomRmq.Client do
 
       children = [
         {RuncomRmq.Client,
-          connection: "amqp://localhost",
+          connection: "amqps://localhost",
           node_id: "agent-east-1",
           sync_queue: "runcom.sync.request",
           event_queue: "runcom.events"}
@@ -75,6 +75,7 @@ defmodule RuncomRmq.Client do
 
     children =
       [
+        RuncomRmq.ReplayGuard,
         {RunbookCache, name: cache_name},
         {Sync, connection: connection, cache: cache_name, sync_queue: sync_queue},
         {EventPublisher,

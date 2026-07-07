@@ -28,7 +28,18 @@ if config_env() == :prod do
     System.get_env("RUNCOM_SIGNING_SECRET") ||
       raise "environment variable RUNCOM_SIGNING_SECRET is missing"
 
-  config :runcom_rmq, signing_secret: Base.decode64!(signing_secret)
+  signing_private_key =
+    System.get_env("RUNCOM_SIGNING_PRIVATE_KEY") ||
+      raise "environment variable RUNCOM_SIGNING_PRIVATE_KEY is missing"
+
+  signing_public_key =
+    System.get_env("RUNCOM_SIGNING_PUBLIC_KEY") ||
+      raise "environment variable RUNCOM_SIGNING_PUBLIC_KEY is missing"
+
+  config :runcom_rmq,
+    signing_secret: Base.decode64!(signing_secret),
+    signing_private_key: Base.decode64!(signing_private_key),
+    signing_public_key: Base.decode64!(signing_public_key)
 
   database_url =
     System.get_env("DATABASE_URL") ||

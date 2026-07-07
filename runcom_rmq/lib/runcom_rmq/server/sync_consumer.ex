@@ -80,7 +80,7 @@ defmodule RuncomRmq.Server.SyncConsumer do
 
     with {:ok, request} <- Codec.decode(message.data),
          {:ok, response} <- build_sync_response(request, store_mod, store_opts) do
-      publish_reply(metadata, Codec.encode(response))
+      publish_reply(metadata, Codec.encode_signed(response))
       message
     else
       {:error, reason} ->
