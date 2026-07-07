@@ -124,6 +124,12 @@ defmodule RuncomDemo.Runbooks.KitchenSink do
       update_cache: false,
       await: ["setup_dir"]
     )
+    |> AptRepository.add("remove-demo-repo",
+      repo: "deb http://example.com/repo stable main",
+      state: :absent,
+      update_cache: false,
+      await: ["add-demo-repo"]
+    )
     |> RCBash.add("uptime",
       script: ~BASH"uptime || cat /proc/uptime",
       await: ["setup_dir"]

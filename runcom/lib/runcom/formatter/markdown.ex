@@ -421,8 +421,6 @@ defmodule Runcom.Formatter.Markdown do
     end
   end
 
-  defp format_datetime(nil), do: "N/A"
-
   defp format_datetime(%DateTime{} = dt) do
     Calendar.strftime(dt, "%Y-%m-%d %H:%M:%S UTC")
   end

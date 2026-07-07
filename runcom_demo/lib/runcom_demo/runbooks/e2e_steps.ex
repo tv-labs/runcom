@@ -80,9 +80,9 @@ defmodule RuncomDemo.Runbooks.E2ESteps do
       await: ["copy_test"]
     )
 
-    # 8. GetUrl — download a small file
+    # 8. GetUrl — download a small file from the in-stack MinIO seed object
     |> GetUrl.add("geturl_test",
-      url: "https://httpbin.org/robots.txt",
+      url: "http://minio:9000/runcom-test/seed.txt",
       dest: fn rc -> "#{rc.assigns.work_dir}/downloaded.txt" end,
       await: ["setup_dir"]
     )
