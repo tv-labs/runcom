@@ -19,7 +19,8 @@ defmodule RuncomRmq.Codec do
 
   Before serialization, every term is wrapped in an envelope:
 
-      %{data: term, ts: unix_milliseconds, nonce: <<16 random bytes>>}
+      %{data: term, ts: unix_milliseconds, nonce: <<16 random bytes>>,
+        type: message_type | nil, to: recipient | nil}
 
   The envelope is serialized with `:erlang.term_to_binary/1` and compressed
   with zstd; the HMAC or signature is computed over the compressed bytes.
@@ -29,6 +30,12 @@ defmodule RuncomRmq.Codec do
   `{:error, :expired}`, and a nonce seen before is rejected with
   `{:error, :replayed}`. If the guard is not running, decoding falls back
   to timestamp-only checking.
+
+  Signed messages also carry a `type` (e.g. `:dispatch`, `:sync_response`)
+  and optional recipient `to`. `decode_signed/2` verifies these against the
+  consumer's own context (`:expect` and `:recipient`), so a signed
+  sync-response cannot be processed as a dispatch and a dispatch bound to
+  one node's queue is rejected if delivered to another.
 
   Wire formats:
 
@@ -75,7 +82,7 @@ defmodule RuncomRmq.Codec do
   @spec encode(term()) :: binary()
   def encode(term) do
     secret = signing_secret!()
-    payload = wrap_and_compress(term)
+    payload = wrap_and_compress(term, nil, nil)
     <<compute_hmac(secret, payload)::binary-size(@hmac_length), payload::binary>>
   end
 
@@ -84,54 +91,88 @@ defmodule RuncomRmq.Codec do
     secret = signing_secret!()
 
     with {:ok, payload} <- verify_hmac(secret, binary) do
-      decode_payload(payload)
+      decode_payload(payload, nil, nil)
     end
   end
 
-  @spec encode_signed(term()) :: binary()
-  def encode_signed(term) do
+  @doc """
+  Ed25519-signs a server->agent message.
+
+  Requires `:type` (e.g. `:dispatch`, `:sync_response`) and optionally binds
+  the message to a recipient via `:to` (the target queue name). Both are
+  carried inside the signed envelope so `decode_signed/2` can reject a message
+  delivered to the wrong consumer or the wrong queue.
+  """
+  @spec encode_signed(term(), keyword()) :: binary()
+  def encode_signed(term, opts) do
     private_key = signing_private_key!()
-    payload = wrap_and_compress(term)
+    type = Keyword.fetch!(opts, :type)
+    to = Keyword.get(opts, :to)
+    payload = wrap_and_compress(term, type, to)
     signature = :crypto.sign(:eddsa, :none, payload, [private_key, :ed25519])
     <<signature::binary-size(@signature_length), payload::binary>>
   end
 
-  @spec decode_signed(binary()) :: {:ok, term()} | {:error, term()}
-  def decode_signed(binary) when is_binary(binary) do
+  @doc """
+  Verifies and decodes an Ed25519-signed message.
+
+  `:expect` asserts the envelope's message type and `:recipient` asserts its
+  bound `to`; a mismatch is rejected with `{:error, :unexpected_type}` or
+  `{:error, :wrong_recipient}`. Omitting an option skips that check.
+  """
+  @spec decode_signed(binary(), keyword()) :: {:ok, term()} | {:error, term()}
+  def decode_signed(binary, opts \\ []) when is_binary(binary) do
     public_keys = signing_public_keys!()
+    expect_type = Keyword.get(opts, :expect)
+    recipient = Keyword.get(opts, :recipient)
 
     with {:ok, payload} <- verify_signature(public_keys, binary) do
-      decode_payload(payload)
+      decode_payload(payload, expect_type, recipient)
     end
   end
 
   # Only decompression/deserialization of an already-authenticated payload can
   # raise here (a malformed frame). Config errors from the signing-key accessors
   # must propagate loudly, so they stay outside this rescue.
-  defp decode_payload(payload) do
-    payload |> decompress_and_deserialize() |> check_envelope()
+  defp decode_payload(payload, expect_type, recipient) do
+    payload |> decompress_and_deserialize() |> check_envelope(expect_type, recipient)
   rescue
     _ -> {:error, :malformed}
   end
 
-  defp wrap_and_compress(term) do
+  defp wrap_and_compress(term, type, to) do
     envelope = %{
       data: term,
       ts: System.system_time(:millisecond),
-      nonce: :crypto.strong_rand_bytes(@nonce_length)
+      nonce: :crypto.strong_rand_bytes(@nonce_length),
+      type: type,
+      to: to
     }
 
     envelope |> :erlang.term_to_binary() |> :zstd.compress() |> IO.iodata_to_binary()
   end
 
-  defp check_envelope(%{data: data, ts: ts, nonce: nonce})
+  defp check_envelope(
+         %{data: data, ts: ts, nonce: nonce, type: type, to: to},
+         expect_type,
+         recipient
+       )
        when is_integer(ts) and is_binary(nonce) do
-    with :ok <- ReplayGuard.check(nonce, ts, max_age_ms: max_message_age_ms()) do
-      {:ok, data}
+    cond do
+      expect_type != nil and type != expect_type ->
+        {:error, :unexpected_type}
+
+      recipient != nil and to != recipient ->
+        {:error, :wrong_recipient}
+
+      true ->
+        with :ok <- ReplayGuard.check(nonce, ts, max_age_ms: max_message_age_ms()) do
+          {:ok, data}
+        end
     end
   end
 
-  defp check_envelope(_other), do: {:error, :invalid_envelope}
+  defp check_envelope(_other, _expect_type, _recipient), do: {:error, :invalid_envelope}
 
   defp verify_hmac(secret, <<received_hmac::binary-size(@hmac_length), payload::binary>>) do
     expected_hmac = compute_hmac(secret, payload)

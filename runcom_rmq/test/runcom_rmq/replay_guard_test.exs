@@ -60,7 +60,7 @@ defmodule RuncomRmq.ReplayGuardTest do
     end
 
     test "decode_signed/1 rejects a replayed message" do
-      encoded = Codec.encode_signed(%{dispatch_id: "d-1"})
+      encoded = Codec.encode_signed(%{dispatch_id: "d-1"}, type: :dispatch)
 
       assert {:ok, %{dispatch_id: "d-1"}} = Codec.decode_signed(encoded)
       assert {:error, :replayed} = Codec.decode_signed(encoded)
@@ -80,7 +80,7 @@ defmodule RuncomRmq.ReplayGuardTest do
       Application.put_env(:runcom_rmq, :max_message_age_ms, 10)
       on_exit(fn -> Application.delete_env(:runcom_rmq, :max_message_age_ms) end)
 
-      encoded = Codec.encode_signed(%{stale: true})
+      encoded = Codec.encode_signed(%{stale: true}, type: :dispatch)
       Process.sleep(50)
 
       assert {:error, :expired} = Codec.decode_signed(encoded)
@@ -92,7 +92,7 @@ defmodule RuncomRmq.ReplayGuardTest do
       refute Process.whereis(ReplayGuard)
 
       hmac_encoded = Codec.encode(%{standalone: true})
-      signed_encoded = Codec.encode_signed(%{standalone: true})
+      signed_encoded = Codec.encode_signed(%{standalone: true}, type: :dispatch)
 
       assert {:ok, %{standalone: true}} = Codec.decode(hmac_encoded)
       assert {:ok, %{standalone: true}} = Codec.decode_signed(signed_encoded)

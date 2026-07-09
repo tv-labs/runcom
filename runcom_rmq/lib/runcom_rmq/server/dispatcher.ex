@@ -126,7 +126,7 @@ defmodule RuncomRmq.Server.Dispatcher do
 
   defp dispatch_to_node(connection, queue, message, ack_timeout) do
     correlation_id = :crypto.strong_rand_bytes(16) |> Base.encode16(case: :lower)
-    payload = Codec.encode_signed(message)
+    payload = Codec.encode_signed(message, type: :dispatch, to: queue)
 
     with {:ok, chan} <- Connection.open(connection) do
       try do

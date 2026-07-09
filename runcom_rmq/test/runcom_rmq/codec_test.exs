@@ -72,24 +72,24 @@ defmodule RuncomRmq.CodecTest do
     end
   end
 
-  describe "encode_signed/1 and decode_signed/1" do
+  describe "encode_signed/2 and decode_signed/2" do
     test "round-trips a map" do
       original = %{dispatch_id: "d-1", runbook_id: "deploy", secrets: %{token: "abc"}}
-      encoded = Codec.encode_signed(original)
+      encoded = Codec.encode_signed(original, type: :dispatch)
 
       assert is_binary(encoded)
       assert {:ok, ^original} = Codec.decode_signed(encoded)
     end
 
     test "prepends a 64-byte Ed25519 signature to the payload" do
-      encoded = Codec.encode_signed(:hello)
+      encoded = Codec.encode_signed(:hello, type: :dispatch)
       <<signature::binary-size(64), _rest::binary>> = encoded
 
       assert byte_size(signature) == 64
     end
 
     test "rejects tampered payload" do
-      encoded = Codec.encode_signed(%{safe: true})
+      encoded = Codec.encode_signed(%{safe: true}, type: :dispatch)
       <<signature::binary-size(64), payload::binary>> = encoded
 
       tampered = <<signature::binary-size(64), payload::binary, "extra">>
@@ -98,14 +98,15 @@ defmodule RuncomRmq.CodecTest do
     end
 
     test "rejects tampered signature" do
-      <<first, rest::binary>> = Codec.encode_signed(%{safe: true})
+      <<first, rest::binary>> = Codec.encode_signed(%{safe: true}, type: :dispatch)
       tampered = <<Bitwise.bxor(first, 1), rest::binary>>
 
       assert {:error, :invalid_signature} = Codec.decode_signed(tampered)
     end
 
     test "rejects message signed with the wrong private key" do
-      <<_signature::binary-size(64), payload::binary>> = Codec.encode_signed(%{evil: true})
+      <<_signature::binary-size(64), payload::binary>> =
+        Codec.encode_signed(%{evil: true}, type: :dispatch)
 
       {_wrong_public, wrong_private} = :crypto.generate_key(:eddsa, :ed25519)
       forged_signature = :crypto.sign(:eddsa, :none, payload, [wrong_private, :ed25519])
@@ -127,7 +128,9 @@ defmodule RuncomRmq.CodecTest do
       on_exit(fn -> Application.put_env(:runcom_rmq, :signing_public_key, correct_key) end)
 
       original = %{rotated: true}
-      assert {:ok, ^original} = Codec.decode_signed(Codec.encode_signed(original))
+
+      assert {:ok, ^original} =
+               Codec.decode_signed(Codec.encode_signed(original, type: :dispatch))
     end
   end
 
@@ -137,7 +140,30 @@ defmodule RuncomRmq.CodecTest do
     end
 
     test "decode rejects an Ed25519-encoded message" do
-      assert {:error, :invalid_signature} = Codec.decode(Codec.encode_signed(%{a: 1}))
+      assert {:error, :invalid_signature} =
+               Codec.decode(Codec.encode_signed(%{a: 1}, type: :dispatch))
+    end
+  end
+
+  describe "signed message type and recipient binding" do
+    test "rejects a message whose type is not the expected one" do
+      encoded = Codec.encode_signed(%{a: 1}, type: :sync_response)
+
+      assert {:error, :unexpected_type} = Codec.decode_signed(encoded, expect: :dispatch)
+    end
+
+    test "rejects a message delivered to the wrong recipient" do
+      encoded = Codec.encode_signed(%{a: 1}, type: :dispatch, to: "agent-a.dispatch")
+
+      assert {:error, :wrong_recipient} =
+               Codec.decode_signed(encoded, expect: :dispatch, recipient: "agent-b.dispatch")
+    end
+
+    test "accepts a message with matching type and recipient" do
+      encoded = Codec.encode_signed(%{ok: true}, type: :dispatch, to: "agent-a.dispatch")
+
+      assert {:ok, %{ok: true}} =
+               Codec.decode_signed(encoded, expect: :dispatch, recipient: "agent-a.dispatch")
     end
   end
 end

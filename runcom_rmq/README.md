@@ -69,6 +69,11 @@ execute:
 - **Agent → server** (events, sync requests, ack replies — data only): signed
   with **HMAC-SHA256** using a shared secret.
 
+Signed messages also carry a message **type** and target **recipient** inside
+the signed envelope. Each consumer verifies these against its own context, so a
+signed sync response cannot be processed as a dispatch, and a dispatch bound to
+one agent's queue is rejected if delivered to another.
+
 ### Configuring Keys
 
 Generate an Ed25519 keypair:
