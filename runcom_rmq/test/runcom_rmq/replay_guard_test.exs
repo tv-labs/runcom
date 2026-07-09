@@ -23,6 +23,27 @@ defmodule RuncomRmq.ReplayGuardTest do
       assert :ok = ReplayGuard.check(nonce, now)
       assert {:error, :replayed} = ReplayGuard.check(nonce, now)
     end
+
+    test "rejects a timestamp beyond the future-skew allowance" do
+      now = System.system_time(:millisecond)
+      nonce = :crypto.strong_rand_bytes(16)
+
+      assert {:error, :expired} = ReplayGuard.check(nonce, now + 60_000)
+    end
+
+    test "expires the nonce record relative to the timestamp, not receipt time" do
+      start_supervised!(ReplayGuard)
+
+      # A future-dated (within skew) message must still be deduped until its
+      # timestamp-based validity ends, so a second sight is rejected.
+      now = System.system_time(:millisecond)
+      nonce = :crypto.strong_rand_bytes(16)
+
+      assert :ok = ReplayGuard.check(nonce, now + 3_000, max_future_skew_ms: 5_000)
+
+      assert {:error, :replayed} =
+               ReplayGuard.check(nonce, now + 3_000, max_future_skew_ms: 5_000)
+    end
   end
 
   describe "codec replay protection with the guard running" do

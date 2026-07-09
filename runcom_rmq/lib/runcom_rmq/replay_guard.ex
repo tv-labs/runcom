@@ -21,6 +21,7 @@ defmodule RuncomRmq.ReplayGuard do
 
   @table __MODULE__
   @default_max_age_ms 300_000
+  @default_future_skew_ms 5_000
   @sweep_interval_ms 60_000
 
   @spec start_link(keyword()) :: GenServer.on_start() | :ignore
@@ -45,12 +46,24 @@ defmodule RuncomRmq.ReplayGuard do
   @spec check(binary(), integer(), keyword()) :: :ok | {:error, :expired | :replayed}
   def check(nonce, ts, opts \\ []) when is_binary(nonce) and is_integer(ts) do
     max_age_ms = Keyword.get(opts, :max_age_ms, @default_max_age_ms)
+    skew_ms = Keyword.get(opts, :max_future_skew_ms, @default_future_skew_ms)
     now = System.system_time(:millisecond)
 
-    if now - ts > max_age_ms do
-      {:error, :expired}
-    else
-      record_nonce(nonce, now + max_age_ms)
+    cond do
+      now - ts > max_age_ms ->
+        {:error, :expired}
+
+      # Reject timestamps beyond a small future-skew allowance. Without this, a
+      # sender clock ahead of ours extends the message's timestamp validity past
+      # its nonce record's lifetime, reopening a replay window.
+      ts - now > skew_ms ->
+        {:error, :expired}
+
+      # Expire the nonce at ts + max_age_ms — the exact instant the timestamp
+      # check starts rejecting it — not now + max_age_ms, so the record always
+      # outlives the timestamp's validity.
+      true ->
+        record_nonce(nonce, ts + max_age_ms)
     end
   end
 

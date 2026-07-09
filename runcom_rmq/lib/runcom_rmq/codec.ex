@@ -84,10 +84,8 @@ defmodule RuncomRmq.Codec do
     secret = signing_secret!()
 
     with {:ok, payload} <- verify_hmac(secret, binary) do
-      payload |> decompress_and_deserialize() |> check_envelope()
+      decode_payload(payload)
     end
-  rescue
-    _ -> {:error, :malformed}
   end
 
   @spec encode_signed(term()) :: binary()
@@ -103,8 +101,15 @@ defmodule RuncomRmq.Codec do
     public_keys = signing_public_keys!()
 
     with {:ok, payload} <- verify_signature(public_keys, binary) do
-      payload |> decompress_and_deserialize() |> check_envelope()
+      decode_payload(payload)
     end
+  end
+
+  # Only decompression/deserialization of an already-authenticated payload can
+  # raise here (a malformed frame). Config errors from the signing-key accessors
+  # must propagate loudly, so they stay outside this rescue.
+  defp decode_payload(payload) do
+    payload |> decompress_and_deserialize() |> check_envelope()
   rescue
     _ -> {:error, :malformed}
   end
