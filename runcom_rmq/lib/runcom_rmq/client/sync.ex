@@ -130,7 +130,7 @@ defmodule RuncomRmq.Client.Sync do
         await_reply(correlation_id, rpc_timeout)
 
       {:basic_deliver, payload, %{correlation_id: ^correlation_id}} ->
-        Codec.decode(payload)
+        Codec.decode_signed(payload, expect: :sync_response)
     after
       rpc_timeout ->
         {:error, :rpc_timeout}

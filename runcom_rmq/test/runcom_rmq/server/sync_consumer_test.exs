@@ -36,7 +36,7 @@ defmodule RuncomRmq.Server.SyncConsumerTest do
       assert %Message{status: :ok} = result
 
       assert_receive {:published, _reply_to, payload}
-      assert {:ok, %{status: :up_to_date}} = Codec.decode(payload)
+      assert {:ok, %{status: :up_to_date}} = Codec.decode_signed(payload)
     end
   end
 
@@ -51,7 +51,7 @@ defmodule RuncomRmq.Server.SyncConsumerTest do
       assert %Message{status: :ok} = result
 
       assert_receive {:published, _reply_to, payload}
-      assert {:ok, response} = Codec.decode(payload)
+      assert {:ok, response} = Codec.decode_signed(payload)
       assert response.status == :update
       assert response.deletes == []
 
@@ -74,7 +74,7 @@ defmodule RuncomRmq.Server.SyncConsumerTest do
       assert %Message{status: :ok} = result
 
       assert_receive {:published, _reply_to, payload}
-      assert {:ok, response} = Codec.decode(payload)
+      assert {:ok, response} = Codec.decode_signed(payload)
       assert response.status == :update
       assert response.deletes == []
 
@@ -98,7 +98,7 @@ defmodule RuncomRmq.Server.SyncConsumerTest do
       assert %Message{status: :ok} = result
 
       assert_receive {:published, _reply_to, payload}
-      assert {:ok, response} = Codec.decode(payload)
+      assert {:ok, response} = Codec.decode_signed(payload)
       assert "removed-rb" in response.deletes
       assert response.updates == []
     end
@@ -118,7 +118,7 @@ defmodule RuncomRmq.Server.SyncConsumerTest do
       assert %Message{status: :ok} = result
 
       assert_receive {:published, _reply_to, payload}
-      assert {:ok, response} = Codec.decode(payload)
+      assert {:ok, response} = Codec.decode_signed(payload)
       assert response.status == :update
       assert "old-rb" in response.deletes
 
@@ -136,7 +136,7 @@ defmodule RuncomRmq.Server.SyncConsumerTest do
       assert %Message{status: :ok} = result
 
       assert_receive {:published, _reply_to, payload}
-      assert {:ok, response} = Codec.decode(payload)
+      assert {:ok, response} = Codec.decode_signed(payload)
       assert response.status == :update
       assert [{@test_runbook_name, {struct_binary, bytecodes}}] = response.updates
       assert is_binary(struct_binary)
@@ -150,7 +150,7 @@ defmodule RuncomRmq.Server.SyncConsumerTest do
       assert %Message{status: :ok} = result
 
       assert_receive {:published, _reply_to, payload}
-      assert {:ok, %{status: :not_found}} = Codec.decode(payload)
+      assert {:ok, %{status: :not_found}} = Codec.decode_signed(payload)
     end
   end
 

@@ -73,9 +73,10 @@ defmodule RuncomRmq.ClientTest do
       assert Process.alive?(pid)
 
       children = Supervisor.which_children(sup_name)
-      assert length(children) == 3
+      assert length(children) == 4
 
       child_modules = Enum.map(children, fn {_id, _pid, _type, [mod]} -> mod end)
+      assert RuncomRmq.ReplayGuard in child_modules
       assert RunbookCache in child_modules
       assert RuncomRmq.Client.Sync in child_modules
       assert RuncomRmq.Client.EventPublisher in child_modules

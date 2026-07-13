@@ -80,8 +80,15 @@ defmodule RuncomRmq.Server.Dispatcher do
 
   defp resolve_secrets(secrets) do
     Map.new(secrets, fn
-      {name, fun} when is_function(fun, 0) -> {name, fun.()}
-      {name, value} when is_binary(value) -> {name, value}
+      {name, fun} when is_function(fun, 0) ->
+        {name, fun.()}
+
+      {name, value} when is_binary(value) ->
+        {name, value}
+
+      {name, other} ->
+        raise ArgumentError,
+              "secret #{inspect(name)} must be a binary or a zero-arity function, got: #{inspect(other)}"
     end)
   end
 
@@ -119,7 +126,7 @@ defmodule RuncomRmq.Server.Dispatcher do
 
   defp dispatch_to_node(connection, queue, message, ack_timeout) do
     correlation_id = :crypto.strong_rand_bytes(16) |> Base.encode16(case: :lower)
-    payload = Codec.encode(message)
+    payload = Codec.encode_signed(message, type: :dispatch, to: queue)
 
     with {:ok, chan} <- Connection.open(connection) do
       try do

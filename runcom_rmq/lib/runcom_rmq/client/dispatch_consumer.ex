@@ -85,7 +85,7 @@ defmodule RuncomRmq.Client.DispatchConsumer do
   end
 
   def handle_info({:basic_deliver, payload, %{delivery_tag: tag} = meta}, state) do
-    case Codec.decode(payload) do
+    case Codec.decode_signed(payload, expect: :dispatch, recipient: state.queue) do
       {:ok, message} ->
         send_ack_reply(state.channel, meta)
         handle_dispatch(message, state)

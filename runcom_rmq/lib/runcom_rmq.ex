@@ -10,7 +10,7 @@ defmodule RuncomRmq do
   Add `RuncomRmq.Client` to your agent's supervision tree:
 
       {RuncomRmq.Client,
-        connection: "amqp://localhost",
+        connection: "amqps://localhost",
         node_id: "agent-1",
         sync_queue: "runcom.sync.request",
         event_queue: "runcom.events"}
@@ -20,7 +20,7 @@ defmodule RuncomRmq do
   Add `RuncomRmq.Server` to your server's supervision tree:
 
       {RuncomRmq.Server,
-        connection: "amqp://localhost",
+        connection: "amqps://localhost",
         store: {RuncomEcto.Store, repo: MyApp.Repo},
         pubsub: MyApp.PubSub}
   """

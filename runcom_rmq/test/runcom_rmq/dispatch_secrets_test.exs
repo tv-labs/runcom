@@ -40,9 +40,9 @@ defmodule RuncomRmq.DispatchSecretsTest do
       assert message.assigns == %{env: "staging"}
       assert message.dispatch_id == to_string(test_name)
 
-      # Secrets survive Codec round-trip (wire transfer)
-      payload = Codec.encode(message)
-      assert {:ok, decoded} = Codec.decode(payload)
+      # Secrets survive Codec round-trip (wire transfer, server->agent is signed)
+      payload = Codec.encode_signed(message, type: :dispatch)
+      assert {:ok, decoded} = Codec.decode_signed(payload, expect: :dispatch)
       assert decoded.secrets == %{api_token: @secret_value}
     end
 
@@ -91,7 +91,7 @@ defmodule RuncomRmq.DispatchSecretsTest do
         secrets: %{api_token: @secret_value}
       }
 
-      payload = Codec.encode(message)
+      payload = Codec.encode_signed(message, type: :dispatch, to: "test-queue")
       meta = %{delivery_tag: 1}
 
       DispatchConsumer.handle_info({:basic_deliver, payload, meta}, state)

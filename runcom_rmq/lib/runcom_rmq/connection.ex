@@ -14,7 +14,7 @@ defmodule RuncomRmq.Connection do
 
   ## Examples
 
-      {:ok, channel} = RuncomRmq.Connection.open("amqp://localhost")
+      {:ok, channel} = RuncomRmq.Connection.open("amqps://localhost")
 
       {:ok, channel} = RuncomRmq.Connection.open(
         host: "rabbitmq.local",
